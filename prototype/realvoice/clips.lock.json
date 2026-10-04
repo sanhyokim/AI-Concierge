@@ -1,0 +1,14 @@
+{
+  "toshisyun02": {
+    "file": "toshisyun_02_akutagawa_64kb.mp3",
+    "sha256": "1ff4a21559ec3730ae06e3ed8ec8c78d5952d5455a16b90567ebecd9fdaa8b5f"
+  },
+  "futon01": {
+    "file": "futon_01_tayama_64kb.mp3",
+    "sha256": "e2a0bef69c8881aa4a40e9f3da1a38c5d54be804d729ee7ab933311290f6dc17"
+  },
+  "nihyakutouka01": {
+    "file": "nihyakutouka_01_natsume_64kb.mp3",
+    "sha256": "b59ea0e9f018b28a81121b578f8f3d8b35b570155b12c3397ecdf0cbfff99c57"
+  }
+}

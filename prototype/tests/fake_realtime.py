@@ -58,7 +58,12 @@ class FakeRealtime:
             await asyncio.sleep(self.cfg["send_interval_ms"] / 1000)
         await self.out.put({"type": "response.output_audio_transcript.delta", "item_id": item_id,
                             "delta": "（模擬応答）"})
-        await self.out.put({"type": "response.done"})
+        n_deltas = self.cfg["response_ms"] // self.cfg["delta_ms"]
+        await self.out.put({"type": "response.done", "response": {"usage": {
+            "input_token_details": {"text_tokens": 1500, "audio_tokens": 300,
+                                    "cached_tokens_details": {"text_tokens": 1000, "audio_tokens": 0}},
+            "output_token_details": {"text_tokens": 0,
+                                     "audio_tokens": n_deltas * self.cfg["delta_ms"] // 50}}}})
 
     async def recv(self) -> dict:
         return await self.out.get()

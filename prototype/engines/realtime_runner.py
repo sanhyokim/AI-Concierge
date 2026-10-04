@@ -22,10 +22,13 @@ from dataclasses import dataclass, field
 from typing import Callable, Protocol
 
 from ..concierge.prompts import BASE_INSTRUCTIONS, TOOLS
+from .budget import UsageLedger, openai_cost, openai_upper_bound
 from .tools import ToolHandler
 
 BYTES_PER_MS = 8  # 8 kHz mu-law: one byte per sample
 CHUNK_MS = 20
+TURN_RESPONSES = 3   # budget pre-check per caller turn: the reply plus replies after tool calls
+TURN_AUDIO_S = 30.0
 AUDIO_DELTA_TYPES = {"response.output_audio.delta", "response.audio.delta"}
 TRANSCRIPT_DELTA_TYPES = {"response.output_audio_transcript.delta", "response.audio_transcript.delta"}
 
@@ -95,8 +98,11 @@ class Playback:
 
 class RealtimeRunner:
     def __init__(self, transport: Transport, voice: str, *, instructions: str = BASE_INSTRUCTIONS,
-                 clock: Callable[[], float] = time.monotonic, idle_timeout_s: float = 20.0) -> None:
+                 clock: Callable[[], float] = time.monotonic, idle_timeout_s: float = 20.0,
+                 ledger: UsageLedger | None = None, run_id: str = "", model_key: str = "openai_rt21") -> None:
         self.t, self.voice, self.instructions = transport, voice, instructions
+        self.ledger, self.run_id, self.model_key = ledger, run_id, model_key
+        self.usage: list[dict] = []
         self.clock, self.idle_timeout_s = clock, idle_timeout_s
         self.t0 = clock()
         self.tools = ToolHandler()
@@ -174,7 +180,14 @@ class RealtimeRunner:
                 self.responses_in_progress += 1
             elif et == "response.done":
                 self.responses_in_progress = max(0, self.responses_in_progress - 1)
-                self._log("response_done")
+                usage = (ev.get("response") or {}).get("usage") or {}
+                self.usage.append(usage)
+                cost = openai_cost(usage, self.model_key)
+                self._log("response_done", est_cost_usd=round(cost, 6))
+                if self.ledger is not None:
+                    self.ledger.record("dialog_response", "openai_api_direct", cost, self.run_id,
+                                       audio_seconds=(self.current.received_ms / 1000 if self.current else 0.0),
+                                       usage=usage, estimated=not usage)
             elif et == "error":
                 self._log("error", error=ev.get("error"))
 
@@ -238,6 +251,9 @@ class RealtimeRunner:
                 elif timing["type"] == "during_ai_speech":
                     await self._wait_ai_started(since_index=self._playbacks_before_last_turn)
                     await asyncio.sleep(timing.get("offset_ms", 0) / 1000)
+                if self.ledger is not None:  # raises BudgetExceeded before any audio of this turn is sent
+                    self.ledger.check(TURN_RESPONSES * openai_upper_bound(TURN_AUDIO_S, self.model_key),
+                                      audio_seconds=TURN_AUDIO_S)
                 pcmu, onset_ms = load_audio(turn)
                 self.caller_turn_start, self.caller_onset_ms = self._now(), onset_ms
                 self._log("caller_turn_start", n=n, text=turn.get("text", ""))
@@ -264,5 +280,7 @@ class RealtimeRunner:
             "ai_items": [{"item_id": p.item_id, "received_ms": round(p.received_ms), "truncated": p.stopped,
                           "transcript": self.transcripts.get(p.item_id, "")} for p in self.playbacks],
             "tool_calls": self.tools.calls,
+            "usage": self.usage,
+            "est_cost_usd": round(sum(openai_cost(u, self.model_key) for u in self.usage), 6),
             "fields": self.tools.store.snapshot(),
         }

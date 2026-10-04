@@ -35,13 +35,13 @@ class SegmentMeasure:
     speech_rate: float
 
 
-def _voiced_mask(samples, rate, threshold_db=None) -> tuple[list[bool], float]:
+def voiced_mask(samples, rate, threshold_db=None) -> tuple[list[bool], float]:
     levels = frame_db(samples, rate, FRAME_MS)
     thr = voiced_threshold_db(levels) if threshold_db is None else threshold_db
     return [lv >= thr for lv in levels], thr
 
 
-EDGE_BLIP_MS = 30  # isolated voiced run this short at a segment edge = spill-over from the neighbour
+EDGE_BLIP_MS = 30  # edge fragment this short (total extent), cut off by a pause = spill-over from the neighbour
 
 
 def _voiced_runs(mask: list[bool], lo: int, hi: int) -> list[list[int]]:
@@ -61,18 +61,34 @@ def _voiced_runs(mask: list[bool], lo: int, hi: int) -> list[list[int]]:
 
 
 def measure_segment(mask: list[bool], name: str, start_s: float, end_s: float, morae: int,
-                    min_pause_ms: int = DEFAULT_MIN_PAUSE_MS) -> SegmentMeasure:
+                    min_pause_ms: int = DEFAULT_MIN_PAUSE_MS, details: dict | None = None) -> SegmentMeasure:
+    """details, when given, receives the removed edge blips, the pause intervals and the span (seconds)."""
     frame_s = FRAME_MS / 1000
     lo, hi = int(round(start_s / frame_s)), min(len(mask), int(round(end_s / frame_s)))
     min_run = max(1, int(round(min_pause_ms / FRAME_MS)))
     blip = max(1, int(round(EDGE_BLIP_MS / FRAME_MS)))
-    runs = _voiced_runs(mask, lo, hi)
     # Segment bounds (speech marks, labels) rarely fall exactly between sounds; drop a short
-    # blip at either edge when a pause separates it from the rest of the segment.
-    while len(runs) > 1 and runs[0][1] - runs[0][0] + 1 <= blip and runs[1][0] - runs[0][1] - 1 >= min_run:
-        runs.pop(0)
-    while len(runs) > 1 and runs[-1][1] - runs[-1][0] + 1 <= blip and runs[-1][0] - runs[-2][1] - 1 >= min_run:
-        runs.pop()
+    # fragment at either edge when a pause separates it from the rest of the segment. A phrase
+    # tail often breaks into several tiny runs (real recordings, v1 check), so the fragment is a
+    # group of runs with no pause inside, judged by its total extent.
+    groups: list[list[list[int]]] = []
+    for r in _voiced_runs(mask, lo, hi):
+        if groups and r[0] - groups[-1][-1][1] - 1 < min_run:
+            groups[-1].append(r)
+        else:
+            groups.append([r])
+    extent = lambda g: g[-1][1] - g[0][0] + 1
+    removed = []
+    while len(groups) > 1 and extent(groups[0]) <= blip:
+        g = groups.pop(0)
+        removed.append((g[0][0], g[-1][1]))
+    while len(groups) > 1 and extent(groups[-1]) <= blip:
+        g = groups.pop()
+        removed.append((g[0][0], g[-1][1]))
+    runs = [r for g in groups for r in g]
+    if details is not None:
+        details["removed"] = [(r[0] * frame_s, (r[1] + 1) * frame_s) for r in removed]
+        details["pauses"], details["span"] = [], None
     if not runs:
         return SegmentMeasure(name, morae, 0.0, 0.0, 0, 0.0, 0.0)
     first, last = runs[0][0], runs[-1][1]
@@ -84,7 +100,11 @@ def measure_segment(mask: list[bool], name: str, start_s: float, end_s: float, m
         else:
             if run >= min_run:
                 pauses.append(run)
+                if details is not None:
+                    details["pauses"].append(((i - run) * frame_s, i * frame_s))
             run = 0
+    if details is not None:
+        details["span"] = (first * frame_s, (last + 1) * frame_s)
     pause_frames = sum(pauses)
     span_s = span_frames * frame_s
     speaking_s = (span_frames - pause_frames) * frame_s
@@ -96,7 +116,7 @@ def measure_segment(mask: list[bool], name: str, start_s: float, end_s: float, m
 def measure_version(samples, rate, segments: list[dict], min_pause_ms: int = DEFAULT_MIN_PAUSE_MS,
                     threshold_db: float | None = None) -> dict:
     """segments: [{"name": "pre"|"target"|"post", "start_s": ..., "end_s": ..., "morae": ...}]."""
-    mask, thr = _voiced_mask(samples, rate, threshold_db)
+    mask, thr = voiced_mask(samples, rate, threshold_db)
     out = {"threshold_db": round(thr, 1), "min_pause_ms": min_pause_ms, "segments": {}}
     for seg in segments:
         m = measure_segment(mask, seg["name"], seg["start_s"], seg["end_s"], seg["morae"], min_pause_ms)

@@ -45,6 +45,8 @@ python3 -m prototype.run_offline                       # シナリオ検査と�
    pip install -r prototype/requirements-vendor.txt
    ```
 
+3. 回数・時間・費用の上限と、利用量の台帳（`prototype/results/usage-ledger.jsonl`）は、どのスクリプトでも自動で効きます。上限を超える要求は送らずに止まります。件数・予算・止める条件は[最小の実測計画](../docs/measurement-plan-v1.md)にあります。
+
 ### 部分減速：同じ文章を通常版（N）と減速版（D）で読ませて比べる
 
 ```bash
@@ -79,7 +81,11 @@ python3 -m prototype.engines.run_dialog --scenario R-03 --voice marin \
 
 **発信者の音声の用意**
 - 発信者の各ターンの音声を、`first_round.json` の `audio` 欄にある名前のWAVで用意します。
-- 人が台本を読んで録音するか、候補ではない音声合成で作ります。
+- 人が台本を読んで録音するか、候補ではない音声合成で作ります。候補ではないPolly `Mizuki`（Standard）で作るときは次を実行します（作ったファイルは再利用され、2回目からは何も送りません）。
+
+  ```bash
+  python3 -m prototype.engines.make_caller_audio
+  ```
 
 **この実行で取れるもの**
 - AIの音声（ターンごとのWAV）
@@ -114,4 +120,8 @@ TwiMLの生成、トークンの組み立て、割り込み時の履歴の切り
 | `engines/realtime_runner.py` | 案Aの対話試験を回す仕組み（通信部分は差し替えられる。テストでは偽のサーバーを使う） |
 | `engines/realtime_probe.py`、`engines/polly_probe.py`、`engines/run_dialog.py` | 業者を使う計測（認証情報が必要） |
 | `engines/relay_app.py` | 案Bのひな形（Twilioが必要） |
+| `engines/budget.py` | 利用量の台帳、回数・音声の秒数・費用の上限、再試行の制限 |
+| `engines/make_caller_audio.py` | 対話試験の発信者の音声を、候補ではない声で作る |
+| `cost/` | 単価（`prices.json`）、費用比較表を作る `cost_model.py`、実測計画の費用の見込み `measurement_budget.py` |
+| `realvoice/` | 公開音声での計測方法の予備確認（`fetch_clips.py`、`compare.py`、AIの仮ラベル） |
 | `scenarios/first_round.json` | 初回の台本（架空のデータ） |

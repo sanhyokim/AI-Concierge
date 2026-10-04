@@ -20,7 +20,8 @@ import sys
 
 from ..measure.audio import (frame_db, read_wav, to_phone_band, ulaw_decode, ulaw_encode, voiced_threshold_db,
                              write_wav)
-from .realtime_runner import RealtimeRunner, WebSocketTransport
+from .budget import LIMITS, BudgetExceeded, UsageLedger, async_with_retries, openai_upper_bound
+from .realtime_runner import TURN_AUDIO_S, TURN_RESPONSES, RealtimeRunner, WebSocketTransport
 
 SCENARIOS = pathlib.Path(__file__).resolve().parents[1] / "scenarios" / "first_round.json"
 
@@ -50,21 +51,40 @@ async def main_async(args) -> int:
     if missing:
         print(f"missing caller audio: {missing}", file=sys.stderr)
         return 2
-    out = pathlib.Path(args.out or f"prototype/results/dialog-{args.scenario}-{args.voice}-"
-                                  f"{dt.datetime.utcnow():%Y%m%dT%H%M%SZ}")
+    run_id = f"dialog-{args.scenario}-{args.voice}-{dt.datetime.utcnow():%Y%m%dT%H%M%SZ}"
+    out = pathlib.Path(args.out or f"prototype/results/{run_id}")
     out.mkdir(parents=True, exist_ok=True)
-    transport = await WebSocketTransport(f"wss://api.openai.com/v1/realtime?model={args.model}", key).connect()
+    limits = LIMITS["openai"]
+    ledger = UsageLedger("openai", limits)
+    model_key = "openai_rt21_mini" if args.model.endswith("-mini") else "openai_rt21"
+    try:  # stop before connecting when even one turn would not fit
+        ledger.check(TURN_RESPONSES * openai_upper_bound(TURN_AUDIO_S, model_key), audio_seconds=TURN_AUDIO_S)
+    except BudgetExceeded as exc:
+        print(f"{exc}; nothing was sent.", file=sys.stderr)
+        return 3
+    url = f"wss://api.openai.com/v1/realtime?model={args.model}"
+    transport = await async_with_retries(lambda: WebSocketTransport(url, key).connect(),
+                                         max_retries=limits.max_retries)
+    runner = RealtimeRunner(transport, args.voice, ledger=ledger, run_id=run_id, model_key=model_key)
+    timed_out, budget_stop = False, None
     try:
-        runner = RealtimeRunner(transport, args.voice)
-        result = await runner.run(scenario["turns"], lambda turn: load_caller_audio(audio_dir / turn["audio"]))
-        for i, pb in enumerate(runner.playbacks, 1):
-            write_wav(str(out / f"ai_{i:02d}.wav"), ulaw_decode(bytes(pb.audio)), 8000)
+        result = await asyncio.wait_for(
+            runner.run(scenario["turns"], lambda turn: load_caller_audio(audio_dir / turn["audio"])),
+            timeout=limits.dialog_timeout_s)
+    except asyncio.TimeoutError:
+        timed_out, result = True, runner.result()
+    except BudgetExceeded as exc:
+        budget_stop, result = str(exc), runner.result()
     finally:
         await transport.close()
-    result.update({"scenario": scenario["id"], "checks_for_reviewer": scenario["checks"], "model": args.model})
+        for i, pb in enumerate(runner.playbacks, 1):
+            write_wav(str(out / f"ai_{i:02d}.wav"), ulaw_decode(bytes(pb.audio)), 8000)
+    result.update({"scenario": scenario["id"], "checks_for_reviewer": scenario["checks"], "model": args.model,
+                   "path": "openai_api_direct", "timed_out": timed_out, "stopped_by_budget": budget_stop,
+                   "ledger_totals": ledger.totals()})
     (out / "result.json").write_text(json.dumps(result, ensure_ascii=False, indent=2))
     print(f"wrote {out}/result.json")
-    return 0
+    return 3 if budget_stop else 0
 
 
 def main() -> int:

@@ -1,0 +1,14 @@
+# AIによる仮の基準（2.5秒ごとのスペクトログラム画像を目視して付与）。人が検証した正解データではない。計測方法の予備確認だけに使い、候補音声の採用判断には使わない。
+# 境界の時刻には、画像の窓の後ろほど遅めにずれる読み取りの誤差がある（ツールとの比較で平均−60ms、窓内の位置1秒あたり約−39ms。realvoice-method-check-v1 参照）。間の個数と区間の分類には使えるが、境界の時刻の評価には使わない。
+# start	end	label  (speech / nonspeech_blip / nonspeech_breath / edge_fragment)
+0.050	0.450	speech
+0.640	1.490	speech
+1.970	2.420	speech
+3.330	4.800	speech
+4.930	4.950	nonspeech_blip
+5.680	7.130	speech
+7.380	8.550	speech
+9.460	9.470	nonspeech_blip
+9.540	11.950	speech
+12.800	14.200	speech
+14.560	15.000	speech

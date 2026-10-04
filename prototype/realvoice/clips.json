@@ -1,0 +1,16 @@
+{
+  "purpose": "計測方法の予備確認だけに使う。候補音声の採用判断には使わない。",
+  "path": "public_human_recording",
+  "path_note": "公開されている人の朗読。電話の符号化（8kHz μ-law）だけを模擬。Pollyの直接呼び出しでも、Relay・電話経由でもない。",
+  "clips": [
+    {"id": "toshisyun02", "archive_id": "toshisyun_um_librivox", "file": "toshisyun_02_akutagawa_64kb.mp3",
+     "title": "杜子春（芥川龍之介）第2章", "license": "http://creativecommons.org/publicdomain/zero/1.0/",
+     "reader": "ekzemplaro（archive.orgの説明文による）", "offset_s": 60.0, "duration_s": 15.0},
+    {"id": "futon01", "archive_id": "futon_ek_1303_librivox", "file": "futon_01_tayama_64kb.mp3",
+     "title": "蒲団（田山花袋）第1章", "license": "http://creativecommons.org/publicdomain/zero/1.0/",
+     "reader": "未確認", "offset_s": 120.0, "duration_s": 15.0},
+    {"id": "nihyakutouka01", "archive_id": "nihyakutouka_ez_librivox", "file": "nihyakutouka_01_natsume_64kb.mp3",
+     "title": "二百十日（夏目漱石）第1章", "license": "http://creativecommons.org/publicdomain/zero/1.0/",
+     "reader": "未確認", "offset_s": 120.0, "duration_s": 15.0}
+  ]
+}

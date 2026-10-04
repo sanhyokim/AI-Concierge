@@ -29,32 +29,60 @@ from ..concierge.prompts import READ_ALOUD_NORMAL, READ_ALOUD_SEGMENT, READ_ALOU
 from ..concierge.readings import count_morae
 from ..measure.audio import ulaw_decode, write_wav
 from ..measure.rate import compare_versions, measure_version
+from .budget import LIMITS, UsageLedger, async_with_retries, openai_cost, openai_upper_bound
 from .realtime_runner import AUDIO_DELTA_TYPES, TRANSCRIPT_DELTA_TYPES, WebSocketTransport, session_update
 
 SCENARIOS = pathlib.Path(__file__).resolve().parents[1] / "scenarios" / "first_round.json"
+PATH = "openai_api_direct"
+MODEL_KEYS = {"gpt-realtime-2.1": "openai_rt21", "gpt-realtime-2.1-mini": "openai_rt21_mini"}
 READER_INSTRUCTIONS = "あなたは与えられた文章を、そのまま日本語で読み上げる読み手です。文章以外は話しません。"
 
 
-async def _speak(t: WebSocketTransport, prompt: str) -> tuple[bytes, str]:
+class Ctx:
+    """Shared run context: credentials, model, ledger (spend limits) and run id."""
+
+    def __init__(self, model: str, key: str, ledger: UsageLedger, run_id: str) -> None:
+        self.model, self.key, self.ledger, self.run_id = model, key, ledger, run_id
+        self.model_key = MODEL_KEYS.get(model, "openai_rt21")
+
+
+async def _speak(ctx: Ctx, t: WebSocketTransport, prompt: str, op: str) -> tuple[bytes, str]:
+    """One response. Checked against the ledger before sending; usage is recorded from response.done."""
+    ctx.ledger.check(openai_upper_bound(audio_out_seconds=30, model_key=ctx.model_key), audio_seconds=30)
     await t.send({"type": "conversation.item.create", "item": {
         "type": "message", "role": "user", "content": [{"type": "input_text", "text": prompt}]}})
     await t.send({"type": "response.create"})
     audio, transcript = bytearray(), ""
-    while True:
-        ev = await t.recv()
-        et = ev.get("type", "")
-        if et in AUDIO_DELTA_TYPES:
-            audio += base64.b64decode(ev.get("delta", ""))
-        elif et in TRANSCRIPT_DELTA_TYPES:
-            transcript += ev.get("delta", "")
-        elif et == "response.done":
-            return bytes(audio), transcript
-        elif et == "error":
-            raise RuntimeError(ev.get("error"))
+
+    async def collect() -> dict:
+        nonlocal audio, transcript
+        while True:
+            ev = await t.recv()
+            et = ev.get("type", "")
+            if et in AUDIO_DELTA_TYPES:
+                audio += base64.b64decode(ev.get("delta", ""))
+            elif et in TRANSCRIPT_DELTA_TYPES:
+                transcript += ev.get("delta", "")
+            elif et == "response.done":
+                return ev.get("response", {}).get("usage") or {}
+            elif et == "error":
+                raise RuntimeError(ev.get("error"))
+
+    usage: dict = {}
+    try:
+        usage = await asyncio.wait_for(collect(), timeout=ctx.ledger.limits.request_timeout_s)
+    finally:
+        # Recorded even on failure so partial spend stays visible; actual usage when the server sent it.
+        cost = openai_cost(usage, ctx.model_key) if usage else openai_upper_bound(len(audio) / 8000, ctx.model_key)
+        ctx.ledger.record(op, PATH, cost, ctx.run_id, audio_seconds=len(audio) / 8000, usage=usage,
+                          estimated=not usage)
+    return bytes(audio), transcript
 
 
-async def _session(model: str, key: str, voice: str, speed: float = 1.0) -> WebSocketTransport:
-    t = await WebSocketTransport(f"wss://api.openai.com/v1/realtime?model={model}", key).connect()
+async def _session(ctx: Ctx, voice: str, speed: float = 1.0) -> WebSocketTransport:
+    url = f"wss://api.openai.com/v1/realtime?model={ctx.model}"
+    t = await async_with_retries(lambda: WebSocketTransport(url, ctx.key).connect(),
+                                 max_retries=ctx.ledger.limits.max_retries)
     await t.send(session_update(voice, READER_INSTRUCTIONS, speed=speed, tools=[], transcription_model=None))
     return t
 
@@ -63,8 +91,8 @@ def _morae(script: dict) -> dict:
     return {k: count_morae(script[k]["reading"]) for k in ("pre", "target", "post")}
 
 
-async def render_instr(model, key, voice, script, version, out: pathlib.Path) -> dict:
-    t = await _session(model, key, voice)
+async def render_instr(ctx: Ctx, voice, script, version, out: pathlib.Path, rep: int = 1) -> dict:
+    t = await _session(ctx, voice)
     try:
         if version == "N":
             prompt = READ_ALOUD_NORMAL.format(text=script["pre"]["text"] + script["target"]["text"]
@@ -72,28 +100,29 @@ async def render_instr(model, key, voice, script, version, out: pathlib.Path) ->
         else:
             prompt = READ_ALOUD_SLOW_TARGET.format(pre=script["pre"]["text"], target=script["target"]["text"],
                                                    post=script["post"]["text"])
-        audio, transcript = await _speak(t, prompt)
+        audio, transcript = await _speak(ctx, t, prompt, f"instr:{script['id']}:{version}")
     finally:
         await t.close()
-    stem = out / f"A-{voice}-instr-{script['id']}-{version}"
+    stem = out / f"A-{voice}-instr-{script['id']}-{version}-r{rep}"
     write_wav(f"{stem}.wav", ulaw_decode(audio), 8000)
     morae = _morae(script)
     labels = {"wav": f"{stem.name}.wav", "fill_in": "start_s/end_s by listening (e.g. Audacity labels)",
               "segments": [{"name": n, "start_s": None, "end_s": None, "morae": morae[n]}
                            for n in ("pre", "target", "post")]}
     pathlib.Path(f"{stem}.labels.json").write_text(json.dumps(labels, ensure_ascii=False, indent=2))
-    return {"wav": f"{stem}.wav", "transcript": transcript, "needs_manual_labels": True}
+    return {"wav": f"{stem}.wav", "path": PATH, "transcript": transcript, "needs_manual_labels": True}
 
 
-async def render_split(model, key, voice, script, version, target_speed, out: pathlib.Path) -> dict:
-    t = await _session(model, key, voice)
+async def render_split(ctx: Ctx, voice, script, version, target_speed, out: pathlib.Path, rep: int = 1) -> dict:
+    t = await _session(ctx, voice)
     pcm, segments, transcripts = [], [], []
     try:
         for name in ("pre", "target", "post"):
             speed = target_speed if (version == "D" and name == "target") else 1.0
             await t.send({"type": "session.update",
                           "session": {"type": "realtime", "audio": {"output": {"speed": speed}}}})
-            audio, transcript = await _speak(t, READ_ALOUD_SEGMENT.format(text=script[name]["text"]))
+            audio, transcript = await _speak(ctx, t, READ_ALOUD_SEGMENT.format(text=script[name]["text"]),
+                                             f"split:{script['id']}:{version}:{name}")
             start_s = len(pcm) / 8000
             pcm.extend(ulaw_decode(audio))
             segments.append({"name": name, "start_s": start_s, "end_s": len(pcm) / 8000,
@@ -102,9 +131,9 @@ async def render_split(model, key, voice, script, version, target_speed, out: pa
     finally:
         await t.close()
     samples = array("h", pcm)
-    stem = out / f"A-{voice}-split-{script['id']}-{version}"
+    stem = out / f"A-{voice}-split-{script['id']}-{version}-r{rep}"
     write_wav(f"{stem}.wav", samples, 8000)
-    return {"wav": f"{stem}.wav", "transcripts": transcripts, "segments": segments,
+    return {"wav": f"{stem}.wav", "path": PATH, "transcripts": transcripts, "segments": segments,
             "measure": measure_version(samples, 8000, segments)}
 
 
@@ -121,24 +150,32 @@ async def main_async(args) -> int:
     data = json.loads(SCENARIOS.read_text())
     scripts = [s for s in data["slowdown"] if s["id"] in args.scripts]
     target_speed = data["slow_settings"]["openai_split_target_speed"]
-    out = pathlib.Path(args.out or f"prototype/results/probe-a-{dt.datetime.utcnow():%Y%m%dT%H%M%SZ}")
+    run_id = f"probe-a-{dt.datetime.utcnow():%Y%m%dT%H%M%SZ}"
+    out = pathlib.Path(args.out or f"prototype/results/{run_id}")
     out.mkdir(parents=True, exist_ok=True)
-    report = {"plan": "A", "model": args.model, "measurement": "API direct, phone codec only (no network)",
-              "runs": []}
-    for voice in args.voices:
-        for script in scripts:
-            if "split" in args.methods:
-                n = await render_split(args.model, key, voice, script, "N", target_speed, out)
-                d = await render_split(args.model, key, voice, script, "D", target_speed, out)
-                report["runs"].append({"voice": voice, "method": "split", "script": script["id"], "N": n, "D": d,
-                                       "compare": compare_versions(n["measure"], d["measure"])})
-            if "instr" in args.methods:
-                n = await render_instr(args.model, key, voice, script, "N", out)
-                d = await render_instr(args.model, key, voice, script, "D", out)
-                report["runs"].append({"voice": voice, "method": "instr", "script": script["id"], "N": n, "D": d,
-                                       "compare": "fill labels, then run prototype.measure.compare_labels"})
-    (out / "report.json").write_text(json.dumps(report, ensure_ascii=False, indent=2))
-    print(f"wrote {out}/report.json")
+    ctx = Ctx(args.model, key, UsageLedger("openai", LIMITS["openai"]), run_id)
+    report = {"plan": "A", "model": args.model, "path": PATH,
+              "measurement": "API direct, phone codec only (no telephone network)", "runs": []}
+    try:
+        for rep in range(1, args.repeat + 1):
+            for voice in args.voices:
+                for script in scripts:
+                    if "split" in args.methods:
+                        n = await render_split(ctx, voice, script, "N", target_speed, out, rep)
+                        d = await render_split(ctx, voice, script, "D", target_speed, out, rep)
+                        report["runs"].append({"voice": voice, "method": "split", "script": script["id"], "rep": rep,
+                                               "N": n, "D": d,
+                                               "compare": compare_versions(n["measure"], d["measure"])})
+                    if "instr" in args.methods:
+                        n = await render_instr(ctx, voice, script, "N", out, rep)
+                        d = await render_instr(ctx, voice, script, "D", out, rep)
+                        report["runs"].append({"voice": voice, "method": "instr", "script": script["id"], "rep": rep,
+                                               "N": n, "D": d,
+                                               "compare": "fill labels, then run prototype.measure.compare_labels"})
+    finally:
+        report["ledger_totals"] = ctx.ledger.totals()
+        (out / "report.json").write_text(json.dumps(report, ensure_ascii=False, indent=2))
+        print(f"wrote {out}/report.json; ledger totals: {report['ledger_totals']}")
     return 0
 
 
@@ -148,6 +185,7 @@ def main() -> int:
     p.add_argument("--voices", nargs="+", default=["marin", "cedar"])
     p.add_argument("--scripts", nargs="+", default=["S-01", "S-02", "S-03"])
     p.add_argument("--methods", nargs="+", default=["split", "instr"], choices=["split", "instr"])
+    p.add_argument("--repeat", type=int, default=2)
     p.add_argument("--out")
     return asyncio.run(main_async(p.parse_args()))
 
