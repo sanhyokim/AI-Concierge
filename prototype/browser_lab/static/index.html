@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ブラウザー会話試験</title>
+<style>
+  :root { --bg: #fafaf8; --fg: #1d1d1b; --muted: #66645f; --line: #d9d6cf; --card: #ffffff; --accent: #1f6feb;
+          --warn: #9a5b00; --bad: #b42318; --good: #1a7f37; --mic: #1f6feb; --ai: #8250df; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #161615; --fg: #ecebe8; --muted: #a3a19b; --line: #3a3935; --card: #1f1f1d; --accent: #58a6ff;
+            --warn: #e3a008; --bad: #f97066; --good: #3fb950; --mic: #58a6ff; --ai: #c297ff; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.6 system-ui, "Hiragino Sans", "Yu Gothic UI", sans-serif; }
+  main { max-width: 1100px; margin: 0 auto; padding: 16px; }
+  h1 { font-size: 20px; margin: 4px 0 2px; }
+  h2 { font-size: 16px; margin: 0 0 8px; }
+  .sub { color: var(--muted); font-size: 13px; margin: 0 0 12px; }
+  .grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+  section { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+  label { display: block; margin: 6px 0; }
+  select, input[type=number], textarea { width: 100%; font: inherit; color: inherit; background: var(--bg);
+           border: 1px solid var(--line); border-radius: 6px; padding: 6px; }
+  button { font: inherit; padding: 7px 14px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); cursor: pointer; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button:disabled { opacity: .5; cursor: default; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .note { color: var(--warn); font-size: 13px; }
+  .status { font-weight: 600; }
+  .meter { height: 10px; background: var(--line); border-radius: 5px; overflow: hidden; margin: 2px 0 8px; }
+  .meter > div { height: 100%; width: 0; }
+  #micBar { background: var(--mic); } #aiBar { background: var(--ai); }
+  .cards { display: grid; gap: 8px; }
+  .card { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+  .card input { margin-right: 6px; }
+  .card p { margin: 4px 0 0; font-size: 13px; color: var(--muted); }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { border-bottom: 1px solid var(--line); padding: 4px 6px; text-align: left; vertical-align: top; }
+  #log { height: 220px; overflow: auto; font: 12px/1.5 ui-monospace, monospace; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 6px; }
+  .judge { display: grid; grid-template-columns: 70px repeat(5, 1fr); gap: 4px 8px; align-items: center; font-size: 13px; overflow-x: auto; }
+  .judge select { padding: 2px; }
+  .flag { color: var(--warn); }
+</style>
+</head>
+<body>
+<main>
+  <h1>ブラウザー会話試験（AI受電）</h1>
+  <p class="sub">共通の受付業務と台本で、候補を切り替えて実際に話します。架空の情報だけを使ってください。計測は端末の音量で行い、業者のイベントには頼りません。</p>
+
+  <div class="grid">
+    <section>
+      <h2>1. 候補と条件</h2>
+      <label>候補 <select id="candidate"></select></label>
+      <p id="candNote" class="note"></p>
+      <label>音の出し方
+        <select id="output"><option value="headset">ヘッドセット（推奨）</option><option value="speaker">スピーカー</option></select></label>
+      <label><input type="checkbox" id="echo" checked> エコー抑制（ブラウザーの機能）</label>
+      <label>試験の回 <input type="number" id="round" value="1" min="1"></label>
+      <div class="row">
+        <button class="primary" id="startBtn">会話を始める</button>
+        <button id="stopBtn" disabled>終える</button>
+        <span class="status" id="status">待機中</span>
+        <span id="timer">0:00</span>
+      </div>
+      <p class="sub" id="limit"></p>
+      <div>マイク <span id="micDb"></span></div><div class="meter"><div id="micBar"></div></div>
+      <div>AIの音 <span id="aiDb"></span></div><div class="meter"><div id="aiBar"></div></div>
+      <details><summary>判定のしきい値</summary>
+        <label>マイクの発話とみなす音量（dBFS） <input type="number" id="micThr" value="-42"></label>
+        <label>AIの音とみなす音量（dBFS） <input type="number" id="aiThr" value="-50"></label>
+      </details>
+    </section>
+
+    <section>
+      <h2>2. 台本（いま行うものを選ぶ）</h2>
+      <div class="cards" id="cards"></div>
+    </section>
+  </div>
+
+  <div class="grid" style="margin-top:12px">
+    <section>
+      <h2>3. 端末での計測</h2>
+      <table><thead><tr><th>台本</th><th>項目</th><th>値</th></tr></thead><tbody id="metrics"></tbody></table>
+      <p class="sub" id="summary"></p>
+    </section>
+    <section>
+      <h2>4. 会話と業務処理の記録</h2>
+      <div id="log" aria-live="polite"></div>
+    </section>
+  </div>
+
+  <section style="margin-top:12px">
+    <h2>5. 判定（試験者が記入）</h2>
+    <div class="judge" id="judge"></div>
+    <label>メモ <textarea id="notes" rows="3"></textarea></label>
+    <div class="row"><button class="primary" id="saveBtn" disabled>結果を保存</button><span id="saved"></span></div>
+  </section>
+</main>
+<script type="module" src="./lab.js"></script>
+</body>
+</html>

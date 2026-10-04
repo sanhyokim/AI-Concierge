@@ -1,7 +1,7 @@
 """Cost comparison for plan A / plan B under line plan 1 (NTT always-forward, cloud routing, H1).
 
 Known unit prices are computed numerically; unconfirmed ones stay as symbols
-(F, B_fwd, B_num, V_stt, V_tts, S_srv, U_ntt, R) and are printed as such,
+(F, B_fwd, B_num, V_tts, S_srv, U_ntt, R) and are printed as such,
 never replaced by zero. NTT hikari-denwa prices are a conditional reference only (the 092
 contract type is unknown), so they appear in a separate column, not in the estimate.
 No vendor measurement exists yet: every amount is an estimate from known unit prices and
@@ -171,7 +171,7 @@ def ai_call(cfg: dict, dur_min: float = DUR_MIN, round_allow: bool = True, cache
         items["入力の文字起こし"] = input_transcription(dur_min)
     else:
         items["ConversationRelay"] = Money(usd=tw("twilio_conversation_relay") * billed,
-                                           terms={"V_stt": billed, "V_tts": TTS_CHARS_PER_CALL / 100})
+                                           terms={"V_tts": TTS_CHARS_PER_CALL / 100})  # transcription included
         items["会話モデル（テキスト）"] = plan_b_model(cfg["model"], cache)
     return items
 
@@ -250,7 +250,7 @@ def fmt_terms(terms: dict, storage_usd_per_r: float | None = None) -> str:
 
 
 ESTIMATE_NOTE = ("業者を使う実測は0件。金額は、既知の単価と使用量の仮定に基づく概算で、"
-                 "未確認の費用（F、B_fwd、B_num、V_stt、V_tts、U_ntt、S_srv、R）を含まない")
+                 "未確認の費用（F、B_fwd、B_num、V_tts、U_ntt、S_srv、R）を含まない")
 
 
 def render() -> str:
@@ -260,6 +260,9 @@ def render() -> str:
     out = []
     w = out.append
     w("# 費用比較表 v1（案A・案B）\n")
+    w("> **この表は旧構成（案A：OpenAI Realtime、案B：ConversationRelay）と旧仮定による概算です。** 新しい候補の順位づけや、"
+      "総費用の確定値には使いません。新しい候補は[候補の比較枠](./candidate-comparison-v1.md)で、同じ前提にそろえて比べます。"
+      "GPT-Realtime-2.1とminiは、比較の基準として残します。\n")
     w("- 確認日：2026年10月4日。単価の出典は `prototype/cost/prices.json`。この文書は "
       "`python3 -m prototype.cost.cost_model` で作り直せる。")
     w(f"- **{ESTIMATE_NOTE}。**")
@@ -311,7 +314,8 @@ def render() -> str:
         ("Twilio 050番号", "$4.75/月", "確認済み"), ("Twilio 着信", "$0.0100/分", "確認済み"),
         ("Twilio 発信（固定電話あて）", "$0.0746/分", "確認済み"), ("Media Streams", "$0.0044/分", "確認済み（日本の料金ページ）"),
         ("ConversationRelay", "$0.07/分", "確認済み（日本の料金ページ）"),
-        ("Relayの音声認識・音声合成", "V_stt・V_tts", "**未確認**（「voice costs billed separately」とあるのみ）"),
+        ("Relay内蔵の文字起こし", "$0.07/分に含まれる", "確認済み（Twilio公式。別の費目は置かない）"),
+        ("Relayで使う声の追加料金", "V_tts", "**未確認**（料金ページに音声合成の記載がない）"),
         ("録音／録音の保存", "$0.0025/分 ／ $0.0005/分/月", "確認済み"),
         ("gpt-realtime-2.1（1Mトークン）", "音声入力$32、キャッシュ$0.40、音声出力$64、テキスト入力$4、テキスト出力$24", "確認済み"),
         ("gpt-realtime-2.1-mini（1Mトークン）", "音声入力$10、キャッシュ音声$0.30、キャッシュテキスト$0.06、音声出力$20、テキスト入力$0.60、テキスト出力$2.40", "確認済み"),
@@ -417,7 +421,7 @@ def render() -> str:
               f"{yen(base + hikari_reference(total))} |")
     w("\n**内訳の見方**")
     w("- 概算には、AIが受ける通話、人が受ける通話の追加分（Twilio分）、固定費のうち単価が確認できたもの（Twilioの番号・LINE）が入っている。")
-    w("- 参考の列も、U_ntt・S_srv・R・V_stt・V_ttsは含まない。")
+    w("- 参考の列も、U_ntt・S_srv・R・V_ttsは含まない。")
     w("- 人が受ける通話の追加分は、回線案1を選んだ場合にだけかかる（回線案2では0）。")
     for name, scn in SCENARIOS.items():
         h_total = sum(human_call().values(), Money()).scale(scn["human"])
@@ -446,7 +450,7 @@ def render() -> str:
     w("- 1通話あたりで最も大きいのは、キャッシュが成立する場合、案Aでは音声出力のトークン、案BではRelayの$0.07/分。どちらも仮定のトークン数と時間による。")
     w("- キャッシュが成立しないと、案Aは読み直す音声の履歴が通常の単価になり、1通話あたりの費用が大きく増える。案Bへの影響は小さい。成立するかどうかは、実測で確かめる。")
     w("- 端数の切り上げで、Twilioの分の費用は1区間あたり最大1分ぶん増える。短い通話が多いほど、この影響が大きくなる。")
-    w("- 案Bは、V_stt・V_tts（Relayの音声認識・音声合成が別料金かどうか）が確認できるまで、比較が確定しない。")
+    w("- Relay内蔵の文字起こしは$0.07/分に含まれる（Twilio公式）。案Bは、採用する声の追加料金（V_tts）が確認できるまで、比較が確定しない。")
     w("- 回線案1では、人が受ける通話にも転送と発信の費用がかかる。件数が多いほど、この差が大きくなる。")
     w("- NTT側の費用（F・B_fwd・B_num・工事費）は、092の契約種別が分かるまで決まらない。")
     w("- 採用は、費用だけでは決めない。必須条件と実測の結果を先に見る（設計レビュー3-4）。")

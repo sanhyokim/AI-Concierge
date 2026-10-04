@@ -52,12 +52,38 @@ class ReservationTest(unittest.TestCase):
 
     def test_reconcile_settles_with_the_console_amount(self):
         rid = self.ledger.reserve("op", "openai_api_direct", 0.30, "r1")
-        reconcile(self.ledger, rid, 0.04, "console")
+        self.assertEqual(reconcile(self.ledger, rid, 0.04, "console"), "adjusted")
         t = self.ledger.totals()
         self.assertEqual(t["open_reservations"], 0)
         self.assertAlmostEqual(t["est_cost_usd"], 0.04)
+        self.assertEqual(t["requests"], 1)  # the adjustment is not a request
         with self.assertRaises(KeyError):
-            reconcile(self.ledger, rid, 0.04)
+            reconcile(self.ledger, "nope", 0.04)
+
+    def test_reconcile_after_partial_usage_sets_the_total_not_adds_it(self):
+        rid = self.ledger.reserve("op", "openai_api_direct", 0.30, "r1")
+        self.ledger.record("op", "openai_api_direct", 0.03, "r1", reservation=rid)
+        reconcile(self.ledger, rid, 0.05, "console total")
+        self.assertAlmostEqual(self.ledger.totals()["est_cost_usd"], 0.05)  # was 0.08 before the fix
+        adj = [json.loads(line) for line in self.ledger.path.read_text().splitlines()
+               if json.loads(line).get("kind") == "adjustment"][0]
+        self.assertEqual((adj["previous_linked_usd"], adj["console_total_usd"]), (0.03, 0.05))
+
+    def test_reconcile_below_the_recorded_usage(self):
+        rid = self.ledger.reserve("op", "openai_api_direct", 0.30, "r1")
+        self.ledger.record("op", "openai_api_direct", 0.07, "r1", reservation=rid)
+        self.ledger.close(rid)
+        reconcile(self.ledger, rid, 0.05, "console lower")
+        self.assertAlmostEqual(self.ledger.totals()["est_cost_usd"], 0.05)
+
+    def test_repeated_reconcile_never_increases(self):
+        rid = self.ledger.reserve("op", "openai_api_direct", 0.30, "r1")
+        self.ledger.record("op", "openai_api_direct", 0.03, "r1", reservation=rid)
+        reconcile(self.ledger, rid, 0.05)
+        self.assertEqual(reconcile(self.ledger, rid, 0.05), "unchanged")
+        with self.assertRaises(ValueError):
+            reconcile(self.ledger, rid, 0.06)
+        self.assertAlmostEqual(self.ledger.totals()["est_cost_usd"], 0.05)
 
     def test_old_lines_without_kind_are_read_as_usage(self):
         self.ledger.path.write_text(json.dumps({"vendor": "openai", "operation": "x", "est_cost_usd": 0.1,
@@ -102,7 +128,8 @@ class RunnerReservationTest(unittest.TestCase):
             t = ledger.totals()
             self.assertEqual(t["open_reservations"], 1)
             self.assertGreater(t["held_usd"], 0.1)  # the turn's estimate, not zero
-            self.assertTrue(any(e["kind"] == "usage_missing" for e in result["events"]))
+            self.assertTrue(any(e["kind"] == "response_done" and e["accounting"] == "missing"
+                                for e in result["events"]))
 
     def test_turn_reservation_includes_transcription(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -110,7 +137,7 @@ class RunnerReservationTest(unittest.TestCase):
             _run_dialog(FakeRealtime(response_ms=500), ledger)
             res = [json.loads(line) for line in ledger.path.read_text().splitlines()
                    if json.loads(line).get("kind") == "reservation"][0]
-            self.assertGreater(res["est_cost_usd"], 3 * budget.openai_upper_bound(30))
+            self.assertGreater(res["est_cost_usd"], 3 * budget.openai_response_bound())
 
 
 class ProbeTimeoutTest(unittest.TestCase):
@@ -131,7 +158,7 @@ class ProbeTimeoutTest(unittest.TestCase):
                 asyncio.run(realtime_probe._speak(ctx, SilentTransport(), "読んで", "op"))
             t = ledger.totals()
             self.assertEqual((t["requests"], t["open_reservations"]), (1, 1))
-            self.assertAlmostEqual(t["est_cost_usd"], budget.openai_upper_bound(30))
+            self.assertAlmostEqual(t["est_cost_usd"], budget.openai_response_bound())
 
     def test_polly_failure_after_sending_stays_held(self):
         from prototype.engines import polly_probe

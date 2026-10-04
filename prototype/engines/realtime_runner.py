@@ -22,13 +22,14 @@ from dataclasses import dataclass, field
 from typing import Callable, Protocol
 
 from ..concierge.prompts import BASE_INSTRUCTIONS, TOOLS
-from .budget import (UsageLedger, openai_cost, openai_upper_bound, openai_usage_breakdown, transcription_cost,
-                     transcription_upper_bound)
+from .accounting import TurnAccounting
+from .budget import (MAX_OUTPUT_TOKENS, BudgetExceeded, UsageLedger, openai_cost, openai_response_bound,
+                     openai_usage_breakdown, transcription_cost, transcription_upper_bound)
 from .tools import ToolHandler
 
 BYTES_PER_MS = 8  # 8 kHz mu-law: one byte per sample
 CHUNK_MS = 20
-TURN_RESPONSES = 3   # budget reservation per caller turn: the reply plus replies after tool calls
+TURN_RESPONSES = 3   # per caller turn: the reply plus replies after tool calls (follow-ups are capped to this)
 TURN_AUDIO_S = 30.0
 PATH = "openai_api_direct"
 TRANSCRIPTION_WAIT_S = 2.0
@@ -65,7 +66,7 @@ class WebSocketTransport:
 
 def session_update(voice: str, instructions: str = BASE_INSTRUCTIONS, speed: float = 1.0,
                    tools: list | None = None, transcription_model: str | None = "gpt-4o-transcribe",
-                   turn_detection: dict | None = None) -> dict:
+                   turn_detection: dict | None = None, max_output_tokens: int | str = MAX_OUTPUT_TOKENS) -> dict:
     """GA session shape: audio formats, voice and speed under session.audio."""
     audio_input: dict = {"format": {"type": "audio/pcmu"},
                          "turn_detection": turn_detection or {"type": "semantic_vad"}}
@@ -81,6 +82,7 @@ def session_update(voice: str, instructions: str = BASE_INSTRUCTIONS, speed: flo
         },
         "tools": TOOLS if tools is None else tools,
         "tool_choice": "auto",
+        "max_output_tokens": max_output_tokens,  # the per-response budget bound assumes this cap
     }}
 
 
@@ -109,10 +111,8 @@ class RealtimeRunner:
         self.transcription_model = transcription_model
         self.usage: list[dict] = []
         self.transcription_usage: list[dict] = []
-        self.turn_rids: list[str] = []
-        self.current_rid: str | None = None
-        self.rids_missing_usage: set[str] = set()
-        self.committed = self.transcribed = 0
+        self.acct = TurnAccounting(ledger, PATH, run_id, transcription=bool(transcription_model))
+        self.settlement: dict | None = None
         self.clock, self.idle_timeout_s = clock, idle_timeout_s
         self.t0 = clock()
         self.tools = ToolHandler()
@@ -141,6 +141,15 @@ class RealtimeRunner:
     # --- receive loop ----------------------------------------------------------
 
     async def _recv_loop(self) -> None:
+        try:
+            await self._recv_events()
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - surface it in the result instead of dying silently
+            self._log("recv_error", error=repr(exc))
+            raise
+
+    async def _recv_events(self) -> None:
         while True:
             ev = await self.t.recv()
             et = ev.get("type", "")
@@ -162,6 +171,7 @@ class RealtimeRunner:
                     cur.audio += chunk
                     cur.received_ms += len(chunk) / BYTES_PER_MS
             elif et == "input_audio_buffer.speech_started":
+                self.acct.speech_started(ev.get("item_id"))
                 cur = self.current
                 if cur is not None and cur.playing(now):
                     played = cur.played_ms(now)
@@ -182,62 +192,48 @@ class RealtimeRunner:
                 item_id = ev.get("item_id", "")
                 self.transcripts[item_id] = self.transcripts.get(item_id, "") + ev.get("delta", "")
             elif et == "input_audio_buffer.committed":
-                self.committed += 1
+                self.acct.committed(ev.get("item_id"))
             elif et == "conversation.item.input_audio_transcription.completed":
                 self.tools.last_caller_utterance = ev.get("transcript", "")
-                self.transcribed += 1
                 self._log("caller_transcript", text=self.tools.last_caller_utterance)
-                self._record_usage("input_transcription", ev.get("usage"), transcription_cost(ev.get("usage")),
-                                   transcription_usage=ev.get("usage"))
+                usage = ev.get("usage")
+                status = self.acct.transcription(ev.get("item_id"), usage, transcription_cost(usage))
+                if usage and status != "duplicate":
+                    self.transcription_usage.append(usage)
+                if status not in ("recorded",):
+                    self._log("usage_" + status, operation="input_transcription", item_id=ev.get("item_id"))
             elif et == "conversation.item.input_audio_transcription.failed":
-                self.transcribed += 1
-                self._record_usage("input_transcription", None, 0.0)  # may still be billed: keep the turn held
+                # may still be billed: the turn stays held
+                status = self.acct.transcription(ev.get("item_id"), None, 0.0)
+                self._log("usage_" + status, operation="input_transcription", item_id=ev.get("item_id"))
             elif et == "response.function_call_arguments.done":
                 await self._on_tool_call(ev)
             elif et == "response.created":
                 self.responses_in_progress += 1
+                self.acct.response_created((ev.get("response") or {}).get("id"))
             elif et == "response.done":
                 self.responses_in_progress = max(0, self.responses_in_progress - 1)
                 usage = (ev.get("response") or {}).get("usage") or {}
                 cost = openai_cost(usage, self.model_key)
-                self._log("response_done", est_cost_usd=round(cost, 6), usage_reported=bool(usage))
-                self._record_usage("dialog_response", usage, cost,
-                                   audio_seconds=(self.current.received_ms / 1000 if self.current else 0.0),
-                                   tokens=openai_usage_breakdown(usage), usage=usage)
+                status = self.acct.response_done((ev.get("response") or {}).get("id"), usage, cost,
+                                                 audio_seconds=(self.current.received_ms / 1000 if self.current
+                                                                else 0.0),
+                                                 tokens=openai_usage_breakdown(usage))
+                if usage and status != "duplicate":
+                    self.usage.append(usage)
+                self._log("response_done", est_cost_usd=round(cost, 6), usage_reported=bool(usage), accounting=status)
             elif et == "error":
                 self._log("error", error=ev.get("error"))
 
-    def _record_usage(self, operation: str, reported: dict | None, cost: float, audio_seconds: float = 0.0,
-                      **units) -> None:
-        """Usage linked to the current turn's reservation. Missing usage keeps that reservation held."""
-        if reported:
-            (self.transcription_usage if operation == "input_transcription" else self.usage).append(reported)
-        if self.ledger is None:
-            return
-        if not reported:
-            if self.current_rid:
-                self.rids_missing_usage.add(self.current_rid)
-            self._log("usage_missing", operation=operation)
-            return
-        self.ledger.record(operation, PATH, cost, self.run_id, audio_seconds=audio_seconds,
-                           reservation=self.current_rid, **units)
-
     async def _settle(self) -> None:
-        """Close the turn reservations only after a clean finish: no response in progress, every committed
-        caller turn transcribed (waits briefly), and no usage missing. Otherwise they stay held."""
-        if self.ledger is None:
-            return
+        """Close the complete turn reservations after a clean finish (no response in progress, every
+        committed caller item transcribed; waits briefly). Incomplete turns stay held."""
         deadline = self._now() + TRANSCRIPTION_WAIT_S
-        while self.transcription_model and self.transcribed < self.committed and self._now() < deadline:
+        while self.acct.pending_transcriptions() and self._now() < deadline:
             await asyncio.sleep(0.05)
-        clean = self.responses_in_progress == 0 and (not self.transcription_model or self.transcribed >= self.committed)
-        held = []
-        for rid in self.turn_rids:
-            if clean and rid not in self.rids_missing_usage:
-                self.ledger.close(rid)
-            else:
-                held.append(rid)
-        self._log("reservations", closed=len(self.turn_rids) - len(held), held=held)
+        clean = self.responses_in_progress == 0 and self.acct.pending_transcriptions() == 0
+        self.settlement = self.acct.settle(clean)
+        self._log("reservations", **self.settlement)
 
     async def _on_tool_call(self, ev: dict) -> None:
         try:
@@ -249,6 +245,10 @@ class RealtimeRunner:
         await self.t.send({"type": "conversation.item.create", "item": {
             "type": "function_call_output", "call_id": ev.get("call_id"), "output": json.dumps(result,
                                                                                              ensure_ascii=False)}})
+        rid = self.acct.response_turn.get(ev.get("response_id") or "")
+        if rid is not None and self.acct.responses_for(rid) >= TURN_RESPONSES:
+            self._log("response_cap_reached", turn_reservation=rid)  # keeps the per-turn bound true
+            return
         await self.t.send({"type": "response.create"})
 
     # --- turn timing -----------------------------------------------------------
@@ -300,13 +300,12 @@ class RealtimeRunner:
                     await self._wait_ai_started(since_index=self._playbacks_before_last_turn)
                     await asyncio.sleep(timing.get("offset_ms", 0) / 1000)
                 pcmu, onset_ms = load_audio(turn)
+                if self.acct.exceeded:  # actual usage went past a reservation: stop before sending more
+                    self._log("reservation_exceeded", reservations=self.acct.exceeded)
+                    raise BudgetExceeded(f"actual usage exceeded the reservation of {self.acct.exceeded}")
                 if self.ledger is not None:  # raises BudgetExceeded before any audio of this turn is sent
-                    caller_s = len(pcmu) / BYTES_PER_MS / 1000
-                    est = (TURN_RESPONSES * openai_upper_bound(TURN_AUDIO_S, self.model_key)
-                           + (transcription_upper_bound(caller_s) if self.transcription_model else 0.0))
-                    self.current_rid = self.ledger.reserve(f"dialog_turn:{n}", PATH, est, self.run_id,
-                                                           audio_seconds=TURN_AUDIO_S)
-                    self.turn_rids.append(self.current_rid)
+                    self.acct.open_turn(f"dialog_turn:{n}", self.turn_estimate(len(pcmu) / BYTES_PER_MS / 1000),
+                                        audio_seconds=TURN_AUDIO_S)
                 self.caller_turn_start, self.caller_onset_ms = self._now(), onset_ms
                 self._log("caller_turn_start", n=n, text=turn.get("text", ""))
                 await self._stream(pcmu)
@@ -325,6 +324,12 @@ class RealtimeRunner:
 
     _playbacks_before_last_turn = 0
 
+    def turn_estimate(self, caller_s: float) -> float:
+        """Reservation for one caller turn: the capped number of responses at the per-response bound
+        (session max_output_tokens, dialogue-timeout history, all input uncached) plus transcription."""
+        return (TURN_RESPONSES * openai_response_bound(self.model_key)
+                + (transcription_upper_bound(caller_s) if self.transcription_model else 0.0))
+
     def result(self) -> dict:
         return {
             "measurement_point": "api_side_websocket_no_phone_network",
@@ -338,4 +343,5 @@ class RealtimeRunner:
             "est_cost_usd": round(sum(openai_cost(u, self.model_key) for u in self.usage)
                                   + sum(transcription_cost(u) for u in self.transcription_usage), 6),
             "fields": self.tools.store.snapshot(),
+            "accounting": self.settlement,
         }

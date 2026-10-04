@@ -96,7 +96,8 @@ class CostTest(unittest.TestCase):
 
     def test_unconfirmed_prices_stay_symbolic(self):
         total, _ = cost_model.scenario_total("B-Haiku", cost_model.SCENARIOS["中"])
-        for symbol in ("F", "B_fwd", "B_num", "V_stt", "V_tts", "U_ntt", "S_srv"):
+        self.assertNotIn("V_stt", total.terms)  # Relay's built-in transcription is included in $0.07/min
+        for symbol in ("F", "B_fwd", "B_num", "V_tts", "U_ntt", "S_srv"):
             self.assertIn(symbol, total.terms)
             self.assertGreater(total.terms[symbol], 0)
         a_total, _ = cost_model.scenario_total("A-2.1", cost_model.SCENARIOS["中"])
@@ -152,7 +153,8 @@ class CostTest(unittest.TestCase):
         phone = mb.phone_stage_estimate()
         self.assertEqual(phone["calls_per_candidate"], 100)
         b = phone["candidates"]["B-Haiku"]
-        self.assertIn("V_stt", b["symbols"])
+        self.assertIn("V_tts", b["symbols"])
+        self.assertNotIn("V_stt", b["symbols"])
         self.assertNotIn("F", b["symbols"])
         a = phone["candidates"]["A-2.1"]
         self.assertGreater(a["usd_no_cache"], a["usd"])

@@ -29,7 +29,8 @@ from ..concierge.prompts import READ_ALOUD_NORMAL, READ_ALOUD_SEGMENT, READ_ALOU
 from ..concierge.readings import count_morae
 from ..measure.audio import ulaw_decode, write_wav
 from ..measure.rate import compare_versions, measure_version
-from .budget import LIMITS, UsageLedger, async_with_retries, openai_cost, openai_upper_bound, openai_usage_breakdown
+from .budget import (LIMITS, BudgetExceeded, UsageLedger, async_with_retries, openai_cost, openai_response_bound,
+                     openai_usage_breakdown)
 from .realtime_runner import AUDIO_DELTA_TYPES, TRANSCRIPT_DELTA_TYPES, WebSocketTransport, session_update
 
 SCENARIOS = pathlib.Path(__file__).resolve().parents[1] / "scenarios" / "first_round.json"
@@ -49,8 +50,8 @@ class Ctx:
 async def _speak(ctx: Ctx, t: WebSocketTransport, prompt: str, op: str) -> tuple[bytes, str]:
     """One response. A pessimistic estimate is reserved (after the limit check) before sending; usage from
     response.done settles it. Without usage (timeout, error, missing field) the reservation stays held."""
-    rid = ctx.ledger.reserve(op, PATH, openai_upper_bound(audio_out_seconds=30, model_key=ctx.model_key),
-                             ctx.run_id, audio_seconds=30)
+    reserved = openai_response_bound(ctx.model_key)  # session max_output_tokens + all input uncached
+    rid = ctx.ledger.reserve(op, PATH, reserved, ctx.run_id, audio_seconds=60)
     await t.send({"type": "conversation.item.create", "item": {
         "type": "message", "role": "user", "content": [{"type": "input_text", "text": prompt}]}})
     await t.send({"type": "response.create"})
@@ -75,10 +76,12 @@ async def _speak(ctx: Ctx, t: WebSocketTransport, prompt: str, op: str) -> tuple
         usage = await asyncio.wait_for(collect(), timeout=ctx.ledger.limits.request_timeout_s)
     finally:
         if usage:  # otherwise the reservation stays open and keeps counting at the estimate
-            ctx.ledger.record(op, PATH, openai_cost(usage, ctx.model_key), ctx.run_id,
-                              audio_seconds=len(audio) / 8000, reservation=rid,
+            cost = openai_cost(usage, ctx.model_key)
+            ctx.ledger.record(op, PATH, cost, ctx.run_id, audio_seconds=len(audio) / 8000, reservation=rid,
                               tokens=openai_usage_breakdown(usage), usage=usage)
             ctx.ledger.close(rid)
+            if cost > reserved:  # the bound did not hold: stop the run instead of continuing
+                raise BudgetExceeded(f"{op}: actual ${cost:.4f} exceeded the reservation ${reserved:.4f}")
     return bytes(audio), transcript
 
 

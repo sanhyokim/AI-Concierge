@@ -118,5 +118,44 @@ def phone_stage_estimate() -> dict:
     return out
 
 
+# --- browser conversation stage (measurement plan v2; a proposal, not an approved budget) -----------------
+BROWSER_CONFIGS = ("gpt-live-1", "gemini-3.8-live", "elevenagents", "cartesia-agents", "gpt-realtime-2.1")
+BROWSER_SESSIONS = {"initial": 2 + 6 * 2,   # connection checks + C1-C6 twice
+                    "baseline": 1 + 6}      # GPT-Realtime-2.1: one round for reference
+BROWSER_AVG_MIN = 3.0                       # expected length; the page hangs up at MAX_SESSION_MIN
+
+
+def browser_stage_estimate() -> dict:
+    """Sessions, expected and maximum cost per configuration, fixed plan fees and the run-side caps."""
+    from ..browser_lab.config import CANDIDATES, LAB_LIMITS, MAX_SESSION_MIN
+    cand = {c["id"]: c for c in json.loads((pathlib.Path(__file__).resolve().parent / "candidates.json")
+                                           .read_text())["candidates"]}
+    from . import candidate_costs as cc
+    rows, fixed_usd, fixed_symbols = [], 0.0, []
+    for cid in BROWSER_CONFIGS:
+        lab = CANDIDATES[cid]
+        sessions = BROWSER_SESSIONS["baseline" if cid == "gpt-realtime-2.1" else "initial"]
+        exp_min, max_min = sessions * BROWSER_AVG_MIN, sessions * MAX_SESSION_MIN
+        ai = cc.ai_part(cand[cid])
+        ref_per_min = ai.usd / 3.0
+        row = {"id": cid, "name": lab["name"], "sessions": sessions, "expected_min": exp_min, "max_min": max_min,
+               "ref_usd_per_min": round(ref_per_min, 4), "upper_usd_per_min": lab["upper_usd_per_min"],
+               "expected_usd": round(exp_min * ref_per_min, 2), "max_usd": round(max_min * lab["upper_usd_per_min"], 2),
+               "symbols": sorted(ai.terms), "ledger_vendor": lab["vendor"]}
+        if cid == "gpt-realtime-2.1":
+            row["expected_usd_no_cache"] = round(exp_min * cc.ai_part(cand[cid], cache=False).usd / 3.0, 2)
+        plan = cand[cid]["price"]
+        if plan.get("plan_usd_per_month"):
+            fixed_usd += plan["plan_usd_per_month"]
+        fixed_symbols += list(plan.get("monthly_symbols", {}))
+        rows.append(row)
+    caps = {v: LAB_LIMITS[v].max_cost_usd for v in LAB_LIMITS}
+    return {"rows": rows, "expected_usd": round(sum(r["expected_usd"] for r in rows), 2),
+            "max_usd": round(sum(r["max_usd"] for r in rows), 2), "fixed_plans_usd_per_month": fixed_usd,
+            "fixed_plan_symbols": fixed_symbols, "runtime_caps_usd": caps, "runtime_caps_total_usd": sum(caps.values()),
+            "max_session_min": MAX_SESSION_MIN}
+
+
 if __name__ == "__main__":
-    print(json.dumps({"stage_2a": estimate(), "stage_2b_phone": phone_stage_estimate()}, ensure_ascii=False, indent=2))
+    print(json.dumps({"stage_2a_api_direct": estimate(), "stage_2b_phone": phone_stage_estimate(),
+                      "browser_stage": browser_stage_estimate()}, ensure_ascii=False, indent=2))

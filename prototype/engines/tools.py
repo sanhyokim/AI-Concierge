@@ -29,7 +29,7 @@ class ToolHandler:
             else:
                 state.read_back(state.value, t_ms=t_ms)
                 reading = phone_reading(state.value) if field == "callback_number" else state.value
-                result = {"ok": True, "read_this_slowly": reading, "then_ask": "こちらでお間違いないでしょうか。"}
+                result = {"ok": True, "read_this_clearly": reading, "then_ask": "こちらでお間違いないでしょうか。"}
         elif name == "confirm_field":
             ok, reason = self.store.get(field).confirm(self._normalize(field, args.get("value", "")),
                                                        self.last_caller_utterance, t_ms=t_ms)

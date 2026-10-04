@@ -107,6 +107,17 @@ python3 -m prototype.engines.run_dialog --scenario R-03 --voice marin \
 
 TwiMLの生成、トークンの組み立て、割り込み時の履歴の切り詰め、AIを拒否されたときの `end` による受け渡しは、オフラインで検査しています。
 
+## 2.5 ブラウザーでの会話試験（試験をする人のPCで動かす）
+
+```bash
+python3 -m prototype.browser_lab          # http://127.0.0.1:8765 を開く
+```
+
+- 候補を切り替えてマイクで話し、端末の音量で応答の遅延と割り込みで止まるまでの時間を測ります。手順と業者ごとの準備は[ブラウザー会話試験の準備](../docs/browser-lab-setup.md)にあります。
+- 鍵はそのPCの環境変数から読み、ブラウザーには渡しません。鍵がない構成は選べません。
+- 業者への接続は、公式資料に沿って書いたもので、まだ確かめていません。「オフラインの模擬」で、画面と計測の流れを確かめられます。
+- 自動試験：`node prototype/tests/browser_lab_smoke.cjs`（偽のマイクと模擬の構成。Pythonのテストからも呼ばれる）
+
 ## 3. ファイル構成
 
 | ファイル | 内容 |
@@ -120,7 +131,10 @@ TwiMLの生成、トークンの組み立て、割り込み時の履歴の切り
 | `engines/realtime_runner.py` | 案Aの対話試験を回す仕組み（通信部分は差し替えられる。テストでは偽のサーバーを使う） |
 | `engines/realtime_probe.py`、`engines/polly_probe.py`、`engines/run_dialog.py` | 業者を使う計測（認証情報が必要） |
 | `engines/relay_app.py` | 案Bのひな形（Twilioが必要） |
-| `engines/budget.py` | 利用量の台帳、回数・音声の秒数・費用の上限、再試行の制限 |
+| `engines/budget.py` | 利用量の台帳（送る前の留保、照合）、回数・音声の秒数・費用の上限、再試行の制限 |
+| `engines/accounting.py` | 対話の発話ごとの留保と、使用量のIDによるひも付け |
+| `browser_lab/` | ブラウザー会話試験（サーバー・画面・各社のアダプター） |
+| `cost/candidates.json`、`cost/candidate_costs.py` | 候補一覧と、同じ前提での比較枠 |
 | `engines/make_caller_audio.py` | 対話試験の発信者の音声を、候補ではない声で作る |
 | `cost/` | 単価（`prices.json`）、費用比較表を作る `cost_model.py`、実測計画の費用の見込み `measurement_budget.py` |
 | `realvoice/` | 公開音声での計測方法の予備確認（`fetch_clips.py`、`compare.py`、AIの仮ラベル） |

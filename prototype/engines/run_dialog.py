@@ -20,9 +20,8 @@ import sys
 
 from ..measure.audio import (frame_db, read_wav, to_phone_band, ulaw_decode, ulaw_encode, voiced_threshold_db,
                              write_wav)
-from .budget import (LIMITS, BudgetExceeded, UsageLedger, async_with_retries, openai_upper_bound,
-                     transcription_upper_bound)
-from .realtime_runner import TURN_AUDIO_S, TURN_RESPONSES, RealtimeRunner, WebSocketTransport
+from .budget import LIMITS, BudgetExceeded, UsageLedger, async_with_retries
+from .realtime_runner import TURN_AUDIO_S, RealtimeRunner, WebSocketTransport
 
 SCENARIOS = pathlib.Path(__file__).resolve().parents[1] / "scenarios" / "first_round.json"
 
@@ -59,9 +58,9 @@ async def main_async(args) -> int:
     ledger = UsageLedger("openai", limits)
     model_key = "openai_rt21_mini" if args.model.endswith("-mini") else "openai_rt21"
     longest_turn_s = max(len(load_caller_audio(audio_dir / t["audio"])[0]) / 8000 for t in scenario["turns"])
-    try:  # stop before connecting when even the longest turn (replies + input transcription) would not fit
-        ledger.check(TURN_RESPONSES * openai_upper_bound(TURN_AUDIO_S, model_key)
-                     + transcription_upper_bound(longest_turn_s), audio_seconds=TURN_AUDIO_S)
+    probe = RealtimeRunner(None, args.voice, model_key=model_key)  # only for the turn estimate
+    try:  # stop before connecting when even the longest turn (capped replies + input transcription) would not fit
+        ledger.check(probe.turn_estimate(longest_turn_s), audio_seconds=TURN_AUDIO_S)
     except BudgetExceeded as exc:
         print(f"{exc}; nothing was sent.", file=sys.stderr)
         return 3

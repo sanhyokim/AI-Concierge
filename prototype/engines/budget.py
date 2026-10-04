@@ -1,8 +1,10 @@
 """Spend control for vendor calls: a usage ledger plus hard limits checked before every request.
 
-- Ledger: JSONL. Three kinds of line:
+- Ledger: JSONL. Four kinds of line:
     reservation  written BEFORE a request is sent, holding a pessimistic estimate
     usage        actual (or estimated) usage, optionally linked to a reservation
+    adjustment   reconciliation with the vendor console: the difference that makes the reservation's
+                 total equal the console amount (counts in cost, not in requests; keeps an audit trail)
     close        the reservation is settled; from then on only its linked usage counts
   A reservation that is never closed (no usage reported, timeout, abort, crash) keeps counting
   at max(reserved, linked usage), so a request that may have been billed never drops out.
@@ -12,7 +14,8 @@
 - Retries: at most one retry, only for network failures, timeouts and 5xx-like errors.
 - OpenAI usage is recorded with uncached and cached input split out (text and audio), and
   input transcription (gpt-4o-transcribe) is recorded as its own operation.
-Vendor-side budgets and alerts should be set as well; this guard does not replace them.
+Vendor-side budgets and alerts should be set as well; this guard does not replace them. The ledger is
+an estimate kept on our side: it does not by itself guarantee a vendor-side spending cap.
 
 python3 -m prototype.engines.budget                      totals, open reservations, token breakdown
 python3 -m prototype.engines.budget --close RID --vendor openai --actual-usd 0.012 --note "console 10/05"
@@ -84,7 +87,14 @@ class UsageLedger:
         lines = self._lines()
         linked: dict[str, dict] = {}
         for rec in lines:
-            if rec.get("kind", "usage") != "usage":
+            kind = rec.get("kind", "usage")
+            if kind == "adjustment":
+                totals["est_cost_usd"] += rec.get("est_cost_usd", 0.0)
+                rid = rec.get("reservation")
+                if rid:
+                    linked.setdefault(rid, {"usd": 0.0, "audio": 0.0, "n": 0})["usd"] += rec.get("est_cost_usd", 0.0)
+                continue
+            if kind != "usage":
                 continue
             totals["requests"] += 1
             totals["audio_seconds"] += rec.get("audio_seconds", 0.0)
@@ -100,6 +110,11 @@ class UsageLedger:
                 agg["usd"] += rec.get("est_cost_usd", 0.0)
                 agg["audio"] += rec.get("audio_seconds", 0.0)
                 agg["n"] += 1
+        adjusted = {rec["reservation"] for rec in lines if rec.get("kind") == "adjustment" and rec.get("reservation")}
+        open_ids = {r["rid"] for r in self.open_reservations()}
+        for rid in adjusted - open_ids:  # reconciled request with no usage line: it was still a request
+            if linked.get(rid, {}).get("n", 0) == 0:
+                totals["requests"] += 1
         for res in self.open_reservations():
             agg = linked.get(res["rid"], {"usd": 0.0, "audio": 0.0, "n": 0})
             held = max(0.0, res["est_cost_usd"] - agg["usd"])
@@ -213,6 +228,24 @@ def openai_upper_bound(audio_out_seconds: float, model_key: str = "openai_rt21")
             + 20_000 * p["text_in"]) / 1_000_000
 
 
+# Run settings the per-response bound is derived from (kept in sync with session.update and the runners)
+MAX_OUTPUT_TOKENS = 1200          # session max_output_tokens: about 60 s of audio at 20 tokens/s
+MAX_INSTRUCTION_TOKENS = 4000     # instructions + tool definitions, upper side
+MAX_HISTORY_S = 180.0             # dialogue timeout bounds the audio history (caller and AI)
+
+
+def openai_response_bound(model_key: str = "openai_rt21", max_output_tokens: int = MAX_OUTPUT_TOKENS,
+                          history_s: float = MAX_HISTORY_S,
+                          instruction_tokens: int = MAX_INSTRUCTION_TOKENS) -> float:
+    """Upper bound for one response under the run settings: every input token uncached (instructions,
+    plus the whole audio history allowed by the dialogue timeout, billed as if all of it were AI audio)
+    and the output capped by max_output_tokens at the dearer of the audio/text output prices."""
+    p, tok = PRICES[model_key], PRICES["openai_audio_tokens"]
+    history_tokens = history_s * max(tok["input_per_s"], tok["output_per_s"])
+    return (instruction_tokens * p["text_in"] + history_tokens * p["audio_in"]
+            + max_output_tokens * max(p["audio_out"], p["text_out"])) / 1_000_000
+
+
 def transcription_cost(usage: dict | None) -> float:
     """Cost of one input transcription (gpt-4o-transcribe) from its usage object; 0 when absent."""
     if not usage:
@@ -238,14 +271,31 @@ def polly_cost(characters: int, engine: str = "neural") -> float:
     return characters * PRICES["polly_neural" if engine == "neural" else "polly_standard"]["value"] / 1_000_000
 
 
-def reconcile(ledger: UsageLedger, rid: str, actual_usd: float, note: str = "") -> None:
-    """Settle an open reservation with the amount seen on the vendor's usage page."""
-    res = next((r for r in ledger.open_reservations() if r["rid"] == rid), None)
+def reconcile(ledger: UsageLedger, rid: str, actual_usd: float, note: str = "") -> str:
+    """Make the reservation's total equal the amount seen on the vendor's usage page.
+
+    Writes an adjustment line (console total minus what is already linked), then closes the reservation
+    if it is still open. A second reconciliation with the same amount changes nothing; a different amount
+    is refused, so re-running never adds the console total twice. Returns "adjusted" or "unchanged".
+    """
+    lines = ledger._lines()
+    res = next((r for r in lines if r.get("kind") == "reservation" and r["rid"] == rid), None)
     if res is None:
-        raise KeyError(f"no open reservation {rid} for {ledger.vendor}")
-    ledger.record("reconciled", res["path"], actual_usd, res["run_id"], reservation=rid, note=note,
-                  source="vendor console")
-    ledger.close(rid, note=note)
+        raise KeyError(f"no reservation {rid} for {ledger.vendor}")
+    linked = sum(r.get("est_cost_usd", 0.0) for r in lines
+                 if r.get("reservation") == rid and r.get("kind", "usage") in ("usage", "adjustment"))
+    already = [r for r in lines if r.get("kind") == "adjustment" and r.get("reservation") == rid]
+    if already:
+        if abs(linked - actual_usd) < 1e-9:
+            return "unchanged"
+        raise ValueError(f"{rid} was already reconciled to ${linked:.6f}; refusing to change it to ${actual_usd:.6f}")
+    ledger._write({"ts": _now(), "vendor": ledger.vendor, "kind": "adjustment", "reservation": rid,
+                   "operation": "reconcile", "path": res["path"], "run_id": res["run_id"],
+                   "est_cost_usd": round(actual_usd - linked, 6), "previous_linked_usd": round(linked, 6),
+                   "console_total_usd": round(actual_usd, 6), "note": note, "source": "vendor console"})
+    if any(r["rid"] == rid for r in ledger.open_reservations()):
+        ledger.close(rid, note=note)
+    return "adjusted"
 
 
 def main() -> int:
@@ -259,8 +309,8 @@ def main() -> int:
         if not args.vendor or args.actual_usd is None:
             ap.error("--close needs --vendor and --actual-usd")
         try:
-            reconcile(UsageLedger(args.vendor), args.close, args.actual_usd, args.note)
-        except KeyError as exc:
+            print(reconcile(UsageLedger(args.vendor), args.close, args.actual_usd, args.note))
+        except (KeyError, ValueError) as exc:
             ap.error(str(exc))
     for vendor in ([args.vendor] if args.vendor else sorted(LIMITS)):
         ledger = UsageLedger(vendor)

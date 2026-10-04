@@ -25,6 +25,8 @@ class FakeRealtime:
         self.out: asyncio.Queue = asyncio.Queue()
         self.client_events: list[dict] = []
         self._ids = itertools.count(1)
+        self._user_ids = itertools.count(1)
+        self._user_item: str | None = None
         self._speaking = False
         self._end_timer: asyncio.Task | None = None
         self._tasks: list[asyncio.Task] = []
@@ -34,8 +36,10 @@ class FakeRealtime:
         if event["type"] == "input_audio_buffer.append":
             if not self._speaking:
                 self._speaking = True
+                self._user_item = f"user_{next(self._user_ids)}"
                 self._tasks.append(asyncio.create_task(self._emit_later(
-                    self.cfg["vad_start_ms"], {"type": "input_audio_buffer.speech_started"})))
+                    self.cfg["vad_start_ms"], {"type": "input_audio_buffer.speech_started",
+                                               "item_id": self._user_item})))
             if self._end_timer:
                 self._end_timer.cancel()
             self._end_timer = asyncio.create_task(self._end_of_speech())
@@ -47,31 +51,33 @@ class FakeRealtime:
     async def _end_of_speech(self) -> None:
         await asyncio.sleep(self.cfg["vad_end_ms"] / 1000)
         self._speaking = False
-        await self.out.put({"type": "input_audio_buffer.speech_stopped"})
-        await self.out.put({"type": "input_audio_buffer.committed"})
+        user_item = self._user_item
+        await self.out.put({"type": "input_audio_buffer.speech_stopped", "item_id": user_item})
+        await self.out.put({"type": "input_audio_buffer.committed", "item_id": user_item})
         if self.with_transcription:
             await self.out.put({"type": "conversation.item.input_audio_transcription.completed",
-                                "transcript": "（模擬文字起こし）",
+                                "item_id": user_item, "transcript": "（模擬文字起こし）",
                                 "usage": {"type": "tokens", "input_tokens": 40, "output_tokens": 12,
                                           "input_token_details": {"text_tokens": 10, "audio_tokens": 30}}})
         await asyncio.sleep(self.cfg["think_ms"] / 1000)
         await self._respond()
 
     async def _respond(self) -> None:
-        item_id = f"item_{next(self._ids)}"
-        await self.out.put({"type": "response.created"})
+        n = next(self._ids)
+        item_id, response_id = f"item_{n}", f"resp_{n}"
+        await self.out.put({"type": "response.created", "response": {"id": response_id}})
         chunk = b"\xff" * (8 * self.cfg["delta_ms"])  # mu-law near-silence; content is irrelevant here
         for _ in range(self.cfg["response_ms"] // self.cfg["delta_ms"]):
             await self.out.put({"type": "response.output_audio.delta", "item_id": item_id,
-                                "delta": base64.b64encode(chunk).decode()})
+                                "response_id": response_id, "delta": base64.b64encode(chunk).decode()})
             await asyncio.sleep(self.cfg["send_interval_ms"] / 1000)
         await self.out.put({"type": "response.output_audio_transcript.delta", "item_id": item_id,
                             "delta": "（模擬応答）"})
         n_deltas = self.cfg["response_ms"] // self.cfg["delta_ms"]
         if not self.with_usage:
-            await self.out.put({"type": "response.done", "response": {}})
+            await self.out.put({"type": "response.done", "response": {"id": response_id}})
             return
-        await self.out.put({"type": "response.done", "response": {"usage": {
+        await self.out.put({"type": "response.done", "response": {"id": response_id, "usage": {
             "input_token_details": {"text_tokens": 1500, "audio_tokens": 300,
                                     "cached_tokens_details": {"text_tokens": 1000, "audio_tokens": 0}},
             "output_token_details": {"text_tokens": 0,

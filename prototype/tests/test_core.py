@@ -115,7 +115,7 @@ class ToolHandlerTest(unittest.TestCase):
         h = ToolHandler()
         h.handle("save_field", {"field": "callback_number", "value": "090-1234-5678"})
         r = h.handle("request_readback", {"field": "callback_number"})
-        self.assertEqual(r["read_this_slowly"], "ゼロキュウゼロ、イチニーサンヨン、ゴーロクナナハチ")
+        self.assertEqual(r["read_this_clearly"], "ゼロキュウゼロ、イチニーサンヨン、ゴーロクナナハチ")
         h.last_caller_utterance = "はい、違います。"
         self.assertFalse(h.handle("confirm_field", {"field": "callback_number", "value": "09012345678"})["ok"])
         h.handle("save_field", {"field": "callback_number", "value": "09012345687"})
