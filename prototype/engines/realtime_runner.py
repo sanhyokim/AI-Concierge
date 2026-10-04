@@ -22,13 +22,16 @@ from dataclasses import dataclass, field
 from typing import Callable, Protocol
 
 from ..concierge.prompts import BASE_INSTRUCTIONS, TOOLS
-from .budget import UsageLedger, openai_cost, openai_upper_bound
+from .budget import (UsageLedger, openai_cost, openai_upper_bound, openai_usage_breakdown, transcription_cost,
+                     transcription_upper_bound)
 from .tools import ToolHandler
 
 BYTES_PER_MS = 8  # 8 kHz mu-law: one byte per sample
 CHUNK_MS = 20
-TURN_RESPONSES = 3   # budget pre-check per caller turn: the reply plus replies after tool calls
+TURN_RESPONSES = 3   # budget reservation per caller turn: the reply plus replies after tool calls
 TURN_AUDIO_S = 30.0
+PATH = "openai_api_direct"
+TRANSCRIPTION_WAIT_S = 2.0
 AUDIO_DELTA_TYPES = {"response.output_audio.delta", "response.audio.delta"}
 TRANSCRIPT_DELTA_TYPES = {"response.output_audio_transcript.delta", "response.audio_transcript.delta"}
 
@@ -99,10 +102,17 @@ class Playback:
 class RealtimeRunner:
     def __init__(self, transport: Transport, voice: str, *, instructions: str = BASE_INSTRUCTIONS,
                  clock: Callable[[], float] = time.monotonic, idle_timeout_s: float = 20.0,
-                 ledger: UsageLedger | None = None, run_id: str = "", model_key: str = "openai_rt21") -> None:
+                 ledger: UsageLedger | None = None, run_id: str = "", model_key: str = "openai_rt21",
+                 transcription_model: str | None = "gpt-4o-transcribe") -> None:
         self.t, self.voice, self.instructions = transport, voice, instructions
         self.ledger, self.run_id, self.model_key = ledger, run_id, model_key
+        self.transcription_model = transcription_model
         self.usage: list[dict] = []
+        self.transcription_usage: list[dict] = []
+        self.turn_rids: list[str] = []
+        self.current_rid: str | None = None
+        self.rids_missing_usage: set[str] = set()
+        self.committed = self.transcribed = 0
         self.clock, self.idle_timeout_s = clock, idle_timeout_s
         self.t0 = clock()
         self.tools = ToolHandler()
@@ -171,9 +181,17 @@ class RealtimeRunner:
             elif et in TRANSCRIPT_DELTA_TYPES:
                 item_id = ev.get("item_id", "")
                 self.transcripts[item_id] = self.transcripts.get(item_id, "") + ev.get("delta", "")
+            elif et == "input_audio_buffer.committed":
+                self.committed += 1
             elif et == "conversation.item.input_audio_transcription.completed":
                 self.tools.last_caller_utterance = ev.get("transcript", "")
+                self.transcribed += 1
                 self._log("caller_transcript", text=self.tools.last_caller_utterance)
+                self._record_usage("input_transcription", ev.get("usage"), transcription_cost(ev.get("usage")),
+                                   transcription_usage=ev.get("usage"))
+            elif et == "conversation.item.input_audio_transcription.failed":
+                self.transcribed += 1
+                self._record_usage("input_transcription", None, 0.0)  # may still be billed: keep the turn held
             elif et == "response.function_call_arguments.done":
                 await self._on_tool_call(ev)
             elif et == "response.created":
@@ -181,15 +199,45 @@ class RealtimeRunner:
             elif et == "response.done":
                 self.responses_in_progress = max(0, self.responses_in_progress - 1)
                 usage = (ev.get("response") or {}).get("usage") or {}
-                self.usage.append(usage)
                 cost = openai_cost(usage, self.model_key)
-                self._log("response_done", est_cost_usd=round(cost, 6))
-                if self.ledger is not None:
-                    self.ledger.record("dialog_response", "openai_api_direct", cost, self.run_id,
-                                       audio_seconds=(self.current.received_ms / 1000 if self.current else 0.0),
-                                       usage=usage, estimated=not usage)
+                self._log("response_done", est_cost_usd=round(cost, 6), usage_reported=bool(usage))
+                self._record_usage("dialog_response", usage, cost,
+                                   audio_seconds=(self.current.received_ms / 1000 if self.current else 0.0),
+                                   tokens=openai_usage_breakdown(usage), usage=usage)
             elif et == "error":
                 self._log("error", error=ev.get("error"))
+
+    def _record_usage(self, operation: str, reported: dict | None, cost: float, audio_seconds: float = 0.0,
+                      **units) -> None:
+        """Usage linked to the current turn's reservation. Missing usage keeps that reservation held."""
+        if reported:
+            (self.transcription_usage if operation == "input_transcription" else self.usage).append(reported)
+        if self.ledger is None:
+            return
+        if not reported:
+            if self.current_rid:
+                self.rids_missing_usage.add(self.current_rid)
+            self._log("usage_missing", operation=operation)
+            return
+        self.ledger.record(operation, PATH, cost, self.run_id, audio_seconds=audio_seconds,
+                           reservation=self.current_rid, **units)
+
+    async def _settle(self) -> None:
+        """Close the turn reservations only after a clean finish: no response in progress, every committed
+        caller turn transcribed (waits briefly), and no usage missing. Otherwise they stay held."""
+        if self.ledger is None:
+            return
+        deadline = self._now() + TRANSCRIPTION_WAIT_S
+        while self.transcription_model and self.transcribed < self.committed and self._now() < deadline:
+            await asyncio.sleep(0.05)
+        clean = self.responses_in_progress == 0 and (not self.transcription_model or self.transcribed >= self.committed)
+        held = []
+        for rid in self.turn_rids:
+            if clean and rid not in self.rids_missing_usage:
+                self.ledger.close(rid)
+            else:
+                held.append(rid)
+        self._log("reservations", closed=len(self.turn_rids) - len(held), held=held)
 
     async def _on_tool_call(self, ev: dict) -> None:
         try:
@@ -239,7 +287,7 @@ class RealtimeRunner:
 
     async def run(self, turns: list[dict], load_audio: Callable[[dict], tuple[bytes, float]]) -> dict:
         """turns: caller turns with timing; load_audio(turn) -> (mu-law bytes, speech onset in ms)."""
-        await self.t.send(session_update(self.voice, self.instructions))
+        await self.t.send(session_update(self.voice, self.instructions, transcription_model=self.transcription_model))
         recv_task = asyncio.create_task(self._recv_loop())
         try:
             for n, turn in enumerate(turns, 1):
@@ -251,10 +299,14 @@ class RealtimeRunner:
                 elif timing["type"] == "during_ai_speech":
                     await self._wait_ai_started(since_index=self._playbacks_before_last_turn)
                     await asyncio.sleep(timing.get("offset_ms", 0) / 1000)
-                if self.ledger is not None:  # raises BudgetExceeded before any audio of this turn is sent
-                    self.ledger.check(TURN_RESPONSES * openai_upper_bound(TURN_AUDIO_S, self.model_key),
-                                      audio_seconds=TURN_AUDIO_S)
                 pcmu, onset_ms = load_audio(turn)
+                if self.ledger is not None:  # raises BudgetExceeded before any audio of this turn is sent
+                    caller_s = len(pcmu) / BYTES_PER_MS / 1000
+                    est = (TURN_RESPONSES * openai_upper_bound(TURN_AUDIO_S, self.model_key)
+                           + (transcription_upper_bound(caller_s) if self.transcription_model else 0.0))
+                    self.current_rid = self.ledger.reserve(f"dialog_turn:{n}", PATH, est, self.run_id,
+                                                           audio_seconds=TURN_AUDIO_S)
+                    self.turn_rids.append(self.current_rid)
                 self.caller_turn_start, self.caller_onset_ms = self._now(), onset_ms
                 self._log("caller_turn_start", n=n, text=turn.get("text", ""))
                 await self._stream(pcmu)
@@ -262,6 +314,7 @@ class RealtimeRunner:
                 self._playbacks_before_last_turn = len(self.playbacks)
                 self._log("caller_turn_end", n=n)
             await self._wait_ai_finished(since_index=self._playbacks_before_last_turn)
+            await self._settle()
         finally:
             recv_task.cancel()
             try:
@@ -281,6 +334,8 @@ class RealtimeRunner:
                           "transcript": self.transcripts.get(p.item_id, "")} for p in self.playbacks],
             "tool_calls": self.tools.calls,
             "usage": self.usage,
-            "est_cost_usd": round(sum(openai_cost(u, self.model_key) for u in self.usage), 6),
+            "transcription_usage": self.transcription_usage,
+            "est_cost_usd": round(sum(openai_cost(u, self.model_key) for u in self.usage)
+                                  + sum(transcription_cost(u) for u in self.transcription_usage), 6),
             "fields": self.tools.store.snapshot(),
         }

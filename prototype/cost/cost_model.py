@@ -1,11 +1,16 @@
 """Cost comparison for plan A / plan B under line plan 1 (NTT always-forward, cloud routing, H1).
 
 Known unit prices are computed numerically; unconfirmed ones stay as symbols
-(F, B_fwd, B_num, V_stt, V_tts, V_asr, S_srv, U_ntt, R) and are printed as such,
+(F, B_fwd, B_num, V_stt, V_tts, S_srv, U_ntt, R) and are printed as such,
 never replaced by zero. NTT hikari-denwa prices are a conditional reference only (the 092
 contract type is unknown), so they appear in a separate column, not in the estimate.
 No vendor measurement exists yet: every amount is an estimate from known unit prices and
 usage assumptions. Usage assumptions are not the user's actual figures.
+
+Prompt caching is shown both ways: established (re-read history at cached prices) and not
+established (everything at the normal input price). OpenAI Realtime caching is automatic but
+best-effort; Anthropic caching needs a prefix of at least 4,096 tokens on Haiku 4.5 (512 on
+Sonnet 5.5).
 
 Billing units: Twilio rounds each call leg (Call SID) up to whole minutes; NTT bills in
 3-minute units (per-call rounding assumed). The average rounding overshoot is added
@@ -84,19 +89,29 @@ def plan_a_tokens(dur_min: float = DUR_MIN) -> dict:
             "responses": responses}
 
 
-def plan_a_model(model_key: str, dur_min: float = DUR_MIN) -> Money:
+def plan_a_model(model_key: str, dur_min: float = DUR_MIN, cache: bool = True) -> Money:
+    """Realtime speech model. cache=False: the re-read history is billed at the normal input prices."""
     p, t = PRICES[model_key], plan_a_tokens(dur_min)
+    text_re, audio_re = (p["cached_text_in"], p["cached_audio_in"]) if cache else (p["text_in"], p["audio_in"])
     usd = (per_m(p["audio_in"], t["audio_in"]) + per_m(p["text_in"], t["text_in"])
-           + per_m(p["cached_text_in"], t["cached_text"]) + per_m(p["cached_audio_in"], t["cached_audio"])
+           + per_m(text_re, t["cached_text"]) + per_m(audio_re, t["cached_audio"])
            + per_m(p["audio_out"], t["audio_out"]) + per_m(p["text_out"], t["text_out"]))
-    caller_min = dur_min * CALLER_SPEECH_SHARE
-    return Money(usd=usd, terms={"V_asr": caller_min})
+    return Money(usd=usd)
 
 
-def plan_b_model(model_key: str) -> Money:
+def input_transcription(dur_min: float = DUR_MIN) -> Money:
+    """Plan A input transcription (gpt-4o-transcribe) of the caller's speech, at OpenAI's per-minute estimate."""
+    return Money(usd=PRICES["openai_transcribe"]["per_min_estimate"] * dur_min * CALLER_SPEECH_SHARE)
+
+
+def plan_b_model(model_key: str, cache: bool = True) -> Money:
+    """Text dialogue model. cache=False: every input token at the base price (no write premium, no read discount)."""
     p = PRICES[model_key]
-    usd = (per_m(p["in"], B_UNCACHED_IN) + per_m(p["cache_read"], B_CACHE_READ)
-           + per_m(p["cache_write_5m"], B_CACHE_WRITE) + per_m(p["out"], B_OUT))
+    if cache:
+        usd = (per_m(p["in"], B_UNCACHED_IN) + per_m(p["cache_read"], B_CACHE_READ)
+               + per_m(p["cache_write_5m"], B_CACHE_WRITE) + per_m(p["out"], B_OUT))
+    else:
+        usd = per_m(p["in"], B_UNCACHED_IN + B_CACHE_READ + B_CACHE_WRITE) + per_m(p["out"], B_OUT)
     return Money(usd=usd)
 
 
@@ -140,7 +155,7 @@ CONFIGS = {
 }
 
 
-def ai_call(cfg: dict, dur_min: float = DUR_MIN, round_allow: bool = True) -> dict[str, Money]:
+def ai_call(cfg: dict, dur_min: float = DUR_MIN, round_allow: bool = True, cache: bool = True) -> dict[str, Money]:
     """Line items for one AI-answered call (one Twilio leg)."""
     tw = lambda key: PRICES[key]["value"]
     billed = twilio_min(dur_min, round_allow)
@@ -152,11 +167,12 @@ def ai_call(cfg: dict, dur_min: float = DUR_MIN, round_allow: bool = True) -> di
     }
     if cfg["plan"] == "A":
         items["Media Streams"] = Money(usd=tw("twilio_media_streams") * billed)
-        items["会話モデル（音声）"] = plan_a_model(cfg["model"], dur_min)
+        items["会話モデル（音声）"] = plan_a_model(cfg["model"], dur_min, cache)
+        items["入力の文字起こし"] = input_transcription(dur_min)
     else:
         items["ConversationRelay"] = Money(usd=tw("twilio_conversation_relay") * billed,
                                            terms={"V_stt": billed, "V_tts": TTS_CHARS_PER_CALL / 100})
-        items["会話モデル（テキスト）"] = plan_b_model(cfg["model"])
+        items["会話モデル（テキスト）"] = plan_b_model(cfg["model"], cache)
     return items
 
 
@@ -194,9 +210,9 @@ def monthly_fixed(scn: dict) -> dict[str, Money]:
     }
 
 
-def scenario_total(cfg_key: str, scn: dict) -> tuple[Money, dict]:
+def scenario_total(cfg_key: str, scn: dict, cache: bool = True) -> tuple[Money, dict]:
     cfg = CONFIGS[cfg_key]
-    ai = sum(ai_call(cfg).values(), Money()).scale(scn["ai"])
+    ai = sum(ai_call(cfg, cache=cache).values(), Money()).scale(scn["ai"])
     human = sum(human_call().values(), Money()).scale(scn["human"])
     fixed_items = monthly_fixed(scn)
     storage = fixed_items.pop("録音の保存（Twilio、保存月数R）")
@@ -224,7 +240,7 @@ def fmt_terms(terms: dict, storage_usd_per_r: float | None = None) -> str:
             parts.append("F" if coef == 1 else f"{coef:,.0f}件×F")
         elif sym == "V_tts":
             parts.append(f"{coef:,.0f}×V_tts（100文字あたり）")
-        elif sym in ("V_stt", "V_asr"):
+        elif sym == "V_stt":
             parts.append(f"{coef:,.4g}分×{sym}")
         elif coef == 1:
             parts.append(sym)
@@ -234,7 +250,7 @@ def fmt_terms(terms: dict, storage_usd_per_r: float | None = None) -> str:
 
 
 ESTIMATE_NOTE = ("業者を使う実測は0件。金額は、既知の単価と使用量の仮定に基づく概算で、"
-                 "未確認の費用（F、B_fwd、B_num、V_stt、V_tts、V_asr、U_ntt、S_srv、R）を含まない")
+                 "未確認の費用（F、B_fwd、B_num、V_stt、V_tts、U_ntt、S_srv、R）を含まない")
 
 
 def render() -> str:
@@ -277,7 +293,16 @@ def render() -> str:
     w("\n**案Bの会話モデルのトークン数**（1通話あたり。要実測）")
     w(f"- 入力 {B_UNCACHED_IN:,}、キャッシュ読み取り {B_CACHE_READ:,}、キャッシュ書き込み {B_CACHE_WRITE:,}、出力 {B_OUT:,}")
     w(f"- AIが話す文字数：{TTS_CHARS_PER_CALL}文字（V_ttsの計算に使う）")
-    w(f"\n**要約**（両案とも、1通話あたり）：入力 {SUM_IN:,}トークン、出力 {SUM_OUT}トークン\n")
+    w(f"\n**要約**（両案とも、1通話あたり）：入力 {SUM_IN:,}トークン、出力 {SUM_OUT}トークン")
+    w("\n**キャッシュ**（成立する場合と、成立しない場合の両方を示す）")
+    w("- 成立する場合：上の「キャッシュ扱い」の分を、キャッシュの単価で計算する（案Aは読み直す履歴、案Bはキャッシュの読み取りと書き込み）。")
+    w("- 成立しない場合：同じトークン数を、通常の入力の単価で計算する（案Bは書き込みの割増もない）。")
+    w("- 案A：Realtimeのキャッシュは自動でかかるが、best-effortで、かかる保証はない【公式】。")
+    w(f"- 案B：Anthropicのキャッシュは、前置きが一定の長さ以上でないとかからない。Haiku 4.5は"
+      f"{PRICES['anthropic_haiku45']['cache_min_tokens']:,}トークン、Sonnet 5.5は"
+      f"{PRICES['anthropic_sonnet55']['cache_min_tokens']:,}トークン【公式】。指示文が{B_UNCACHED_IN:,}トークン程度だと、"
+      "Haiku 4.5では会話の履歴が伸びるまでかからないおそれがある。")
+    w("- 実測では、通常の入力とキャッシュの入力を分けて記録する（[実測計画](./measurement-plan-v1.md) 4章）。\n")
 
     w("## 2. 単価と確認状況\n")
     w("| 項目 | 単価 | 確認状況 |")
@@ -290,7 +315,7 @@ def render() -> str:
         ("録音／録音の保存", "$0.0025/分 ／ $0.0005/分/月", "確認済み"),
         ("gpt-realtime-2.1（1Mトークン）", "音声入力$32、キャッシュ$0.40、音声出力$64、テキスト入力$4、テキスト出力$24", "確認済み"),
         ("gpt-realtime-2.1-mini（1Mトークン）", "音声入力$10、キャッシュ音声$0.30、キャッシュテキスト$0.06、音声出力$20、テキスト入力$0.60、テキスト出力$2.40", "確認済み"),
-        ("案Aの入力文字起こし", "V_asr", "**未確認**"),
+        ("案Aの入力の文字起こし（gpt-4o-transcribe）", "入力$2.50・出力$10.00（1Mトークン）。目安$0.006/分", "確認済み（この表では目安の$0.006/分を使う）"),
         ("Haiku 4.5（1Mトークン）", "入力$1、出力$5、キャッシュ読み取り$0.10、書き込み$1.25", "入出力は確認済み。キャッシュは倍率の規則による"),
         ("Sonnet 5.5（1Mトークン）", "入力$2、出力$10、キャッシュ読み取り$0.20、書き込み$2.50", "確認済み（書き込みは倍率の規則による）"),
         ("NTT転送区間 F（1通話あたり）", "F", "**未確認**（092の契約種別しだい）。参考：ひかり電話オフィスタイプなら050あて11.55円/3分（税込）、2027年4月から13.2円/3分"),
@@ -311,21 +336,24 @@ def render() -> str:
     w("| Twilio 着信・発信・Media Streams | 1分 | **通話（Call SID）ごとに1分単位で切り上げ**。H1の受け直しは、着信と発信の2本が別々に切り上げられる | 税抜。日本の顧客には、Twilio Japanが消費税10%を月ごとに請求 | 確認済み（端数はサポート記事。本文は直接取得できず、検索結果の抜粋で確認） |")
     w("| Twilio ConversationRelay・録音 | 1分 | 切り上げの対象一覧に載っていない。**未確認。安全側で同じ切り上げを仮定** | 同上 | 未確認 |")
     w("| Twilio 録音の保存 | 1分・1か月 | — | 同上 | 単価は確認済み |")
-    w("| OpenAI・Anthropic | トークン | 切り上げなし（トークン数で課金） | **未確認**。安全側で10%を加える | 単価は確認済み |")
+    w("| OpenAI・Anthropic | トークン（文字起こしの目安は分） | 切り上げなし（トークン数で課金） | **未確認**。安全側で10%を加える | 単価は確認済み |")
     w("| AWS Polly（試作だけ） | 文字 | — | **未確認**。安全側で10%を加える | 単価は確認済み |")
     w("| LINE公式アカウント | 月額・通数 | — | 税別の表示。10%を加える | 確認済み |")
     w("\n出典：[NTT西日本 ひかり電話オフィスタイプ 料金](https://business.ntt-west.co.jp/service/ipphone/office/price.html)、"
       "[ひかり電話 ボイスワープ](https://flets-w.com/opt/hikaridenwa/service/voicewarp/)、"
       "[Twilio 日本の音声料金](https://www.twilio.com/en-us/voice/pricing/jp)、"
       "[Twilio 通話時間の切り上げ](https://support.twilio.com/hc/en-us/articles/223132307)、"
-      "[Twilio Japanの消費税](https://support.twilio.com/hc/en-us/articles/360033933914)（いずれも2026年10月4日に確認）\n")
+      "[Twilio Japanの消費税](https://support.twilio.com/hc/en-us/articles/360033933914)、"
+      "[OpenAI 料金](https://developers.openai.com/api/docs/pricing)、"
+      "[OpenAI Realtimeの費用](https://developers.openai.com/api/docs/guides/realtime-costs)、"
+      "[Anthropic prompt caching](https://platform.claude.com/docs/en/build-with-claude/prompt-caching)（いずれも2026年10月4日に確認）\n")
 
     w("## 4. 1通話あたりの変動費（概算。税抜USDと、税込の円換算）\n")
     w(f"{ESTIMATE_NOTE}。\n")
     w("| 費目 | " + " | ".join(c["label"] for c in CONFIGS.values()) + " |")
     w("| --- | " + " | ".join("---" for _ in CONFIGS) + " |")
-    keys = ["NTT転送", "Twilio着信", "Media Streams", "ConversationRelay", "会話モデル（音声）", "会話モデル（テキスト）",
-            "要約", "録音（Twilio）"]
+    keys = ["NTT転送", "Twilio着信", "Media Streams", "ConversationRelay", "会話モデル（音声）", "入力の文字起こし",
+            "会話モデル（テキスト）", "要約", "録音（Twilio）"]
     calls = {k: ai_call(c) for k, c in CONFIGS.items()}
     for key in keys:
         cells = []
@@ -344,6 +372,9 @@ def render() -> str:
         f"**${m.usd:.3f}（約{yen(m.jpy_total())}）**" for m in totals.values()) + " |")
     w("| 同（端数がない場合の下限） | " + " | ".join(
         f"${m.usd:.3f}（約{yen(m.jpy_total())}）" for m in lows.values()) + " |")
+    nocache = {ck: sum(ai_call(c, cache=False).values(), Money()) for ck, c in CONFIGS.items()}
+    w("| **同（キャッシュが成立しない場合）** | " + " | ".join(
+        f"**${m.usd:.3f}（約{yen(m.jpy_total())}）**" for m in nocache.values()) + " |")
     w("| AI通話の未確認の費用（記号） | " + " | ".join(fmt_terms(m.terms) for m in totals.values()) + " |")
     h = sum(human_call().values(), Money())
     h_low = sum(human_call(round_allow=False).values(), Money())
@@ -373,18 +404,20 @@ def render() -> str:
 
     w("## 6. 月額の追加費用の合計（税込換算）\n")
     w(f"{ESTIMATE_NOTE}。未確認の費用を0円とみなした額ではない。\n")
-    w("| 想定 | 構成 | 概算（既知の単価のみ。1ドル＝150円） | 140円／160円の場合 | 未確認の費用（記号） | 参考：092がひかり電話オフィスタイプの場合（条件付き。F・B_fwd・B_numを入れた額） |")
-    w("| --- | --- | --- | --- | --- | --- |")
+    w("| 想定 | 構成 | 概算（既知の単価のみ。1ドル＝150円。キャッシュ成立） | キャッシュが成立しない場合 | 140円／160円の場合（キャッシュ成立） | 未確認の費用（記号） | 参考：092がひかり電話オフィスタイプの場合（条件付き。F・B_fwd・B_numを入れた額。キャッシュ成立） |")
+    w("| --- | --- | --- | --- | --- | --- | --- |")
     for name, scn in SCENARIOS.items():
         for ck, cfg in CONFIGS.items():
             total, parts = scenario_total(ck, scn)
             base = total.jpy_total()
             alt = " ／ ".join(yen(total.jpy_total(fx)) for fx in FX_ALT)
             terms = fmt_terms(total.terms, parts["storage_usd_per_R"])
-            w(f"| {name} | {cfg['label']} | {yen(base)} | {alt} | {terms} | {yen(base + hikari_reference(total))} |")
+            no_cache = scenario_total(ck, scn, cache=False)[0].jpy_total()
+            w(f"| {name} | {cfg['label']} | {yen(base)} | {yen(no_cache)} | {alt} | {terms} | "
+              f"{yen(base + hikari_reference(total))} |")
     w("\n**内訳の見方**")
     w("- 概算には、AIが受ける通話、人が受ける通話の追加分（Twilio分）、固定費のうち単価が確認できたもの（Twilioの番号・LINE）が入っている。")
-    w("- 参考の列も、U_ntt・S_srv・R・V_stt・V_tts・V_asrは含まない。")
+    w("- 参考の列も、U_ntt・S_srv・R・V_stt・V_ttsは含まない。")
     w("- 人が受ける通話の追加分は、回線案1を選んだ場合にだけかかる（回線案2では0）。")
     for name, scn in SCENARIOS.items():
         h_total = sum(human_call().values(), Money()).scale(scn["human"])
@@ -410,7 +443,8 @@ def render() -> str:
     w("| 開発の作業費 | この表には含めない | — |")
     w("\n## 8. この表から言えること・言えないこと\n")
     w("- どの金額も、業者を使う実測がない段階の概算である。実測の後、使用量の仮定を置き換える。")
-    w("- 1通話あたりで最も大きいのは、案Aでは音声出力のトークン、案BではRelayの$0.07/分。どちらも仮定のトークン数と時間による。")
+    w("- 1通話あたりで最も大きいのは、キャッシュが成立する場合、案Aでは音声出力のトークン、案BではRelayの$0.07/分。どちらも仮定のトークン数と時間による。")
+    w("- キャッシュが成立しないと、案Aは読み直す音声の履歴が通常の単価になり、1通話あたりの費用が大きく増える。案Bへの影響は小さい。成立するかどうかは、実測で確かめる。")
     w("- 端数の切り上げで、Twilioの分の費用は1区間あたり最大1分ぶん増える。短い通話が多いほど、この影響が大きくなる。")
     w("- 案Bは、V_stt・V_tts（Relayの音声認識・音声合成が別料金かどうか）が確認できるまで、比較が確定しない。")
     w("- 回線案1では、人が受ける通話にも転送と発信の費用がかかる。件数が多いほど、この差が大きくなる。")

@@ -53,15 +53,17 @@ def _client():
 
 
 def _synthesize(client, ledger: UsageLedger, run_id: str, op: str, engine: str, **kwargs) -> bytes:
-    """One Polly request, checked against the ledger first and recorded afterwards."""
+    """One Polly request: the estimate is reserved before sending and settled from the response.
+    If the request fails after it may have been sent, the reservation stays held."""
     chars = len(kwargs["Text"])
-    ledger.check(polly_cost(chars, engine))
+    rid = ledger.reserve(op, PATH, polly_cost(chars, engine), run_id)
     resp = with_retries(lambda: client.synthesize_speech(Engine=engine, **kwargs), max_retries=0)  # botocore retries
     billed = int(resp.get("RequestCharacters", chars))
     data = resp["AudioStream"].read()
     audio_s = len(data) / 2 / 8000 if kwargs.get("OutputFormat") == "pcm" else 0.0
-    ledger.record(op, PATH, polly_cost(billed, engine), run_id, audio_seconds=audio_s, characters=billed,
-                  reported_by_api="RequestCharacters" in resp)
+    ledger.record(op, PATH, polly_cost(billed, engine), run_id, audio_seconds=audio_s, reservation=rid,
+                  characters=billed, reported_by_api="RequestCharacters" in resp)
+    ledger.close(rid)
     return data
 
 

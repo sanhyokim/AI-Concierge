@@ -100,7 +100,7 @@ class CostTest(unittest.TestCase):
             self.assertIn(symbol, total.terms)
             self.assertGreater(total.terms[symbol], 0)
         a_total, _ = cost_model.scenario_total("A-2.1", cost_model.SCENARIOS["中"])
-        self.assertIn("V_asr", a_total.terms)
+        self.assertNotIn("V_asr", a_total.terms)  # gpt-4o-transcribe price is confirmed now
         self.assertNotIn("V_stt", a_total.terms)
         text = cost_model.render()
         self.assertIn("既知の単価と使用量の仮定に基づく概算", text)
@@ -114,7 +114,7 @@ class CostTest(unittest.TestCase):
         billed = 3.5
         ai = sum(cost_model.ai_call(cost_model.CONFIGS["A-2.1"]).values(), cost_model.Money()).usd
         ai_expected = (0.0100 + 0.0025 + 0.0044) * billed + cost_model.plan_a_model("openai_rt21").usd \
-            + cost_model.summary("anthropic_haiku45").usd
+            + cost_model.summary("anthropic_haiku45").usd + 0.006 * 3 * 0.40  # transcription of caller speech
         self.assertAlmostEqual(ai, ai_expected, places=9)
         human = (0.0100 + 0.0746) * billed
         expected = (60 * ai + 90 * human + 4.75) * 1.1 * 150
@@ -122,6 +122,40 @@ class CostTest(unittest.TestCase):
         self.assertAlmostEqual(total.jpy_total(), expected, places=6)
         self.assertEqual(total.terms["F"], 150)
         self.assertEqual((total.terms["B_fwd"], total.terms["B_num"]), (1, 1))
+
+    def test_cache_not_established_costs_more_and_matches_hand_check(self):
+        for key, cfg in cost_model.CONFIGS.items():
+            with_cache = sum(cost_model.ai_call(cfg).values(), cost_model.Money()).usd
+            without = sum(cost_model.ai_call(cfg, cache=False).values(), cost_model.Money()).usd
+            self.assertGreater(without, with_cache, key)
+        t = cost_model.plan_a_tokens()
+        p = cost_model.PRICES["openai_rt21"]
+        diff = (t["cached_text"] * (p["text_in"] - p["cached_text_in"])
+                + t["cached_audio"] * (p["audio_in"] - p["cached_audio_in"])) / 1e6
+        self.assertAlmostEqual(cost_model.plan_a_model("openai_rt21", cache=False).usd
+                               - cost_model.plan_a_model("openai_rt21").usd, diff, places=9)
+        h = cost_model.PRICES["anthropic_haiku45"]
+        b_no = (cost_model.B_UNCACHED_IN + cost_model.B_CACHE_READ + cost_model.B_CACHE_WRITE) * h["in"] / 1e6 \
+            + cost_model.B_OUT * h["out"] / 1e6
+        self.assertAlmostEqual(cost_model.plan_b_model("anthropic_haiku45", cache=False).usd, b_no, places=9)
+        text = cost_model.render()
+        self.assertIn("キャッシュが成立しない場合", text)
+        self.assertIn("4,096トークン", text)
+
+    def test_measurement_estimates_include_transcription_and_both_cache_cases(self):
+        from prototype.cost import measurement_budget as mb
+        est = mb.estimate()
+        self.assertGreater(est["T3"]["usd_no_cache"], est["T3"]["usd"])
+        self.assertGreater(est["T3"]["transcription_usd_per_dialog"], 0)
+        self.assertGreater(est["T3"]["requests"], est["T3"]["runs"] * mb.DIALOG_RESPONSES)  # + transcriptions
+        self.assertLess(est["total_usd_no_cache"], 20)  # still inside the proposed (unapproved) budget
+        phone = mb.phone_stage_estimate()
+        self.assertEqual(phone["calls_per_candidate"], 100)
+        b = phone["candidates"]["B-Haiku"]
+        self.assertIn("V_stt", b["symbols"])
+        self.assertNotIn("F", b["symbols"])
+        a = phone["candidates"]["A-2.1"]
+        self.assertGreater(a["usd_no_cache"], a["usd"])
 
     def test_hikari_prices_only_in_conditional_reference(self):
         total, _ = cost_model.scenario_total("A-2.1", cost_model.SCENARIOS["少"])
@@ -158,7 +192,12 @@ class RunnerUsageTest(unittest.TestCase):
 
             result = asyncio.run(scenario())
             self.assertGreater(result["est_cost_usd"], 0)
-            self.assertEqual(ledger.totals()["requests"], 1)
+            totals = ledger.totals()
+            self.assertEqual(totals["requests"], 2)  # one response + one input transcription
+            self.assertEqual(totals["open_reservations"], 0)  # clean finish settles the turn reservation
+            self.assertEqual(totals["tokens"]["text_in_cached"], 1000)
+            self.assertEqual(totals["tokens"]["text_in_uncached"], 500)
+            self.assertGreater(totals["transcription_usd"], 0)
 
     def test_runner_stops_before_a_turn_that_would_exceed_the_budget(self):
         with tempfile.TemporaryDirectory() as tmp:

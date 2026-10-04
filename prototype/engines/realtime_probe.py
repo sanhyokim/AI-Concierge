@@ -29,7 +29,7 @@ from ..concierge.prompts import READ_ALOUD_NORMAL, READ_ALOUD_SEGMENT, READ_ALOU
 from ..concierge.readings import count_morae
 from ..measure.audio import ulaw_decode, write_wav
 from ..measure.rate import compare_versions, measure_version
-from .budget import LIMITS, UsageLedger, async_with_retries, openai_cost, openai_upper_bound
+from .budget import LIMITS, UsageLedger, async_with_retries, openai_cost, openai_upper_bound, openai_usage_breakdown
 from .realtime_runner import AUDIO_DELTA_TYPES, TRANSCRIPT_DELTA_TYPES, WebSocketTransport, session_update
 
 SCENARIOS = pathlib.Path(__file__).resolve().parents[1] / "scenarios" / "first_round.json"
@@ -47,8 +47,10 @@ class Ctx:
 
 
 async def _speak(ctx: Ctx, t: WebSocketTransport, prompt: str, op: str) -> tuple[bytes, str]:
-    """One response. Checked against the ledger before sending; usage is recorded from response.done."""
-    ctx.ledger.check(openai_upper_bound(audio_out_seconds=30, model_key=ctx.model_key), audio_seconds=30)
+    """One response. A pessimistic estimate is reserved (after the limit check) before sending; usage from
+    response.done settles it. Without usage (timeout, error, missing field) the reservation stays held."""
+    rid = ctx.ledger.reserve(op, PATH, openai_upper_bound(audio_out_seconds=30, model_key=ctx.model_key),
+                             ctx.run_id, audio_seconds=30)
     await t.send({"type": "conversation.item.create", "item": {
         "type": "message", "role": "user", "content": [{"type": "input_text", "text": prompt}]}})
     await t.send({"type": "response.create"})
@@ -72,10 +74,11 @@ async def _speak(ctx: Ctx, t: WebSocketTransport, prompt: str, op: str) -> tuple
     try:
         usage = await asyncio.wait_for(collect(), timeout=ctx.ledger.limits.request_timeout_s)
     finally:
-        # Recorded even on failure so partial spend stays visible; actual usage when the server sent it.
-        cost = openai_cost(usage, ctx.model_key) if usage else openai_upper_bound(len(audio) / 8000, ctx.model_key)
-        ctx.ledger.record(op, PATH, cost, ctx.run_id, audio_seconds=len(audio) / 8000, usage=usage,
-                          estimated=not usage)
+        if usage:  # otherwise the reservation stays open and keeps counting at the estimate
+            ctx.ledger.record(op, PATH, openai_cost(usage, ctx.model_key), ctx.run_id,
+                              audio_seconds=len(audio) / 8000, reservation=rid,
+                              tokens=openai_usage_breakdown(usage), usage=usage)
+            ctx.ledger.close(rid)
     return bytes(audio), transcript
 
 
@@ -137,6 +140,28 @@ async def render_split(ctx: Ctx, voice, script, version, target_speed, out: path
             "measure": measure_version(samples, 8000, segments)}
 
 
+def repeat_spread(runs: list[dict]) -> dict:
+    """Natural variation between repeated N renders of the same script and voice (split method only).
+
+    For each later repetition, articulation-rate ratio N(rep k) / N(rep 1) per segment. The spread of
+    the post ratios is the basis for reviewing the Q-08 return band (0.95-1.10, proposal)."""
+    first: dict = {}
+    pairs = []
+    for r in sorted((r for r in runs if r.get("method") == "split"), key=lambda r: r["rep"]):
+        key = (r["voice"], r["script"])
+        segs = r["N"]["measure"]["segments"]
+        if key not in first:
+            first[key] = segs
+            continue
+        base = first[key]
+        ratios = {name: (round(segs[name]["articulation_rate"] / base[name]["articulation_rate"], 3)
+                         if base[name]["articulation_rate"] else None) for name in ("pre", "target", "post")}
+        pairs.append({"voice": key[0], "script": key[1], "rep": r["rep"], "ratio_vs_rep1": ratios})
+    post = [p["ratio_vs_rep1"]["post"] for p in pairs if p["ratio_vs_rep1"]["post"] is not None]
+    return {"pairs": pairs, "post_min": min(post) if post else None, "post_max": max(post) if post else None,
+            "note": "N vs N of the same script; if this spread is near the Q-08 band, the band needs review"}
+
+
 async def main_async(args) -> int:
     key = os.environ.get("OPENAI_API_KEY")
     if not key:
@@ -173,6 +198,7 @@ async def main_async(args) -> int:
                                                "N": n, "D": d,
                                                "compare": "fill labels, then run prototype.measure.compare_labels"})
     finally:
+        report["n_repeat_spread"] = repeat_spread(report["runs"])
         report["ledger_totals"] = ctx.ledger.totals()
         (out / "report.json").write_text(json.dumps(report, ensure_ascii=False, indent=2))
         print(f"wrote {out}/report.json; ledger totals: {report['ledger_totals']}")

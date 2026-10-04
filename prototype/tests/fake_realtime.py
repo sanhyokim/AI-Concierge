@@ -4,6 +4,8 @@ Behaviour (deterministic, real time):
 - When caller audio arrives after silence: emits speech_started after ``vad_start_ms``.
 - When caller audio stops for ``vad_end_ms``: emits speech_stopped, then after
   ``think_ms`` streams an AI response of ``response_ms`` audio, faster than real time.
+- After speech_stopped, commits the input and (unless disabled) sends an input transcription with usage.
+- response.done carries a usage object unless ``usage=False`` (to test missing usage).
 - Records every client event, including conversation.item.truncate.
 It does not model any vendor's quality, latency or behaviour; it only tests the harness.
 """
@@ -16,9 +18,10 @@ import itertools
 
 class FakeRealtime:
     def __init__(self, *, vad_start_ms=60, vad_end_ms=200, think_ms=150, response_ms=1500,
-                 delta_ms=100, send_interval_ms=20) -> None:
+                 delta_ms=100, send_interval_ms=20, usage=True, transcription=True) -> None:
         self.cfg = dict(vad_start_ms=vad_start_ms, vad_end_ms=vad_end_ms, think_ms=think_ms,
                         response_ms=response_ms, delta_ms=delta_ms, send_interval_ms=send_interval_ms)
+        self.with_usage, self.with_transcription = usage, transcription
         self.out: asyncio.Queue = asyncio.Queue()
         self.client_events: list[dict] = []
         self._ids = itertools.count(1)
@@ -45,6 +48,12 @@ class FakeRealtime:
         await asyncio.sleep(self.cfg["vad_end_ms"] / 1000)
         self._speaking = False
         await self.out.put({"type": "input_audio_buffer.speech_stopped"})
+        await self.out.put({"type": "input_audio_buffer.committed"})
+        if self.with_transcription:
+            await self.out.put({"type": "conversation.item.input_audio_transcription.completed",
+                                "transcript": "（模擬文字起こし）",
+                                "usage": {"type": "tokens", "input_tokens": 40, "output_tokens": 12,
+                                          "input_token_details": {"text_tokens": 10, "audio_tokens": 30}}})
         await asyncio.sleep(self.cfg["think_ms"] / 1000)
         await self._respond()
 
@@ -59,6 +68,9 @@ class FakeRealtime:
         await self.out.put({"type": "response.output_audio_transcript.delta", "item_id": item_id,
                             "delta": "（模擬応答）"})
         n_deltas = self.cfg["response_ms"] // self.cfg["delta_ms"]
+        if not self.with_usage:
+            await self.out.put({"type": "response.done", "response": {}})
+            return
         await self.out.put({"type": "response.done", "response": {"usage": {
             "input_token_details": {"text_tokens": 1500, "audio_tokens": 300,
                                     "cached_tokens_details": {"text_tokens": 1000, "audio_tokens": 0}},

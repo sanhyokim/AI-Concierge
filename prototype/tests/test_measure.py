@@ -53,6 +53,14 @@ class RateTest(unittest.TestCase):
         d, _ = self._measure(_segments(0.16, [(5, 0.2), (11, 0.2)], post_mora_s=0.16))
         self.assertFalse(compare_versions(n, d)["returned_to_normal"])
 
+    def test_rushing_after_the_slow_part_does_not_pass(self):
+        n, _ = self._measure(_segments(0.12, [(5, 0.2), (11, 0.2)]))
+        d, _ = self._measure(_segments(0.16, [(5, 0.2), (11, 0.2)], post_mora_s=0.095))
+        cmp = compare_versions(n, d)
+        self.assertGreater(cmp["return_ratio"], 1.10)
+        self.assertFalse(cmp["returned_to_normal"])
+        self.assertTrue(cmp["post_too_fast"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -10,7 +10,8 @@ Comparing the normal version (N) with the slowed version (D) of the same text:
 - articulation_ratio = D.target.articulation / N.target.articulation
 - pause_increase_s   = D.target.pause_total - N.target.pause_total
 - return_ratio       = D.post.articulation / N.post.articulation
-Pauses alone never make a slow-down pass (eval scenarios v1.1, section S).
+Pauses alone never make a slow-down pass (eval scenarios v1.1, section S). The return ratio must
+fall inside a band: below it the voice stayed slow, above it the voice rushed to catch up.
 """
 from __future__ import annotations
 
@@ -21,7 +22,8 @@ from .audio import frame_db, voiced_threshold_db
 FRAME_MS = 5  # 10 ms frames exceeded the pause-total tolerance in validation (max 26 ms)
 DEFAULT_MIN_PAUSE_MS = 150
 PASS_ARTICULATION_RATIO = 0.85   # proposal, not agreed
-PASS_RETURN_RATIO = 0.95         # proposal, not agreed
+PASS_RETURN_RATIO = 0.95         # proposal, not agreed (spec Q-08)
+PASS_RETURN_RATIO_MAX = 1.10     # proposal, not agreed (spec Q-08): faster than this after the slow part fails
 
 
 @dataclass
@@ -140,7 +142,8 @@ def compare_versions(normal: dict, slowed: dict) -> dict:
         "pause_increase_s": pause_inc,
         "return_ratio": ret_ratio,
         "articulation_slowed": art_ratio is not None and art_ratio <= PASS_ARTICULATION_RATIO,
-        "returned_to_normal": ret_ratio is not None and ret_ratio >= PASS_RETURN_RATIO,
+        "returned_to_normal": ret_ratio is not None and PASS_RETURN_RATIO <= ret_ratio <= PASS_RETURN_RATIO_MAX,
+        "post_too_fast": ret_ratio is not None and ret_ratio > PASS_RETURN_RATIO_MAX,
         "pause_only_slowdown": (art_ratio is not None and art_ratio > PASS_ARTICULATION_RATIO
                                 and speech_ratio is not None and speech_ratio <= PASS_ARTICULATION_RATIO),
         "note": "listening evaluation is still required; these numbers alone do not pass the scenario",
