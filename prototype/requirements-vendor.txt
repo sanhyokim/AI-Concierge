@@ -1,0 +1,2 @@
+websockets>=12
+boto3>=1.34

@@ -1,0 +1,4 @@
+__pycache__/
+results/probe-*/
+results/dialog-*/
+scenarios/caller_audio/*.wav

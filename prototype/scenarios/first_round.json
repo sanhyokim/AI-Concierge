@@ -1,0 +1,183 @@
+{
+  "version": "first-round-v1",
+  "note": "架空の店名・人名・番号のみ。番号は読み上げるだけで発信しない。模擬FAQは未承認。",
+  "candidates": [
+    {"id": "A-marin", "plan": "A", "vendor": "openai-realtime", "voice": "marin"},
+    {"id": "A-cedar", "plan": "A", "vendor": "openai-realtime", "voice": "cedar"},
+    {"id": "B-kazuha", "plan": "B", "vendor": "amazon-polly", "voice": "Kazuha-Neural", "engine": "neural",
+     "relay_voice_value": "Kazuha-Neural"},
+    {"id": "B-takumi", "plan": "B", "vendor": "amazon-polly", "voice": "Takumi-Neural", "engine": "neural",
+     "relay_voice_value": "Takumi-Neural"}
+  ],
+  "slowdown": [
+    {
+      "id": "S-01",
+      "pre": {"text": "ありがとうございます。お電話番号を確認します。",
+              "reading": "ありがとうございます。おでんわばんごうをかくにんします。"},
+      "target": {"text": "ゼロキュウゼロ、イチニーサンヨン、ゴーロクナナハチ",
+                 "reading": "ゼロキュウゼロ、イチニーサンヨン、ゴーロクナナハチ"},
+      "post": {"text": "。こちらでお間違いないでしょうか。", "reading": "こちらでおまちがいないでしょうか。"}
+    },
+    {
+      "id": "S-02",
+      "pre": {"text": "ご希望の日時を確認します。", "reading": "ごきぼうのにちじをかくにんします。"},
+      "target": {"text": "10月6日、火曜日の、午後2時", "reading": "じゅうがつむいか、かようびの、ごごにじ"},
+      "post": {"text": "。担当者から改めてご連絡いたします。", "reading": "たんとうしゃからあらためてごれんらくいたします。"}
+    },
+    {
+      "id": "S-03",
+      "pre": {"text": "無煙ロースターの清掃は、", "reading": "むえんろーすたーのせいそうは、"},
+      "target": {"text": "1台あたり2万5千円から3万5千円、税別",
+                 "reading": "いちだいあたりにまんごせんえんからさんまんごせんえん、ぜいべつ"},
+      "post": {"text": "が目安です。正式な金額は、無料の現地調査のあとにお見積もりします。",
+               "reading": "がめやすです。せいしきなきんがくは、むりょうのげんちちょうさのあとにおみつもりします。"}
+    }
+  ],
+  "slow_settings": {
+    "polly_prosody_rate": "80%",
+    "openai_split_target_speed": 0.8,
+    "note": "初期値。試験で調整する。"
+  },
+  "dialog": [
+    {"id": "C-01", "requirement": "継続的な会話", "context": {"call_start_jst": "2026-10-05T10:00:00+09:00", "caller_id": "09012345678"},
+     "turns": [
+       {"speaker": "caller", "text": "焼肉ほのか博多店の田中です。ロースターの清掃をお願いしたくて。", "timing": {"type": "after_ai_end", "delay_ms": 300}, "audio": "C-01_1.wav"},
+       {"speaker": "caller", "text": "8台です。", "timing": {"type": "after_ai_end", "delay_ms": 300}, "audio": "C-01_2.wav"},
+       {"speaker": "caller", "text": "あと、ダクトの点検も一緒にお願いできますか。", "timing": {"type": "after_ai_end", "delay_ms": 300}, "audio": "C-01_3.wav"}
+     ],
+     "checks": ["用件が2件保存される", "店名・名前を聞き直さない"]},
+    {"id": "C-04", "requirement": "継続的な会話", "context": {"call_start_jst": "2026-10-05T10:00:00+09:00", "caller_id": null},
+     "turns": [
+       {"speaker": "caller", "text": "焼きとんまるや天神店の松尾です。電話は090-1234-5678、無煙ロースター6台の清掃を、来週の平日の夜にお願いしたいです。", "timing": {"type": "after_ai_end", "delay_ms": 300}, "audio": "C-04_1.wav"}
+     ],
+     "checks": ["聞き直しが0", "不足項目だけを聞く", "番号は復唱して確認を求める"]},
+    {"id": "I-02", "requirement": "割り込み", "context": {"call_start_jst": "2026-10-05T10:00:00+09:00", "caller_id": null},
+     "turns": [
+       {"speaker": "caller", "text": "とり吉の山口です。折り返しは090-1234-5678でお願いします。", "timing": {"type": "after_ai_end", "delay_ms": 300}, "audio": "I-02_1.wav"},
+       {"speaker": "caller", "text": "はい、違います。", "timing": {"type": "during_ai_speech", "offset_ms": 1500}, "audio": "I-02_2.wav"}
+     ],
+     "checks": ["AIの音声が止まる", "「はい、違います」を相づちとして捨てない", "確認済みにしない"]},
+    {"id": "I-03", "requirement": "割り込み", "context": {"call_start_jst": "2026-10-05T10:00:00+09:00", "caller_id": null},
+     "turns": [
+       {"speaker": "caller", "text": "とり吉の山口です。折り返しは090-1234-5678でお願いします。", "timing": {"type": "after_ai_end", "delay_ms": 300}, "audio": "I-03_1.wav"},
+       {"speaker": "caller", "text": "あ、違う、最後は5687です。", "timing": {"type": "during_ai_speech", "offset_ms": 2000}, "audio": "I-03_2.wav"},
+       {"speaker": "caller", "text": "はい、合っています。", "timing": {"type": "after_ai_end", "delay_ms": 300}, "audio": "I-03_3.wav"}
+     ],
+     "checks": ["止まって訂正を反映し再度復唱する", "最後の肯定の後にだけ確認済み"]},
+    {"id": "R-03", "requirement": "聞き取りと復唱", "context": {"call_start_jst": "2026-10-05T10:00:00+09:00", "caller_id": null},
+     "turns": [
+       {"speaker": "caller", "text": "とり吉の山口です。折り返しは090-1234-5678でお願いします。", "timing": {"type": "after_ai_end", "delay_ms": 300}, "audio": "R-03_1.wav"},
+       {"speaker": "caller", "text": "最後は5678じゃなくて5687です。", "timing": {"type": "during_ai_speech", "offset_ms": 2000}, "audio": "R-03_3.wav"},
+       {"speaker": "caller", "text": "はい、合っています。", "timing": {"type": "after_ai_end", "delay_ms": 300}, "audio": "R-03_5.wav"}
+     ],
+     "checks": ["confirmed_by_caller は最後の肯定の後だけ", "保存値が 09012345687"]},
+    {"id": "X-02", "requirement": "拒否時の動作", "context": {"call_start_jst": "2026-10-05T10:00:00+09:00", "caller_id": "09012345678"},
+     "turns": [
+       {"speaker": "caller", "text": "AIじゃなくて人と話したいんですけど。", "timing": {"type": "after_ai_end", "delay_ms": 300}, "audio": "X-02_1.wav"},
+       {"speaker": "caller", "text": "はい、それならいいです。", "timing": {"type": "after_ai_end", "delay_ms": 300}, "audio": "X-02_2.wav"}
+     ],
+     "checks": ["ライブ転送しない", "確認の質問は1回", "了承後は最小限の受付"]},
+    {"id": "X-02b", "requirement": "拒否時の動作", "context": {"call_start_jst": "2026-10-05T10:00:00+09:00", "caller_id": "09012345678"},
+     "turns": [
+       {"speaker": "caller", "text": "AIじゃなくて人と話したいんですけど。", "timing": {"type": "after_ai_end", "delay_ms": 300}, "audio": "X-02b_1.wav"},
+       {"speaker": "caller", "text": "いえ、AIはいいです。", "timing": {"type": "after_ai_end", "delay_ms": 300}, "audio": "X-02b_2.wav"}
+     ],
+     "checks": ["AIへの音声送信が止まる", "以後は録音済みの案内とプッシュボタンだけ"]}
+  ],
+  "offline": [
+    {"id": "R-03", "kind": "confirmation", "field": "callback_number",
+     "events": [
+       {"n": 1, "type": "hear", "value": "09012345678"},
+       {"n": 2, "type": "read_back", "value": "09012345678"},
+       {"n": 3, "type": "hear", "value": "09012345687"},
+       {"n": 4, "type": "read_back", "value": "09012345687"},
+       {"n": 5, "type": "answer", "text": "はい、合っています。"}
+     ],
+     "expected_states": [
+       {"after": 1, "value": "09012345678", "status": "heard"},
+       {"after": 2, "value": "09012345678", "status": "awaiting_confirmation"},
+       {"after": 3, "value": "09012345687", "status": "corrected_unconfirmed"},
+       {"after": 4, "value": "09012345687", "status": "awaiting_confirmation"},
+       {"after": 5, "value": "09012345687", "status": "confirmed_by_caller"}
+     ]},
+    {"id": "R-03-guard", "kind": "confirmation", "field": "callback_number",
+     "note": "モデルが肯定の回答の前に confirm_field を呼んでも拒否される",
+     "events": [
+       {"n": 1, "type": "hear", "value": "09012345678"},
+       {"n": 2, "type": "read_back", "value": "09012345678"},
+       {"n": 3, "type": "hear", "value": "09012345687"},
+       {"n": 4, "type": "model_confirm", "value": "09012345687", "last_caller_utterance": "最後は5678じゃなくて5687です。"},
+       {"n": 5, "type": "read_back", "value": "09012345687"},
+       {"n": 6, "type": "model_confirm", "value": "09012345687", "last_caller_utterance": "えーと"},
+       {"n": 7, "type": "model_confirm", "value": "09012345687", "last_caller_utterance": "はい、合っています。"}
+     ],
+     "expected_states": [
+       {"after": 4, "value": "09012345687", "status": "corrected_unconfirmed", "accepted": false},
+       {"after": 6, "value": "09012345687", "status": "awaiting_confirmation", "accepted": false},
+       {"after": 7, "value": "09012345687", "status": "confirmed_by_caller", "accepted": true}
+     ]},
+    {"id": "I-02", "kind": "confirmation", "field": "callback_number",
+     "events": [
+       {"n": 1, "type": "hear", "value": "09012345678"},
+       {"n": 2, "type": "read_back", "value": "09012345678"},
+       {"n": 3, "type": "answer", "text": "はい、違います。"}
+     ],
+     "expected_states": [
+       {"after": 3, "value": "09012345678", "status": "rejected_by_caller"}
+     ]},
+    {"id": "X-01", "kind": "call_flow", "init": {"caller_id": "09012345678"},
+     "events": [{"call": "on_recording_refused"}],
+     "expect": {"actions_include": ["stop_recording", "mark_for_deletion:recording_before_refusal",
+                                    "say_ai:ack_recording_stopped_ai_still_processes_voice"],
+                "actions_exclude": ["stop_ai_stream"],
+                "consent": {"recording": "refused", "ai_processing": "allowed"}}},
+    {"id": "X-02", "kind": "call_flow", "init": {"caller_id": "09012345678"},
+     "events": [{"call": "on_human_request"}, {"call": "on_human_request_answer", "args": [true]}],
+     "expect": {"actions_include": ["say_ai:explain_no_live_transfer_and_callback_ask_short_intake",
+                                    "say_ai:continue_minimal_intake"],
+                "actions_exclude": ["stop_ai_stream", "transfer"],
+                "consent": {"ai_processing": "allowed"}, "intake_mode": "minimal",
+                "count": {"say_ai:explain_no_live_transfer_and_callback_ask_short_intake": 1}}},
+    {"id": "X-02-repeat", "kind": "call_flow", "init": {"caller_id": "09012345678"},
+     "note": "2回目の「人と話したい」では確認の質問を繰り返さない",
+     "events": [{"call": "on_human_request"}, {"call": "on_human_request_answer", "args": [true]},
+                {"call": "on_human_request"}],
+     "expect": {"actions_include": ["say_ai:explain_callback_only"],
+                "count": {"say_ai:explain_no_live_transfer_and_callback_ask_short_intake": 1}}},
+    {"id": "X-02b", "kind": "call_flow", "init": {"caller_id": "09012345678"},
+     "events": [{"call": "on_human_request"}, {"call": "on_human_request_answer", "args": [false]}],
+     "expect": {"actions_include": ["stop_ai_stream", "play:clip_ai_refusal_ack", "play:clip_dtmf_enter_number"],
+                "consent": {"ai_processing": "refused"}, "state": "dtmf_entry",
+                "after_refusal_no": ["say_ai"]}},
+    {"id": "X-03", "kind": "call_flow", "init": {"caller_id": null},
+     "events": [{"call": "on_ai_refused"}, {"call": "on_dtmf", "args": ["09012345678#"]},
+                {"call": "on_dtmf", "args": ["1"]}],
+     "expect": {"actions_include": ["stop_ai_stream", "play:clip_readback_intro", "play:clip_digit_9",
+                                    "save_field:callback_number:09012345678:dtmf:confirmed_by_caller",
+                                    "end_call:callback_captured"],
+                "consent": {"ai_processing": "refused"}, "state": "ended",
+                "after_refusal_no": ["say_ai"]}},
+    {"id": "X-04", "kind": "call_flow", "init": {"caller_id": "09012345678"},
+     "events": [{"call": "on_ai_refused"}, {"call": "on_dtmf", "args": [null]}, {"call": "on_dtmf", "args": [null]},
+                {"call": "on_dtmf", "args": [null]}, {"call": "on_dtmf", "args": ["1"]}],
+     "expect": {"actions_include": ["play:clip_offer_caller_id_intro",
+                                    "save_field:callback_number:09012345678:line:confirmed_by_caller"],
+                "state": "ended"}},
+    {"id": "X-04b", "kind": "call_flow", "init": {"caller_id": null},
+     "events": [{"call": "on_ai_refused"}, {"call": "on_dtmf", "args": [null]}, {"call": "on_dtmf", "args": [null]},
+                {"call": "on_dtmf", "args": [null]}],
+     "expect": {"actions_include": ["play:clip_end_please_call_again", "notify:ai_refused_callback_missing",
+                                    "end_call:callback_missing"],
+                "actions_exclude": ["save_field"], "state": "ended"}},
+    {"id": "X-05", "kind": "call_flow", "init": {"caller_id": null},
+     "events": [{"call": "on_ai_failure"}],
+     "expect": {"actions_include": ["stop_ai_stream", "play:clip_ai_failure_apology", "notify:ai_failure",
+                                    "play:clip_dtmf_enter_number"],
+                "actions_exclude": ["transfer", "stop_recording"],
+                "consent": {"recording": "allowed", "ai_processing": "allowed"}}},
+    {"id": "X-06", "kind": "call_flow", "init": {"caller_id": null, "voicemail_enabled": true},
+     "events": [{"call": "on_recording_refused"}, {"call": "on_ai_failure"}],
+     "expect": {"consent": {"recording": "refused"}, "voicemail_allowed": false,
+                "actions_exclude": ["transfer"]}}
+  ]
+}

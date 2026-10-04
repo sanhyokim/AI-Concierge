@@ -1,0 +1,610 @@
+{
+  "run_at_utc": "2026-10-04T14:21:22+00:00",
+  "environment": {
+    "python": "3.11.15",
+    "platform": "Linux-6.18.44-fc-v64-x86_64-with-glibc2.39",
+    "vendors_contacted": "none"
+  },
+  "scenario_checks": [
+    {
+      "id": "R-03",
+      "kind": "confirmation",
+      "checks": [
+        {
+          "check": "after event 1: heard",
+          "ok": true,
+          "actual": {
+            "value": "09012345678",
+            "status": "heard",
+            "accepted": null
+          }
+        },
+        {
+          "check": "after event 2: awaiting_confirmation",
+          "ok": true,
+          "actual": {
+            "value": "09012345678",
+            "status": "awaiting_confirmation",
+            "accepted": null
+          }
+        },
+        {
+          "check": "after event 3: corrected_unconfirmed",
+          "ok": true,
+          "actual": {
+            "value": "09012345687",
+            "status": "corrected_unconfirmed",
+            "accepted": null
+          }
+        },
+        {
+          "check": "after event 4: awaiting_confirmation",
+          "ok": true,
+          "actual": {
+            "value": "09012345687",
+            "status": "awaiting_confirmation",
+            "accepted": null
+          }
+        },
+        {
+          "check": "after event 5: confirmed_by_caller",
+          "ok": true,
+          "actual": {
+            "value": "09012345687",
+            "status": "confirmed_by_caller",
+            "accepted": null
+          }
+        }
+      ],
+      "ok": true
+    },
+    {
+      "id": "R-03-guard",
+      "kind": "confirmation",
+      "checks": [
+        {
+          "check": "after event 4: corrected_unconfirmed",
+          "ok": true,
+          "actual": {
+            "value": "09012345687",
+            "status": "corrected_unconfirmed",
+            "accepted": false
+          }
+        },
+        {
+          "check": "after event 6: awaiting_confirmation",
+          "ok": true,
+          "actual": {
+            "value": "09012345687",
+            "status": "awaiting_confirmation",
+            "accepted": false
+          }
+        },
+        {
+          "check": "after event 7: confirmed_by_caller",
+          "ok": true,
+          "actual": {
+            "value": "09012345687",
+            "status": "confirmed_by_caller",
+            "accepted": true
+          }
+        }
+      ],
+      "ok": true
+    },
+    {
+      "id": "I-02",
+      "kind": "confirmation",
+      "checks": [
+        {
+          "check": "after event 3: rejected_by_caller",
+          "ok": true,
+          "actual": {
+            "value": "09012345678",
+            "status": "rejected_by_caller",
+            "accepted": null
+          }
+        }
+      ],
+      "ok": true
+    },
+    {
+      "id": "X-01",
+      "kind": "call_flow",
+      "checks": [
+        {
+          "check": "includes stop_recording",
+          "ok": true
+        },
+        {
+          "check": "includes mark_for_deletion:recording_before_refusal",
+          "ok": true
+        },
+        {
+          "check": "includes say_ai:ack_recording_stopped_ai_still_processes_voice",
+          "ok": true
+        },
+        {
+          "check": "excludes stop_ai_stream",
+          "ok": true
+        },
+        {
+          "check": "consent.recording == refused",
+          "ok": true
+        },
+        {
+          "check": "consent.ai_processing == allowed",
+          "ok": true
+        }
+      ],
+      "ok": true
+    },
+    {
+      "id": "X-02",
+      "kind": "call_flow",
+      "checks": [
+        {
+          "check": "includes say_ai:explain_no_live_transfer_and_callback_ask_short_intake",
+          "ok": true
+        },
+        {
+          "check": "includes say_ai:continue_minimal_intake",
+          "ok": true
+        },
+        {
+          "check": "excludes stop_ai_stream",
+          "ok": true
+        },
+        {
+          "check": "excludes transfer",
+          "ok": true
+        },
+        {
+          "check": "consent.ai_processing == allowed",
+          "ok": true
+        },
+        {
+          "check": "intake_mode == minimal",
+          "ok": true
+        },
+        {
+          "check": "count say_ai:explain_no_live_transfer_and_callback_ask_short_intake == 1",
+          "ok": true
+        }
+      ],
+      "ok": true
+    },
+    {
+      "id": "X-02-repeat",
+      "kind": "call_flow",
+      "checks": [
+        {
+          "check": "includes say_ai:explain_callback_only",
+          "ok": true
+        },
+        {
+          "check": "count say_ai:explain_no_live_transfer_and_callback_ask_short_intake == 1",
+          "ok": true
+        }
+      ],
+      "ok": true
+    },
+    {
+      "id": "X-02b",
+      "kind": "call_flow",
+      "checks": [
+        {
+          "check": "includes stop_ai_stream",
+          "ok": true
+        },
+        {
+          "check": "includes play:clip_ai_refusal_ack",
+          "ok": true
+        },
+        {
+          "check": "includes play:clip_dtmf_enter_number",
+          "ok": true
+        },
+        {
+          "check": "consent.ai_processing == refused",
+          "ok": true
+        },
+        {
+          "check": "state == dtmf_entry",
+          "ok": true
+        },
+        {
+          "check": "no say_ai after refusal",
+          "ok": true
+        }
+      ],
+      "ok": true
+    },
+    {
+      "id": "X-03",
+      "kind": "call_flow",
+      "checks": [
+        {
+          "check": "includes stop_ai_stream",
+          "ok": true
+        },
+        {
+          "check": "includes play:clip_readback_intro",
+          "ok": true
+        },
+        {
+          "check": "includes play:clip_digit_9",
+          "ok": true
+        },
+        {
+          "check": "includes save_field:callback_number:09012345678:dtmf:confirmed_by_caller",
+          "ok": true
+        },
+        {
+          "check": "includes end_call:callback_captured",
+          "ok": true
+        },
+        {
+          "check": "consent.ai_processing == refused",
+          "ok": true
+        },
+        {
+          "check": "state == ended",
+          "ok": true
+        },
+        {
+          "check": "no say_ai after refusal",
+          "ok": true
+        }
+      ],
+      "ok": true
+    },
+    {
+      "id": "X-04",
+      "kind": "call_flow",
+      "checks": [
+        {
+          "check": "includes play:clip_offer_caller_id_intro",
+          "ok": true
+        },
+        {
+          "check": "includes save_field:callback_number:09012345678:line:confirmed_by_caller",
+          "ok": true
+        },
+        {
+          "check": "state == ended",
+          "ok": true
+        }
+      ],
+      "ok": true
+    },
+    {
+      "id": "X-04b",
+      "kind": "call_flow",
+      "checks": [
+        {
+          "check": "includes play:clip_end_please_call_again",
+          "ok": true
+        },
+        {
+          "check": "includes notify:ai_refused_callback_missing",
+          "ok": true
+        },
+        {
+          "check": "includes end_call:callback_missing",
+          "ok": true
+        },
+        {
+          "check": "excludes save_field",
+          "ok": true
+        },
+        {
+          "check": "state == ended",
+          "ok": true
+        }
+      ],
+      "ok": true
+    },
+    {
+      "id": "X-05",
+      "kind": "call_flow",
+      "checks": [
+        {
+          "check": "includes stop_ai_stream",
+          "ok": true
+        },
+        {
+          "check": "includes play:clip_ai_failure_apology",
+          "ok": true
+        },
+        {
+          "check": "includes notify:ai_failure",
+          "ok": true
+        },
+        {
+          "check": "includes play:clip_dtmf_enter_number",
+          "ok": true
+        },
+        {
+          "check": "excludes transfer",
+          "ok": true
+        },
+        {
+          "check": "excludes stop_recording",
+          "ok": true
+        },
+        {
+          "check": "consent.recording == allowed",
+          "ok": true
+        },
+        {
+          "check": "consent.ai_processing == allowed",
+          "ok": true
+        }
+      ],
+      "ok": true
+    },
+    {
+      "id": "X-06",
+      "kind": "call_flow",
+      "checks": [
+        {
+          "check": "excludes transfer",
+          "ok": true
+        },
+        {
+          "check": "consent.recording == refused",
+          "ok": true
+        },
+        {
+          "check": "voicemail allowed == False",
+          "ok": true
+        }
+      ],
+      "ok": true
+    }
+  ],
+  "measurement_tool_validation": {
+    "segments_measured": 120,
+    "articulation_rel_error": {
+      "mean": 0.0014,
+      "max": 0.0063
+    },
+    "pause_total_abs_error_s": {
+      "mean": 0.0017,
+      "max": 0.011
+    },
+    "pause_count_mismatches": 0,
+    "within_tolerance": true,
+    "verdict_cases": [
+      {
+        "case": "articulation_slowed",
+        "seed": 1,
+        "ok": true,
+        "articulation_ratio": 0.772,
+        "return_ratio": 1.002,
+        "pause_increase_s": 0.005
+      },
+      {
+        "case": "articulation_slowed",
+        "seed": 2,
+        "ok": true,
+        "articulation_ratio": 0.756,
+        "return_ratio": 0.967,
+        "pause_increase_s": 0.005
+      },
+      {
+        "case": "articulation_slowed",
+        "seed": 3,
+        "ok": true,
+        "articulation_ratio": 0.759,
+        "return_ratio": 0.971,
+        "pause_increase_s": -0.005
+      },
+      {
+        "case": "articulation_slowed",
+        "seed": 4,
+        "ok": true,
+        "articulation_ratio": 0.75,
+        "return_ratio": 1.0,
+        "pause_increase_s": -0.005
+      },
+      {
+        "case": "articulation_slowed",
+        "seed": 5,
+        "ok": true,
+        "articulation_ratio": 0.83,
+        "return_ratio": 1.085,
+        "pause_increase_s": -0.025
+      },
+      {
+        "case": "pauses_only",
+        "seed": 1,
+        "ok": true,
+        "articulation_ratio": 1.008,
+        "return_ratio": 1.005,
+        "pause_increase_s": 0.75
+      },
+      {
+        "case": "pauses_only",
+        "seed": 2,
+        "ok": true,
+        "articulation_ratio": 0.989,
+        "return_ratio": 0.965,
+        "pause_increase_s": 0.8
+      },
+      {
+        "case": "pauses_only",
+        "seed": 3,
+        "ok": true,
+        "articulation_ratio": 0.994,
+        "return_ratio": 0.971,
+        "pause_increase_s": 0.765
+      },
+      {
+        "case": "pauses_only",
+        "seed": 4,
+        "ok": true,
+        "articulation_ratio": 0.983,
+        "return_ratio": 1.0,
+        "pause_increase_s": 0.76
+      },
+      {
+        "case": "pauses_only",
+        "seed": 5,
+        "ok": true,
+        "articulation_ratio": 1.082,
+        "return_ratio": 1.085,
+        "pause_increase_s": 0.725
+      },
+      {
+        "case": "slowed_with_longer_pauses",
+        "seed": 1,
+        "ok": true,
+        "articulation_ratio": 0.772,
+        "return_ratio": 1.005,
+        "pause_increase_s": 0.29
+      },
+      {
+        "case": "slowed_with_longer_pauses",
+        "seed": 2,
+        "ok": true,
+        "articulation_ratio": 0.757,
+        "return_ratio": 0.965,
+        "pause_increase_s": 0.305
+      },
+      {
+        "case": "slowed_with_longer_pauses",
+        "seed": 3,
+        "ok": true,
+        "articulation_ratio": 0.759,
+        "return_ratio": 0.971,
+        "pause_increase_s": 0.285
+      },
+      {
+        "case": "slowed_with_longer_pauses",
+        "seed": 4,
+        "ok": true,
+        "articulation_ratio": 0.751,
+        "return_ratio": 1.002,
+        "pause_increase_s": 0.285
+      },
+      {
+        "case": "slowed_with_longer_pauses",
+        "seed": 5,
+        "ok": true,
+        "articulation_ratio": 0.829,
+        "return_ratio": 1.085,
+        "pause_increase_s": 0.255
+      },
+      {
+        "case": "no_return_to_normal",
+        "seed": 1,
+        "ok": true,
+        "articulation_ratio": 0.772,
+        "return_ratio": 0.766,
+        "pause_increase_s": 0.005
+      },
+      {
+        "case": "no_return_to_normal",
+        "seed": 2,
+        "ok": true,
+        "articulation_ratio": 0.756,
+        "return_ratio": 0.737,
+        "pause_increase_s": 0.005
+      },
+      {
+        "case": "no_return_to_normal",
+        "seed": 3,
+        "ok": true,
+        "articulation_ratio": 0.759,
+        "return_ratio": 0.74,
+        "pause_increase_s": -0.005
+      },
+      {
+        "case": "no_return_to_normal",
+        "seed": 4,
+        "ok": true,
+        "articulation_ratio": 0.75,
+        "return_ratio": 0.765,
+        "pause_increase_s": -0.005
+      },
+      {
+        "case": "no_return_to_normal",
+        "seed": 5,
+        "ok": true,
+        "articulation_ratio": 0.83,
+        "return_ratio": 0.829,
+        "pause_increase_s": -0.025
+      }
+    ],
+    "verdicts_ok": 20,
+    "verdicts_total": 20,
+    "tolerance": {
+      "articulation_rel": 0.05,
+      "pause_total_s": 0.02
+    }
+  },
+  "ssml_checks": [
+    {
+      "script": "S-01",
+      "version": "N",
+      "ok": true,
+      "morae": {
+        "pre": 26,
+        "target": 22,
+        "post": 15
+      }
+    },
+    {
+      "script": "S-01",
+      "version": "D",
+      "ok": true,
+      "morae": {
+        "pre": 26,
+        "target": 22,
+        "post": 15
+      }
+    },
+    {
+      "script": "S-02",
+      "version": "N",
+      "ok": true,
+      "morae": {
+        "pre": 16,
+        "target": 16,
+        "post": 22
+      }
+    },
+    {
+      "script": "S-02",
+      "version": "D",
+      "ok": true,
+      "morae": {
+        "pre": 16,
+        "target": 16,
+        "post": 22
+      }
+    },
+    {
+      "script": "S-03",
+      "version": "N",
+      "ok": true,
+      "morae": {
+        "pre": 14,
+        "target": 30,
+        "post": 38
+      }
+    },
+    {
+      "script": "S-03",
+      "version": "D",
+      "ok": true,
+      "morae": {
+        "pre": 14,
+        "target": 30,
+        "post": 38
+      }
+    }
+  ]
+}
