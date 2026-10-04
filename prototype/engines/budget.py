@@ -36,7 +36,7 @@ class Limits:
     max_retries: int = 1
 
 
-# Recommended test budgets (measurement plan v1): about twice the planned counts in
+# Proposed (not yet approved) test budgets, measurement plan v1: about twice the planned counts in
 # cost/measurement_budget.py (one full rerun). OpenAI $15 (plan about $6), AWS Polly $2 (plan about $0.10).
 LIMITS = {
     "openai": Limits(max_requests=700, max_audio_seconds=3600, max_cost_usd=15.0),

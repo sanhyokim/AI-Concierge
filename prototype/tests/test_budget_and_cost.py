@@ -96,25 +96,51 @@ class CostTest(unittest.TestCase):
 
     def test_unconfirmed_prices_stay_symbolic(self):
         total, _ = cost_model.scenario_total("B-Haiku", cost_model.SCENARIOS["中"])
-        for symbol in ("F", "V_stt", "V_tts", "U_ntt", "S_srv"):
+        for symbol in ("F", "B_fwd", "B_num", "V_stt", "V_tts", "U_ntt", "S_srv"):
             self.assertIn(symbol, total.terms)
             self.assertGreater(total.terms[symbol], 0)
         a_total, _ = cost_model.scenario_total("A-2.1", cost_model.SCENARIOS["中"])
         self.assertIn("V_asr", a_total.terms)
         self.assertNotIn("V_stt", a_total.terms)
         text = cost_model.render()
-        self.assertIn("0円にせず", text)
+        self.assertIn("既知の単価と使用量の仮定に基づく概算", text)
+        self.assertIn("未確認の費用（F、B_fwd、B_num", text)
         self.assertIn("Polly単体の費用で、案B全体", text)
+        self.assertNotIn("確定分", text)
 
     def test_hand_check_low_scenario_plan_a(self):
-        # 60 AI calls + 90 human calls + Twilio number, plus JPY items (voicewarp 550, extra number 110, LINE 0)
+        # 60 AI calls + 90 human calls (two Twilio legs each) + Twilio number + LINE 0.
+        # Twilio legs are billed 3.5 min (3 min + average rounding 0.5); hikari prices are NOT included.
+        billed = 3.5
         ai = sum(cost_model.ai_call(cost_model.CONFIGS["A-2.1"]).values(), cost_model.Money()).usd
-        human = (0.0100 + 0.0746) * 3
-        usd = 60 * ai + 90 * human + 4.75
-        expected = usd * 1.1 * 150 + 550 + 110
+        ai_expected = (0.0100 + 0.0025 + 0.0044) * billed + cost_model.plan_a_model("openai_rt21").usd \
+            + cost_model.summary("anthropic_haiku45").usd
+        self.assertAlmostEqual(ai, ai_expected, places=9)
+        human = (0.0100 + 0.0746) * billed
+        expected = (60 * ai + 90 * human + 4.75) * 1.1 * 150
         total, _ = cost_model.scenario_total("A-2.1", cost_model.SCENARIOS["少"])
         self.assertAlmostEqual(total.jpy_total(), expected, places=6)
-        self.assertEqual(total.terms["F"], 450)
+        self.assertEqual(total.terms["F"], 150)
+        self.assertEqual((total.terms["B_fwd"], total.terms["B_num"]), (1, 1))
+
+    def test_hikari_prices_only_in_conditional_reference(self):
+        total, _ = cost_model.scenario_total("A-2.1", cost_model.SCENARIOS["少"])
+        self.assertEqual(total.jpy, 0)  # no JPY item: LINE is free at this volume, NTT items are symbols
+        ref = cost_model.hikari_reference(total)
+        self.assertAlmostEqual(ref, 150 * 1.5 * 11.55 + 550 + 110, places=6)
+        self.assertAlmostEqual(cost_model.hikari_reference(total, from_2027_04=True), 150 * 1.5 * 13.2 + 550 + 110,
+                               places=6)
+
+    def test_rounding_allowance_per_twilio_leg(self):
+        cfg = cost_model.CONFIGS["B-Haiku"]
+        hi = sum(cost_model.ai_call(cfg).values(), cost_model.Money()).usd
+        lo = sum(cost_model.ai_call(cfg, round_allow=False).values(), cost_model.Money()).usd
+        self.assertAlmostEqual(hi - lo, 0.5 * (0.0100 + 0.0025 + 0.07), places=9)  # inbound, recording, Relay
+        h_hi = sum(cost_model.human_call().values(), cost_model.Money()).usd
+        h_lo = sum(cost_model.human_call(round_allow=False).values(), cost_model.Money()).usd
+        self.assertAlmostEqual(h_hi - h_lo, 0.5 * (0.0100 + 0.0746), places=9)  # two legs, each rounded
+        self.assertAlmostEqual(cost_model.ntt_units(3.0), 1.5)
+        self.assertAlmostEqual(cost_model.ntt_units(3.0, round_allow=False), 1.0)
 
 
 class RunnerUsageTest(unittest.TestCase):
