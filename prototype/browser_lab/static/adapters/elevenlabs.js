@@ -1,7 +1,8 @@
 // ElevenLabs ElevenAgents through the official JS client (@elevenlabs/client from jsDelivr) and a signed URL
 // minted by the local server. The agent and its client tools are configured in the ElevenLabs dashboard
 // (docs/browser-lab-setup.md); the tool bodies here call the local server.
-// Written from the public docs (2026-10-05); the connection has not been confirmed with a real account.
+// The FAQ comes from lookup_faq (the call's settings snapshot), so admin-page FAQ edits apply without
+// changing the agent. Written from the public docs (2026-10-05); the connection has not been confirmed with a real account.
 export async function connect(ctx) {
   const { signed_url: signedUrl, client_esm: esm } = ctx.credentials;
   const { Conversation } = await import(esm);
@@ -10,7 +11,8 @@ export async function connect(ctx) {
   conv = await Conversation.startSession({
     signedUrl,
     clientTools: { save_field: tool("save_field"), request_readback: tool("request_readback"),
-                   confirm_field: tool("confirm_field") },
+                   confirm_field: tool("confirm_field"), lookup_faq: tool("lookup_faq"),
+                   flag_emergency: tool("flag_emergency") },
     onMessage: (m) => {
       const role = m && m.source === "user" ? "user" : "ai";
       if (role === "user") lastUser = m.message || "";

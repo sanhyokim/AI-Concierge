@@ -16,17 +16,26 @@ const SCENARIOS = [
   { id: "C6", title: "専門用語・番号・日時", how: "株式会社野田、ダクト、無煙ロースター、電話番号、日付・時間を伝える",
     check: "発音・受付の正確さ。電話番号・日時を区切って明瞭に復唱し、確認する（部分減速は必須ではない）" },
 ];
-const JUDGE_ITEMS = [
+// Audio-only judgments (any candidate) and business-logic judgments (only where tool calls reached the server).
+const JUDGE_AUDIO = [
   ["needless_stop", "相づちで不要に止まった"], ["missed_correction", "訂正を取りこぼした"],
-  ["stop_ok", "停止の求めに応じた"], ["data_ok", "受付情報が正しく残った"], ["natural", "自然さ（1〜5）"],
+  ["stop_ok", "停止の求めに応じた"], ["natural", "自然さ（1〜5）"],
 ];
+const JUDGE_LOGIC = [["readback_ok", "番号・日時の復唱と確認が正しい"], ["data_ok", "受付記録が会話と一致"]];
+const JUDGE_ITEMS = [...JUDGE_AUDIO, ...JUDGE_LOGIC];
+const STOP_WINDOW_MS = 2500;   // a stop within this counts as a reaction to the caller
+const SLOW_LIMIT_MS = 6000;    // a later stop is still measured and reported as slow
+const AI_END_HOLD_MS = 250;    // the AI's end is confirmed this long after its audio drops
+const SHORT_UTTERANCE_MS = 600;
+const OUTCOME_LABELS = { stopped: "2.5秒以内に停止", slow_stop: "遅い停止（2.5〜6秒）", not_stopped: "止まらず（6秒以内に停止なし）",
+  superseded: "判定前に次の発話（未判定）", open_at_end: "会話の終了で未判定" };
 const C5_DELAY_MS = 4000;
 const $ = (id) => document.getElementById(id);
 
 const st = {
   candidates: [], session: null, adapter: null, conn: null, ac: null, mic: null,
   micAnalyser: null, aiAnalyser: null, t0: 0, timer: null, loop: null, scenario: "C1",
-  events: [], transcripts: [], toolCalls: [], latencies: [], stops: [], flags: [],
+  events: [], transcripts: [], toolCalls: [], latencies: [], stops: [], flags: [], interruptions: [], csrf: "", lastInterrupt: null,
   user: { on: false, since: null, below: null, startT: null }, ai: { on: false, since: null, below: null, startT: null },
   lastUserEnd: null, lastAiEnd: null, pendingInterrupt: null, userSpeechListeners: new Set(),
 };
@@ -43,7 +52,7 @@ function log(kind, data) {
 }
 
 async function post(url, body) {
-  const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json", "X-CSRF-Token": st.csrf }, body: JSON.stringify(body) });
   const j = await r.json();
   if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
   return j;
@@ -62,11 +71,30 @@ function levelDb(analyser) {
 function metric(kind, value, extra) {
   const row = { scenario: st.scenario, kind, value_ms: value, t_ms: now(), ...(extra || {}) };
   if (kind === "応答の遅延") st.latencies.push(row);
-  if (kind === "割り込みで止まるまで") st.stops.push(row);
   if (kind === "相づちで停止の可能性") st.flags.push(row);
+  addMetricRow(row.scenario, kind, value === null ? "要確認" : `${value} ms`, kind.startsWith("相づち"));
+  updateSummary();
+}
+
+function addMetricRow(scenario, kind, text, flag) {
   const tr = document.createElement("tr");
-  tr.innerHTML = `<td>${row.scenario}</td><td class="${kind.startsWith("相づち") ? "flag" : ""}">${kind}</td><td>${value === null ? "要確認" : value + " ms"}</td>`;
+  tr.innerHTML = `<td>${scenario}</td><td class="${flag ? "flag" : ""}">${kind}</td><td>${text}</td>`;
   $("metrics").prepend(tr);
+}
+
+// Every interruption gets an outcome. Nothing is dropped: slow, missing and undecided stops are kept and counted.
+function resolveInterrupt(p, outcome, value) {
+  if (p.row) return;
+  p.row = { scenario: p.scenario, kind: "割り込み", outcome, outcome_label: OUTCOME_LABELS[outcome], value_ms: value,
+            t_ms: p.t, user_utterance_ms: p.dur ?? null };
+  st.interruptions.push(p.row);
+  if (outcome === "stopped" || outcome === "slow_stop") st.stops.push({ ...p.row, kind: "割り込みで止まるまで" });
+  const short = p.dur !== undefined && p.dur < SHORT_UTTERANCE_MS;
+  const label = outcome === "not_stopped" && short ? "相づちの後も話し続けた（C1では期待どおりの可能性）" : OUTCOME_LABELS[outcome];
+  addMetricRow(p.scenario, `割り込み：${label}`, value === null ? "—" : `${value} ms`, outcome !== "stopped");
+  if ((outcome === "stopped" || outcome === "slow_stop") && short) metric("相づちで停止の可能性", null, { utterance_ms: p.dur });
+  if (st.pendingInterrupt === p) st.pendingInterrupt = null;
+  st.lastInterrupt = p;
   updateSummary();
 }
 
@@ -78,9 +106,12 @@ function pct(list, q) {
 
 function updateSummary() {
   const f = (x) => (x === null ? "—" : `${x} ms`);
+  const n = (o) => st.interruptions.filter((r) => r.outcome === o).length;
+  const shortNot = st.interruptions.filter((r) => r.outcome === "not_stopped" && r.user_utterance_ms !== null && r.user_utterance_ms < SHORT_UTTERANCE_MS).length;
   $("summary").textContent = `応答の遅延：中央値 ${f(pct(st.latencies, 0.5))}・p90 ${f(pct(st.latencies, 0.9))}（${st.latencies.length}件）／` +
-    `割り込みで止まるまで：中央値 ${f(pct(st.stops, 0.5))}・p90 ${f(pct(st.stops, 0.9))}（${st.stops.length}件）／` +
-    `相づちで停止の可能性：${st.flags.length}件（自動推定。判定欄で確認）`;
+    `割り込み ${st.interruptions.length}件：2.5秒以内に停止 ${n("stopped")}件・遅い停止 ${n("slow_stop")}件・止まらず ${n("not_stopped")}件（うち短い発話 ${shortNot}件）・` +
+    `未判定 ${n("superseded") + n("open_at_end")}件。停止までの中央値 ${f(pct(st.stops, 0.5))}・p90 ${f(pct(st.stops, 0.9))}は、停止を測れた${st.stops.length}件だけで計算／` +
+    `相づちで停止の可能性：${st.flags.length}件（自動推定。判定欄で確認）。AIが自然に話し終えた場合も停止に数えることがあり、自動では区別できない`;
 }
 
 // Voice-activity detection on both sides with hangover; start/end times are the first frame over/under.
@@ -109,13 +140,7 @@ function tick() {
   $("micBar").style.width = `${Math.max(0, Math.min(100, (micDb + 70) * 1.6))}%`;
   $("aiBar").style.width = `${Math.max(0, Math.min(100, (aiDb + 70) * 1.6))}%`;
   const micThr = Number($("micThr").value), aiThr = Number($("aiThr").value);
-  const STOP_WINDOW_MS = 2500;   // a stop counts as a reaction to the caller only within this window
-  const p = st.pendingInterrupt;
-  if (p && p.stoppedAt === undefined && now() - p.t > STOP_WINDOW_MS) {
-    log("AIは話し続けた", { after_user_start_ms: STOP_WINDOW_MS });   // e.g. a backchannel correctly ignored
-    st.pendingInterrupt = null;
-  }
-  step("ai", aiDb, aiThr, 40, 250, (t) => {
+  step("ai", aiDb, aiThr, 40, AI_END_HOLD_MS, (t) => {
     if (st.lastUserEnd !== null && (st.lastAiEnd === null || st.lastUserEnd > st.lastAiEnd) && !st.user.on) {
       metric("応答の遅延", t - st.lastUserEnd);
     }
@@ -123,26 +148,33 @@ function tick() {
   }, (t) => {
     st.lastAiEnd = t;
     const q = st.pendingInterrupt;
-    if (q && q.stoppedAt === undefined && t - q.t <= STOP_WINDOW_MS) {
-      q.stoppedAt = t;
-      metric("割り込みで止まるまで", t - q.t);
-      if (q.dur !== undefined && q.dur < 600) metric("相づちで停止の可能性", null, { utterance_ms: q.dur });
-      if (q.dur !== undefined) st.pendingInterrupt = null;
+    if (q) {   // t is the first quiet frame, so the measured time does not include the end hold
+      const ms = t - q.t;
+      resolveInterrupt(q, ms <= STOP_WINDOW_MS ? "stopped" : ms <= SLOW_LIMIT_MS ? "slow_stop" : "not_stopped", ms <= SLOW_LIMIT_MS ? ms : null);
     }
     log("ai_audio_end");
   });
+  // checked after the AI side, with the end hold added, so a stop at 2.4 s is never mistaken for "kept talking"
+  const p = st.pendingInterrupt;
+  if (p && now() - p.t > SLOW_LIMIT_MS + AI_END_HOLD_MS + 40) {
+    log("AIは話し続けた", { after_user_start_ms: SLOW_LIMIT_MS, user_utterance_ms: p.dur ?? null });
+    resolveInterrupt(p, "not_stopped", null);
+  }
   step("user", micDb, micThr, 60, 300, (t) => {
-    if (st.ai.on) st.pendingInterrupt = { t };
+    if (st.ai.on) {
+      if (st.pendingInterrupt) resolveInterrupt(st.pendingInterrupt, "superseded", null);
+      st.pendingInterrupt = { t, scenario: st.scenario };
+    }
     log("user_speech_start", st.ai.on ? "AIの発話中" : undefined);
     for (const cb of st.userSpeechListeners) cb("start");
   }, (t, dur) => {
     st.lastUserEnd = t;
-    const q = st.pendingInterrupt;
+    const q = st.pendingInterrupt || (st.lastInterrupt && st.lastInterrupt.dur === undefined && st.lastInterrupt.t === t - dur ? st.lastInterrupt : null);
     if (q) {
       q.dur = dur;
-      if (q.stoppedAt !== undefined) {
-        if (dur < 600) metric("相づちで停止の可能性", null, { utterance_ms: dur });
-        st.pendingInterrupt = null;
+      if (q.row) {
+        q.row.user_utterance_ms = dur;
+        if ((q.row.outcome === "stopped" || q.row.outcome === "slow_stop") && dur < SHORT_UTTERANCE_MS) metric("相づちで停止の可能性", null, { utterance_ms: dur });
       }
     }
     log("user_speech_end", { duration_ms: dur });
@@ -162,7 +194,7 @@ function makeCtx(creds) {
       const call = { t_ms: now(), scenario: st.scenario, name, args, delay_ms: delay };
       log("業務処理", { name, args, delay_ms: delay || undefined });
       try {
-        call.result = await post("/api/tool", { session_id: st.session.session_id, name, args, caller_utterance: callerUtterance || "", delay_ms: delay });
+        call.result = await post("api/tool", { session_id: st.session.session_id, name, args, caller_utterance: callerUtterance || "", delay_ms: delay });
       } catch (e) { call.result = { ok: false, reason: String(e.message || e) }; }
       st.toolCalls.push(call);
       log("業務処理の結果", call.result);
@@ -175,8 +207,9 @@ async function start() {
   const cand = st.candidates.find((c) => c.id === $("candidate").value);
   if (!cand || !cand.ready) return;
   $("startBtn").disabled = true;
-  Object.assign(st, { events: [], transcripts: [], toolCalls: [], latencies: [], stops: [], flags: [],
-    lastUserEnd: null, lastAiEnd: null, pendingInterrupt: null });
+  Object.assign(st, { events: [], transcripts: [], toolCalls: [], latencies: [], stops: [], flags: [], interruptions: [],
+    lastUserEnd: null, lastAiEnd: null, pendingInterrupt: null, lastInterrupt: null });
+  $("saveBtn").disabled = true;
   st.user = { on: false, since: null, below: null, startT: null };
   st.ai = { on: false, since: null, below: null, startT: null };
   $("metrics").innerHTML = ""; $("log").innerHTML = ""; $("saved").textContent = ""; updateSummary();
@@ -190,10 +223,12 @@ async function start() {
     st.aiAnalyser = st.ac.createAnalyser(); st.aiAnalyser.fftSize = 1024;
     st.ac.createMediaStreamSource(st.mic).connect(st.micAnalyser);
     $("status").textContent = "接続中";
-    st.session = await post("/api/session/start", { candidate: cand.id });
+    st.session = await post("api/session/start", { candidate: cand.id });
     st.t0 = performance.now();
-    log("session_start", { candidate: cand.id, verified: st.session.verified });
+    log("session_start", { candidate: cand.id, verified: st.session.verified, call_id: st.session.call_id, voice: st.session.voice });
     if (!st.session.verified) log("注意", "この構成は公式資料に沿って書いたが、接続はまだ確かめていない");
+    $("callInfo").innerHTML = `業務処理：${st.session.logic_path}。受付の記録 <code>${st.session.call_id}</code>（設定 v${st.session.config_version}、FAQ ${st.session.faq_codes.join(", ")}）` +
+      (location.pathname.startsWith("/lab/") ? ` <a href="../#/call/${encodeURIComponent(st.session.call_id)}" target="_blank" rel="noopener">管理画面で開く</a>` : "");
     const mod = await import(`./adapters/${st.session.adapter}.js`);
     st.conn = await mod.connect(makeCtx(st.session.credentials));
     st.loop = setInterval(tick, 20);
@@ -205,6 +240,7 @@ async function start() {
     }, 250);
     $("status").textContent = "会話中";
     $("stopBtn").disabled = false;
+    $("refuseBtn").disabled = false;
   } catch (e) {
     log("エラー", String(e.message || e));
     $("status").textContent = "開始できませんでした";
@@ -214,13 +250,15 @@ async function start() {
 
 async function stop(reason) {
   $("stopBtn").disabled = true;
+  $("refuseBtn").disabled = true;
+  if (st.pendingInterrupt) resolveInterrupt(st.pendingInterrupt, "open_at_end", null);
   clearInterval(st.loop); clearInterval(st.timer);
   st.userSpeechListeners.clear();
   const duration = st.t0 ? (performance.now() - st.t0) / 1000 : 0;
   try { if (st.conn) await st.conn.close(); } catch (e) { log("close_error", String(e)); }
   if (st.mic) st.mic.getTracks().forEach((t) => t.stop());
   if (st.session) {
-    try { st.session.ended = await post("/api/session/end", { session_id: st.session.session_id, duration_s: duration, reason: reason || "試験者が終了" }); }
+    try { st.session.ended = await post("api/session/end", { session_id: st.session.session_id, duration_s: duration, reason: reason || "試験者が終了" }); }
     catch (e) { log("end_error", String(e.message || e)); }
     st.session.duration_s = duration;
     log("session_end", { reason: reason || "試験者が終了", duration_s: Math.round(duration), estimate: st.session.ended });
@@ -232,11 +270,20 @@ async function stop(reason) {
   $("startBtn").disabled = false;
 }
 
+async function refuseAi() {
+  // the tester plays a caller who refuses AI processing: the server records it and refuses further AI work
+  const r = await post("api/consent", { session_id: st.session.session_id, kind: "ai_refused" });
+  log("AIの拒否（模擬）", r.actions.map((a) => a.label));
+  if (r.stop_ai) await stop("AIの拒否（業者への接続を閉じた）");
+}
+
 async function save() {
-  const judgments = {};
+  const judgments = {}, audio = {}, logic = {};
   for (const s of SCENARIOS) {
-    judgments[s.id] = {};
+    judgments[s.id] = {}; audio[s.id] = {}; logic[s.id] = {};
     for (const [key] of JUDGE_ITEMS) judgments[s.id][key] = $(`j-${s.id}-${key}`).value || null;
+    for (const [key] of JUDGE_AUDIO) audio[s.id][key] = judgments[s.id][key];
+    for (const [key] of JUDGE_LOGIC) logic[s.id][key] = judgments[s.id][key];
   }
   const payload = {
     candidate: st.session.candidate, session_id: st.session.session_id, adapter: st.session.adapter,
@@ -244,12 +291,16 @@ async function save() {
     condition: { output: $("output").value, echo_cancellation: $("echo").checked,
                  thresholds_db: { mic: Number($("micThr").value), ai: Number($("aiThr").value) }, user_agent: navigator.userAgent },
     duration_s: st.session.duration_s, ledger_estimate: st.session.ended || null,
-    metrics: { latencies: st.latencies, interruption_stops: st.stops, backchannel_stop_flags: st.flags,
-               note: "端末の音量で測った値。相づちの停止は自動推定で、判定欄の記入が正" },
+    metrics: { latencies: st.latencies, interruptions: st.interruptions, interruption_stops: st.stops, backchannel_stop_flags: st.flags,
+               note: "端末の音量で測った値。割り込みはすべて結果付きで残す（遅い停止・止まらず・未判定を含む）。相づちの停止は自動推定で、判定欄の記入が正" },
+    comparison: { audio_only: { judgments: audio, note: "音声だけの比較（すべての候補）" },
+                  business_logic: { logic_path: st.session.logic_path, judgments: logic,
+                                    note: "業務処理を含む比較。サーバーが業務処理を受け取らなかった会話は未評価" } },
     judgments, notes: $("notes").value, transcripts: st.transcripts, tool_calls: st.toolCalls, events: st.events,
   };
-  const r = await post("/api/results", payload);
+  const r = await post("api/results", payload);
   $("saved").textContent = `保存しました：${r.saved}`;
+  $("saveBtn").disabled = true;   // one file per conversation
 }
 
 function renderStatic() {
@@ -259,21 +310,26 @@ function renderStatic() {
   const opts = (key) => key === "natural"
     ? `<option value="">—</option>${[1, 2, 3, 4, 5].map((n) => `<option>${n}</option>`).join("")}`
     : `<option value="">—</option><option value="yes">はい</option><option value="no">いいえ</option><option value="na">該当なし</option>`;
-  $("judge").innerHTML = `<div></div>${JUDGE_ITEMS.map(([, l]) => `<div><b>${l}</b></div>`).join("")}` +
+  $("judge").style.gridTemplateColumns = `70px repeat(${JUDGE_ITEMS.length}, minmax(96px, 1fr))`;
+  $("judge").innerHTML = `<div></div>${JUDGE_AUDIO.map(() => "<div class='grp'>音声</div>").join("")}${JUDGE_LOGIC.map(() => "<div class='grp'>業務処理</div>").join("")}` +
+    `<div></div>${JUDGE_ITEMS.map(([, l]) => `<div><b>${l}</b></div>`).join("")}` +
     SCENARIOS.map((s) => `<div><b>${s.id}</b></div>${JUDGE_ITEMS.map(([k]) => `<select id="j-${s.id}-${k}" aria-label="${s.id} ${k}">${opts(k)}</select>`).join("")}`).join("");
 }
 
 async function loadCandidates() {
-  const r = await fetch("/api/candidates");
-  st.candidates = (await r.json()).candidates;
+  try { st.csrf = (await (await fetch("api/csrf")).json()).csrf || ""; } catch (e) { st.csrf = ""; }
+  const r = await fetch("api/candidates");
+  const listed = await r.json();
+  st.candidates = listed.candidates;
+  st.stage = listed.stage_label;
   $("candidate").innerHTML = st.candidates.map((c) => `<option value="${c.id}" ${c.ready ? "" : "disabled"}>` +
     `${c.name}${c.ready ? "" : `（未設定：${c.missing_env.join("・")}）`}${c.verified ? "" : "［接続未確認］"}</option>`).join("");
   const first = st.candidates.find((c) => c.ready);
   if (first) $("candidate").value = first.id;
   const showNote = () => {
     const c = st.candidates.find((x) => x.id === $("candidate").value);
-    $("candNote").textContent = c ? `${c.verified ? "" : "接続未確認の構成です。"}${c.note || ""}` : "";
-    $("limit").textContent = c ? `1回の会話は最大${c.max_session_min}分（自動で終了）。上限の目安 $${c.upper_usd_per_min}/分で台帳に留保します。` : "";
+    $("candNote").textContent = c ? `${c.verified ? "" : "接続未確認の構成です。"}業務処理の経路：${c.logic_path}。${c.note || ""}` : "";
+    $("limit").textContent = c ? `いまの段階：${st.stage}。1回の会話は最大${c.max_session_min}分（自動で終了）。上限の目安 $${c.upper_usd_per_min}/分で台帳に留保し、段階ごとの上限を超える会話は始めません。` : "";
   };
   $("candidate").addEventListener("change", showNote);
   showNote();
@@ -282,6 +338,12 @@ async function loadCandidates() {
 $("startBtn").addEventListener("click", start);
 $("stopBtn").addEventListener("click", () => stop());
 $("saveBtn").addEventListener("click", save);
+$("refuseBtn").addEventListener("click", () => refuseAi().catch((e) => log("エラー", String(e.message || e))));
 renderStatic();
 loadCandidates();
+if (location.pathname.startsWith("/lab/")) {   // served by the admin app: link back to it
+  const a = document.createElement("a");
+  a.href = "../#/"; a.textContent = "← 管理画面へ";
+  document.querySelector("main").prepend(a);
+}
 window.__lab = st;   // for the automated smoke test

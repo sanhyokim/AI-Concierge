@@ -38,7 +38,9 @@
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
   th, td { border-bottom: 1px solid var(--line); padding: 4px 6px; text-align: left; vertical-align: top; }
   #log { height: 220px; overflow: auto; font: 12px/1.5 ui-monospace, monospace; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 6px; }
-  .judge { display: grid; grid-template-columns: 70px repeat(5, 1fr); gap: 4px 8px; align-items: center; font-size: 13px; overflow-x: auto; }
+  .judge { display: grid; grid-template-columns: 70px repeat(6, minmax(96px, 1fr)); gap: 4px 8px; align-items: center; font-size: 13px; overflow-x: auto; }
+  .judge .grp { color: var(--muted); font-size: 12px; }
+  code { font-size: 12px; }
   .judge select { padding: 2px; }
   .flag { color: var(--warn); }
 </style>
@@ -46,7 +48,8 @@
 <body>
 <main>
   <h1>ブラウザー会話試験（AI受電）</h1>
-  <p class="sub">共通の受付業務と台本で、候補を切り替えて実際に話します。架空の情報だけを使ってください。計測は端末の音量で行い、業者のイベントには頼りません。</p>
+  <p class="sub">共通の受付業務と台本で、候補を切り替えて実際に話します。架空の情報だけを使ってください。計測は端末の音量で行い、業者のイベントには頼りません。業務処理（FAQ・確認・保存）は管理画面と同じ共通の処理で、FAQ・声は会話の開始時の設定を使います。</p>
+  <p class="note">まず各候補1〜2回の接続と短い会話だけを確かめ、動いた候補で詳しい比較（C1〜C6）へ進みます。音声だけの評価と、業務処理を含む評価は分けて記録します。</p>
 
   <div class="grid">
     <section>
@@ -60,10 +63,12 @@
       <div class="row">
         <button class="primary" id="startBtn">会話を始める</button>
         <button id="stopBtn" disabled>終える</button>
+        <button id="refuseBtn" disabled title="お客様がAIでの処理を拒否した想定。業者への接続を閉じ、以降の業務処理を拒否する">AIの拒否（模擬）</button>
         <span class="status" id="status">待機中</span>
         <span id="timer">0:00</span>
       </div>
       <p class="sub" id="limit"></p>
+      <p class="sub" id="callInfo"></p>
       <div>マイク <span id="micDb"></span></div><div class="meter"><div id="micBar"></div></div>
       <div>AIの音 <span id="aiDb"></span></div><div class="meter"><div id="aiBar"></div></div>
       <details><summary>判定のしきい値</summary>

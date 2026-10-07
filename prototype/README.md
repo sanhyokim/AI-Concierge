@@ -107,15 +107,29 @@ python3 -m prototype.engines.run_dialog --scenario R-03 --voice marin \
 
 TwiMLの生成、トークンの組み立て、割り込み時の履歴の切り詰め、AIを拒否されたときの `end` による受け渡しは、オフラインで検査しています。
 
+## 2.4 管理画面と受付の共通処理（業者を使わない。認証情報は不要）
+
+```bash
+python3 -m prototype.admin          # http://127.0.0.1:8780 を開く。最初の起動でパスワードが1回だけ表示される
+```
+
+- 受電設定・スケジュール・FAQ・音声・受付履歴・補正・通知・架空の着信テスト・操作履歴の画面があります。詳しくは[管理画面と受付の共通処理 v1](../docs/admin-app-v1.md)。
+- 設定と記録は `prototype/data/reception.sqlite3`（gitの対象外）に保存され、再起動後も残ります。
+- 会社回線・LINEには接続していません。通知はシミュレーションです。
+- 自動試験：`node prototype/tests/admin_smoke.cjs [画像の保存先]`（PCとスマートフォンの幅で画面を操作。Pythonのテストからも呼ばれる）
+
 ## 2.5 ブラウザーでの会話試験（試験をする人のPCで動かす）
 
 ```bash
-python3 -m prototype.browser_lab          # http://127.0.0.1:8765 を開く
+python3 -m prototype.admin                # http://127.0.0.1:8780/lab/ を開く（管理画面と同じログイン）
+python3 -m prototype.browser_lab          # 単独で動かす場合：http://127.0.0.1:8765
 ```
 
-- 候補を切り替えてマイクで話し、端末の音量で応答の遅延と割り込みで止まるまでの時間を測ります。手順と業者ごとの準備は[ブラウザー会話試験の準備](../docs/browser-lab-setup.md)にあります。
+- 候補を切り替えてマイクで話し、端末の音量で応答の遅延と割り込みの結果を測ります。手順と業者ごとの準備は[ブラウザー会話試験の準備](../docs/browser-lab-setup.md)にあります。
+- 業務処理（FAQ・確認・保存）は、管理画面と同じ受付の共通処理を使います。
 - 鍵はそのPCの環境変数から読み、ブラウザーには渡しません。鍵がない構成は選べません。
-- 業者への接続は、公式資料に沿って書いたもので、まだ確かめていません。「オフラインの模擬」で、画面と計測の流れを確かめられます。
+- 既定は接続の予備試験の上限です。詳しい比較は `LAB_STAGE=detailed` を付けて起動します。
+- 業者への接続は、公式資料に沿って書いたもので、まだ確かめていません。「オフラインの模擬」で、画面・計測・業務処理の流れを確かめられます。
 - 自動試験：`node prototype/tests/browser_lab_smoke.cjs`（偽のマイクと模擬の構成。Pythonのテストからも呼ばれる）
 
 ## 3. ファイル構成
@@ -134,6 +148,8 @@ python3 -m prototype.browser_lab          # http://127.0.0.1:8765 を開く
 | `engines/budget.py` | 利用量の台帳（送る前の留保、照合）、回数・音声の秒数・費用の上限、再試行の制限 |
 | `engines/accounting.py` | 対話の発話ごとの留保と、使用量のIDによるひも付け |
 | `browser_lab/` | ブラウザー会話試験（サーバー・画面・各社のアダプター） |
+| `reception/` | 受付の共通処理：保存（SQLite）、設定と初期値（暫定・架空）、受電モードの判定、FAQ、受付・同意・要約、通知の送信待ち、試験用の規則の応答 |
+| `admin/` | 管理画面（サーバー・ログイン・画面） |
 | `cost/candidates.json`、`cost/candidate_costs.py` | 候補一覧と、同じ前提での比較枠 |
 | `engines/make_caller_audio.py` | 対話試験の発信者の音声を、候補ではない声で作る |
 | `cost/` | 単価（`prices.json`）、費用比較表を作る `cost_model.py`、実測計画の費用の見込み `measurement_budget.py` |

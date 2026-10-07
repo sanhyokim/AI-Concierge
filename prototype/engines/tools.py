@@ -4,8 +4,10 @@ Confirmation is enforced here (FieldState.confirm), not left to the model.
 """
 from __future__ import annotations
 
+import datetime as dt
+
 from ..concierge.confirmation import FieldStore
-from ..concierge.readings import digits_only, phone_reading
+from ..concierge.readings import date_phrase, datetime_phrase, digits_only, phone_reading
 
 
 class ToolHandler:
@@ -16,6 +18,20 @@ class ToolHandler:
 
     def _normalize(self, field: str, value: str) -> str:
         return digits_only(value) if field == "callback_number" else value.strip()
+
+    @staticmethod
+    def _reading(field: str, value: str) -> str:
+        """Phone numbers digit by digit in groups; a date-time given as ISO 8601 as a phrase with the weekday."""
+        if field == "callback_number":
+            return phone_reading(value)
+        if field == "preferred_datetime":
+            try:
+                if len(value) == 10:   # a date without a time
+                    return date_phrase(dt.date.fromisoformat(value))[0]
+                return datetime_phrase(dt.datetime.fromisoformat(value))[0]
+            except ValueError:
+                return value
+        return value
 
     def handle(self, name: str, args: dict, t_ms: int | None = None) -> dict:
         field = args.get("field", "")
@@ -28,7 +44,7 @@ class ToolHandler:
                 result = {"ok": False, "reason": "no value saved yet"}
             else:
                 state.read_back(state.value, t_ms=t_ms)
-                reading = phone_reading(state.value) if field == "callback_number" else state.value
+                reading = self._reading(field, state.value)
                 result = {"ok": True, "read_this_clearly": reading, "then_ask": "こちらでお間違いないでしょうか。"}
         elif name == "confirm_field":
             ok, reason = self.store.get(field).confirm(self._normalize(field, args.get("value", "")),

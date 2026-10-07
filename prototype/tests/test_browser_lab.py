@@ -115,6 +115,89 @@ class LabTest(unittest.TestCase):
         self.assertEqual(len(saved["server_tool_calls"]), 3)
 
 
+class LabBusinessLogicTest(unittest.TestCase):
+    """The lab's tool calls go to the common reception service; vendor bodies follow the call's snapshot."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.dir = pathlib.Path(self.tmp.name)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def lab(self, env, responses=None):
+        return Lab(env=env, http=FakeHttp(responses or {}), ledger_path=self.dir / "ledger.jsonl",
+                   results_dir=self.dir / "results")
+
+    def test_gpt_live_uses_responses_delegation_with_the_reception_tools(self):
+        lab = self.lab({"OPENAI_API_KEY": "secret-key"},
+                       {"live/sessions": {"transport": {"sdp": "answer"}, "session": {"id": "ls_1"}}})
+        faq = next(f for f in lab.service.faqs() if f["code"] == "FAQ-02")
+        lab.service.save_faq({**faq, "enabled": False}, "tester", faq["id"])
+        s = lab.start("gpt-live-1")
+        self.assertEqual(lab.sdp(s["session_id"], "offer")["sdp"], "answer")
+        body = lab.http.calls[-1]["body"]["session"]
+        self.assertEqual(body["delegation"]["type"], "responses")
+        names = [t["name"] for t in body["delegation"]["responses"]["tools"]]
+        self.assertEqual(names, ["save_field", "request_readback", "confirm_field", "lookup_faq", "flag_emergency"])
+        self.assertEqual(body["delegation"]["responses"]["model"], "gpt-6-luna")
+        self.assertIn("点検は無料です。", body["instructions"])            # FAQ from the admin settings
+        self.assertNotIn("2万5千円", body["instructions"])                  # disabled FAQ is not given
+        self.assertNotIn("secret-key", json.dumps(body))
+        with self.assertRaises(ValueError):                                 # one vendor session per reservation
+            lab.sdp(s["session_id"], "offer")
+
+    def test_cartesia_uses_the_agent_websocket_with_client_tools(self):
+        lab = self.lab({"CARTESIA_API_KEY": "k", "CARTESIA_AGENT_ID": "agent_1"}, {"access-token": {"token": "tok"}})
+        creds = lab.start("cartesia-agents")["credentials"]
+        self.assertEqual(creds["ws_url"], "wss://api.cartesia.ai/v1/agents/websocket/agent_1")
+        self.assertEqual(creds["start"], {"type": "session_create", "audio": {"input_format": "pcm_16000"}})
+
+    def test_tool_calls_use_the_snapshot_and_the_guard_and_refusal_is_final(self):
+        lab = self.lab({})
+        s = lab.start("fake")
+        sid = s["session_id"]
+        self.assertTrue(lab.tool(sid, "lookup_faq", {"question": "点検は無料ですか"})["found"])
+        lab.tool(sid, "save_field", {"field": "callback_number", "value": "090-1234-5678"})
+        lab.tool(sid, "request_readback", {"field": "callback_number"})
+        self.assertFalse(lab.tool(sid, "confirm_field", {"field": "callback_number", "value": "09012345678"},
+                                  caller_utterance="はい、違います")["ok"])
+        res = lab.consent(sid, "ai_refused")
+        self.assertTrue(res["stop_ai"])
+        self.assertEqual(lab.tool(sid, "save_field", {"field": "request", "value": "x"})["reason"], "ai_refused")
+        lab.end(sid, 30)
+        saved = json.loads(pathlib.Path(lab.save_results({"candidate": "fake", "session_id": sid})).read_text())
+        self.assertTrue(saved["comparison"]["business_logic_status"].startswith("評価対象"))
+        self.assertEqual(saved["server_fields"]["callback_number"]["status"], "awaiting_confirmation")
+        view = lab.service.call_view(s["call_id"])
+        self.assertEqual((view["source"], view["notifications"]), ("browser_lab", []))   # the lab notifies no one
+
+    def test_no_tool_calls_means_business_logic_not_evaluated(self):
+        lab = self.lab({})
+        sid = lab.start("fake")["session_id"]
+        lab.end(sid, 5)
+        saved = json.loads(pathlib.Path(lab.save_results({"candidate": "fake", "session_id": sid})).read_text())
+        self.assertTrue(saved["comparison"]["business_logic_status"].startswith("未評価"))
+
+    def test_connection_stage_allows_only_the_first_short_sessions(self):
+        from prototype.engines.budget import BudgetExceeded
+        lab = self.lab({"GEMINI_API_KEY": "k"}, {"auth_tokens": {"name": "auth_tokens/abc"}})
+        self.assertEqual(lab.stage, "connection")
+        for _ in range(2):
+            lab.end(lab.start("gemini-3.8-live")["session_id"], 60)
+        with self.assertRaises(BudgetExceeded):          # the detailed comparison needs LAB_STAGE=detailed
+            lab.start("gemini-3.8-live")
+        detailed = self.lab({"GEMINI_API_KEY": "k", "LAB_STAGE": "detailed"}, {"auth_tokens": {"name": "auth_tokens/abc"}})
+        self.assertIn("session_id", detailed.start("gemini-3.8-live"))   # same ledger, higher cumulative cap
+
+    def test_billing_never_below_the_time_the_server_saw(self):
+        lab = self.lab({"GEMINI_API_KEY": "k"}, {"auth_tokens": {"name": "auth_tokens/abc"}})
+        sid = lab.start("gemini-3.8-live")["session_id"]
+        lab.sessions[sid]["started"] -= 125          # the session has been open for about 2 minutes
+        res = lab.end(sid, 1)                       # the page reports 1 s
+        self.assertEqual(res["billed_s"], 180)      # rounded up to the 60 s increment
+
+
 class HttpLayerTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -129,9 +212,9 @@ class HttpLayerTest(unittest.TestCase):
         self.httpd.server_close()
         self.tmp.cleanup()
 
-    def req(self, method, path, body=None, host=None):
+    def req(self, method, path, body=None, host=None, extra=None):
         c = http.client.HTTPConnection("127.0.0.1", self.port, timeout=5)
-        headers = {"Content-Type": "application/json"}
+        headers = {"Content-Type": "application/json", **(extra or {})}
         if host:
             headers["Host"] = host
         c.request(method, path, json.dumps(body) if body is not None else None, headers)
@@ -146,6 +229,9 @@ class HttpLayerTest(unittest.TestCase):
         self.assertEqual(self.req("GET", "/../server.py")[0], 404)
         self.assertEqual(self.req("GET", "/")[0], 200)
         self.assertEqual(self.req("POST", "/api/session/start", {"candidate": "gemini-3.8-live"})[0], 400)
+        # a page on another site cannot start sessions (no reservation, no credential)
+        self.assertEqual(self.req("POST", "/api/session/start", {"candidate": "fake"},
+                                  extra={"Origin": "http://evil.example"})[0], 403)
 
 
 @unittest.skipUnless(shutil.which("node") and not os.environ.get("NO_BROWSER_SMOKE"), "node not available")

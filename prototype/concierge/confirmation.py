@@ -21,6 +21,7 @@ class Status(str, Enum):
     CORRECTED = "corrected_unconfirmed"
     REJECTED = "rejected_by_caller"
     CONFIRMED = "confirmed_by_caller"
+    STAFF_CORRECTED = "corrected_by_staff"   # changed by staff after the call; not a caller confirmation
 
 
 class Reply(str, Enum):

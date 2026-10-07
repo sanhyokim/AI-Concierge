@@ -12,10 +12,11 @@
 
 | 文書 | 内容 |
 | --- | --- |
+| [admin-app-v1.md](./admin-app-v1.md) | 管理画面と受付の共通処理（動かし方・画面・判定の規則・データの扱い・試験の結果。画面の画像は `screenshots/`） |
 | [candidates-v1.md](./candidates-v1.md) | 候補一覧（公式資料で確認したこと・未確認・除外の理由・初回の構成の提案） |
 | [candidate-comparison-v1.md](./candidate-comparison-v1.md) | 候補の比較枠（同じ前提での月額・初期費用・品質の欄・受付1件あたりの費用） |
-| [browser-lab-setup.md](./browser-lab-setup.md) | ブラウザー会話試験の準備（動かし方・業者ごとの準備・接続の確認状況） |
-| [measurement-plan-v2.md](./measurement-plan-v2.md) | 実測計画 v2（ブラウザーでの会話試験から始める。新しい試験予算案） |
+| [browser-lab-setup.md](./browser-lab-setup.md) | ブラウザー会話試験の準備（動かし方・業者ごとの準備・業務処理の経路・接続の確認状況） |
+| [measurement-plan-v2.md](./measurement-plan-v2.md) | 実測計画 v2.1（接続の予備試験 → 詳しい会話比較。試験予算案の6つの表） |
 | [cost-comparison-v1.md](./cost-comparison-v1.md) | 費用比較表（旧構成の案A・案B）。`python3 -m prototype.cost.cost_model` で作り直せる |
 | [measurement-plan-v1.md](./measurement-plan-v1.md) | 実測計画 v1（API直接・Polly単体の詳しい測定。順序と予算はv2で置き換え） |
 | [realvoice-method-check-v1.md](./realvoice-method-check-v1.md) | 公開音声での計測方法の予備確認（AIの仮ラベル。候補の採用判断には使わない） |

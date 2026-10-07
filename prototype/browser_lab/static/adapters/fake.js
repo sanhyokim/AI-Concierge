@@ -30,7 +30,9 @@ export async function connect(ctx) {
     if (ev === "start" && speaking) setTimeout(() => { if (speaking) { stopSpeaking(); ctx.log("fake_interrupted"); } }, 120);
     if (ev === "end") {
       turn += 1;
-      const result = await ctx.toolCall("save_field", { field: "request", value: `模擬の用件 ${turn}` });
+      const result = turn === 2
+        ? await ctx.toolCall("lookup_faq", { question: "点検は無料ですか" }, "（模擬）点検は無料ですか")
+        : await ctx.toolCall("save_field", { field: "request", value: `模擬の用件 ${turn}` }, "（模擬）");
       ctx.log("fake_tool_result", result);
       setTimeout(() => { if (!closed) say(1500, `（模擬応答 ${turn}）`); }, 500);
     }

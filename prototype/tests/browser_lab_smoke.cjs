@@ -32,7 +32,7 @@ function fail(msg) { console.error("FAIL:", msg); process.exitCode = 1; }
   const env = { ...process.env };
   for (const k of ["OPENAI_API_KEY", "GEMINI_API_KEY", "ELEVENLABS_API_KEY", "ELEVENLABS_AGENT_ID", "CARTESIA_API_KEY", "CARTESIA_AGENT_ID"]) delete env[k];
   const srv = spawn("python3", ["-m", "prototype.browser_lab", "--port", "0", "--results-dir", path.join(tmp, "results"),
-                                "--ledger", path.join(tmp, "ledger.jsonl")], { env });
+                                "--ledger", path.join(tmp, "ledger.jsonl"), "--db", path.join(tmp, "lab.db")], { env });
   const url = await new Promise((resolve, reject) => {
     const to = setTimeout(() => reject(new Error("server did not start")), 15000);
     srv.stdout.on("data", (d) => { const m = /http:\/\/127\.0\.0\.1:\d+/.exec(String(d)); if (m) { clearTimeout(to); resolve(m[0]); } });
@@ -68,9 +68,22 @@ function fail(msg) { console.error("FAIL:", msg); process.exitCode = 1; }
     if (!saved.server_tool_calls || saved.server_tool_calls.length < 1) fail("server-side tool record missing");
     if (saved.judgments.C1.natural !== "3") fail("judgment not saved");
     if (saved.path !== "browser_lab") fail("path tag missing");
+    const ints = saved.metrics.interruptions || [];
+    if (!ints.every((r) => r.outcome && "value_ms" in r)) fail("every interruption must carry an outcome");
+    if (ints.length < stats.stops) fail("measured stops must also be in the interruption list");
+    if (!String((saved.comparison || {}).business_logic_status || "").startsWith("評価対象")) fail("business-logic status missing");
+    if (!saved.comparison.audio_only || !saved.comparison.business_logic) fail("audio-only and business-logic parts must be separate");
+    if (!saved.server_call_id || !saved.server_fields) fail("server-side intake record missing");
+    // AI refusal: the server refuses further AI work and the page closes the connection
+    await page.click("#startBtn");
+    await page.waitForFunction(() => document.getElementById("status").textContent === "会話中", null, { timeout: 15000 });
+    await page.click("#refuseBtn");
+    await page.waitForFunction(() => document.getElementById("status").textContent === "終了", null, { timeout: 15000 });
+    const refused = await page.evaluate(() => window.__lab.events.some((e) => e.kind === "AIの拒否（模擬）"));
+    if (!refused) fail("AI refusal not recorded");
     if (errors.length) fail("page errors: " + errors.join(" | "));
-    console.log(JSON.stringify({ latencies: stats.lat, interruption_stops: stats.stops, tool_calls: stats.tools,
-      saved: files[0], event_kinds: stats.kinds }, null, 1));
+    console.log(JSON.stringify({ latencies: stats.lat, interruption_stops: stats.stops, interruptions: ints.map((r) => r.outcome),
+      tool_calls: stats.tools, saved: files[0], business_logic: saved.comparison.business_logic_status, event_kinds: stats.kinds }, null, 1));
   } catch (e) {
     fail(String(e && e.stack || e));
   } finally {

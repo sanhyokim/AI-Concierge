@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI受電 管理（試作）</title>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand">AI受電 管理<span class="tag">試作</span></div>
+  <div class="who"><span id="who"></span> <button id="logoutBtn" class="small">ログアウト</button></div>
+</header>
+<div class="demo-banner" id="demoBanner">デモ・試作：会社の回線（0120-77-3408・092-504-2185）には接続していません。設定を保存しても、実際の電話機の動作は変わりません。LINE等の実際の通知も送りません。</div>
+<div id="alerts"></div>
+<nav class="nav" id="nav">
+  <a href="#/">ホーム</a>
+  <a href="#/mode">受電設定</a>
+  <a href="#/schedule">スケジュール</a>
+  <a href="#/faq">FAQ</a>
+  <a href="#/voice">音声</a>
+  <a href="#/calls">受付履歴</a>
+  <a href="#/notify">通知</a>
+  <a href="#/demo">着信テスト</a>
+  <a href="/lab/">会話試験</a>
+  <a href="#/audit">操作履歴</a>
+</nav>
+<main id="view" class="view" aria-live="polite"></main>
+<div id="toast" class="toast" role="status"></div>
+<script src="/static/app.js"></script>
+</body>
+</html>

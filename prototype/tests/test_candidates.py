@@ -1,3 +1,4 @@
+import pathlib
 import unittest
 
 from prototype.cost import candidate_costs as cc
@@ -41,13 +42,29 @@ class CandidateFrameTest(unittest.TestCase):
 
     def test_browser_budget_caps_cover_the_maximum_per_vendor(self):
         est = mb.browser_stage_estimate()
-        per_vendor = {}
-        for r in est["rows"]:
-            per_vendor[r["ledger_vendor"]] = per_vendor.get(r["ledger_vendor"], 0) + r["max_usd"]
-        for vendor, mx in per_vendor.items():
-            self.assertGreaterEqual(est["runtime_caps_usd"][vendor], mx, vendor)
-        self.assertGreater(est["max_usd"], est["expected_usd"])
-        self.assertEqual(est["fixed_plan_symbols"], ["P_11"])
+        cumulative = {}
+        for stage in ("connection", "detailed"):
+            st = est["stages"][stage]
+            per_vendor = {}
+            for r in st["rows"]:
+                per_vendor[r["ledger_vendor"]] = per_vendor.get(r["ledger_vendor"], 0) + r["max_usd"]
+                cumulative[r["ledger_vendor"]] = cumulative.get(r["ledger_vendor"], 0) + r["max_usd"]
+            caps = st["runtime_caps_usd"]
+            for vendor, mx in (per_vendor if stage == "connection" else cumulative).items():
+                self.assertGreaterEqual(caps[vendor] + 1e-9, mx, (stage, vendor))
+            self.assertGreater(st["max_usd"], st["expected_usd"])
+        conn = {r["id"]: r["sessions"] for r in est["stages"]["connection"]["rows"]}
+        self.assertTrue(all(1 <= n <= 2 for n in conn.values()))           # 1-2 sessions per candidate first
+        self.assertEqual(est["runtime_caps_total_usd"], 29.0)
+
+    def test_budget_tables_cover_the_six_items(self):
+        md = mb.browser_budget_markdown()
+        for head in ("接続の予備試験", "詳しい会話比較", "固定費・利用枠", "別料金", "総額", "未確定項目"):
+            self.assertIn(head, md)
+        self.assertIn("二重に数えない", md)
+        doc = (pathlib.Path(__file__).resolve().parents[2] / "docs" / "measurement-plan-v2.md").read_text()
+        self.assertIn(md, doc)   # the plan shows exactly what the code computes
+        self.assertIn("消費税10%", md)
 
 
 if __name__ == "__main__":
