@@ -265,7 +265,7 @@ const lastAi = (page) => page.$$eval("#chat .msg.ai", (els) => (els.at(-1) || {}
     await page.waitForFunction(() => document.querySelectorAll("#candidate option").length > 1);
     check("a real candidate is chosen by default when its key is set", (await page.$eval("#candidate", (x) => x.value)) === "gpt-live-1");
     const cardText = await page.textContent("#cards");
-    check("script cards say exactly what to say", cardText.includes("折り返しは、090-1234-5678です。") && cardText.includes("はい、違います。末尾は5679です。"));
+    check("script cards say exactly what to say", cardText.includes("折り返しは、090-1234-5678です。") && cardText.includes("はい、違います。末尾は5679です。") && cardText.includes("C7 ふだんの話し方"));
     await page.selectOption("#candidate", "fake");
     await page.click("#startBtn");
     await page.waitForFunction(() => document.getElementById("status").textContent.startsWith("会話中"), null, { timeout: 15000 });

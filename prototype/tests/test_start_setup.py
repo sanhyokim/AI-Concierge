@@ -152,3 +152,46 @@ class InteractiveStartTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipUnless(sys.platform != "win32", "runs bash")
+class MacStartFileTest(unittest.TestCase):
+    """start_mac.command: executable in the repository (so in GitHub's ZIP) and its branches."""
+
+    def run_start(self, path_dirs, script=None):
+        env = {"PATH": os.pathsep.join(path_dirs), "START_CHECK_ONLY": "1"}
+        return subprocess.run(["/bin/bash", str(script or ROOT / "start_mac.command")], input="\n", env=env,
+                              capture_output=True, text=True, encoding="utf-8", timeout=30)
+
+    def test_executable_and_valid_bash(self):
+        for name in ("start_mac.command", "reset_password_mac.command"):
+            mode = subprocess.run(["git", "ls-files", "-s", name], cwd=ROOT, capture_output=True, text=True,
+                                  encoding="utf-8").stdout.split()[0]
+            self.assertEqual(mode, "100755", name)
+            self.assertEqual(subprocess.run(["bash", "-n", str(ROOT / name)]).returncode, 0, name)
+
+    def test_branches(self):
+        import shutil
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        fake = pathlib.Path(tmp.name) / "bin"
+        fake.mkdir()
+        for tool in ("dirname", "uname"):
+            (fake / tool).symlink_to(shutil.which(tool))
+        r = self.run_start([str(fake)])                             # no Python at all
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("Python 3.11 以上が見つかりません", r.stdout)
+        old = fake / "python3"
+        old.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")      # a Python older than 3.11
+        old.chmod(0o755)
+        r = self.run_start([str(fake)])
+        self.assertIn("Python 3.11 以上が見つかりません", r.stdout)
+        old.unlink()
+        (fake / "python3").symlink_to(sys.executable)               # a good one
+        r = self.run_start([str(fake)])
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("python:", r.stdout)
+        outside = pathlib.Path(tmp.name) / "start_mac.command"      # opened outside the extracted folder
+        outside.write_bytes((ROOT / "start_mac.command").read_bytes())
+        r = self.run_start([str(fake)], outside)
+        self.assertIn("展開したフォルダーの中から", r.stdout)
