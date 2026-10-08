@@ -60,6 +60,12 @@ CREATE TABLE IF NOT EXISTS notification_attempts(
   id INTEGER PRIMARY KEY AUTOINCREMENT, notification_id INTEGER NOT NULL, at TEXT NOT NULL, retry_key TEXT NOT NULL,
   outcome TEXT NOT NULL, http_status INTEGER, detail TEXT);
 CREATE TABLE IF NOT EXISTS channel_state(channel TEXT PRIMARY KEY, stopped INTEGER NOT NULL DEFAULT 0, reason TEXT, at TEXT);
+CREATE TABLE IF NOT EXISTS lab_sessions(
+  id TEXT PRIMARY KEY, candidate TEXT NOT NULL, stage TEXT NOT NULL, status TEXT NOT NULL, call_id TEXT, rid TEXT,
+  vendor TEXT, vendor_session_id TEXT, started_at TEXT NOT NULL, started_ts REAL NOT NULL, last_seen TEXT,
+  ended_at TEXT, end_reason TEXT, tool_calls INTEGER NOT NULL DEFAULT 0, backend_responses INTEGER NOT NULL DEFAULT 0,
+  response_creates INTEGER NOT NULL DEFAULT 0, stop_reason TEXT, close_confirmed INTEGER NOT NULL DEFAULT 0,
+  usage TEXT NOT NULL DEFAULT '[]');
 CREATE TABLE IF NOT EXISTS audit_log(
   id INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT NOT NULL, user TEXT, action TEXT NOT NULL, target TEXT, detail TEXT);
 """

@@ -118,185 +118,196 @@ def phone_stage_estimate() -> dict:
     return out
 
 
-# --- browser conversation stage (measurement plan v2.1; a proposal, not an approved budget) ---------------
-BROWSER_CONFIGS = ("gpt-live-1", "gemini-3.8-live", "elevenagents", "cartesia-agents", "gpt-realtime-2.1")
-BROWSER_AVG_MIN = 3.0                       # expected length; the page hangs up at MAX_SESSION_MIN
-LIST_USD_PER_MIN = {"elevenagents": 0.08, "cartesia-agents": 0.06}   # list price per minute (plan quota counts these)
+# --- browser conversation stage (measurement plan v2.2; a proposal, not an approved budget) ---------------
+TESTED = ("gpt-live-1", "gemini-3.8-live")                        # user decision 2026-10-07
+HELD = ("gpt-realtime-2.1", "elevenagents", "cartesia-agents")    # kept as candidates, no sessions planned
+BROWSER_CONFIGS = TESTED + HELD
+BROWSER_AVG_MIN = 3.0                       # expected length; the page and the server stop at MAX_SESSION_MIN
 CHECKED = "2026-10-07"
+FX_ASSUMED = 150.0
+BILLING_DELAY = {   # why a prepaid balance is not a spending cap (official pages, read 2026-10-07)
+    "openai_lab": ("集計の遅れの間の利用は、残高のマイナスとして次の購入から引かれる。前払いの残高を即時の停止に頼らない、"
+                   "との記載", "https://help.openai.com/en/articles/8264644-setting-up-and-managing-prepaid-api-billing"),
+    "google_lab": ("課金の集計に約10分の遅れがあり、その間は残高を超えて使われることがある（マイナスは次の購入から引かれる）。"
+                   "残高0でHTTP 402", "https://ai.google.dev/gemini-api/docs/billing"),
+}
 # Plans and quotas from the vendors' official pages (read 2026-10-07). USD, tax excluded unless stated.
 PLANS = {
     "openai_lab": {
-        "vendor": "OpenAI（GPT-Live 1・GPT-Realtime-2.1）", "plan": "プランなし（従量）。前払いクレジット",
-        "prepay_min_usd": 5.0, "plan_usd": 0.0, "quota": "なし（GPT-Liveに無料枠はない）",
-        "free_condition": "無料枠なし", "overage": "従量（GPT-Live $0.05/分・秒単位。バックエンドのモデルとツールは別料金）",
-        "expiry": "前払いクレジットは1年で失効・返金なし。自動の追加購入を切れば、残高が上限になる",
+        "vendor": "OpenAI（GPT-Live 1）", "plan": "プランなし（従量）。前払いクレジット（最低$5）",
+        "quota": "なし（GPT-Liveに無料枠はない）", "free_condition": "無料枠なし",
+        "overage": "従量。GPT-Live $0.05/分（秒単位）。裏方のモデル（delegation）は別料金（トークン単価）",
+        "expiry": "前払いクレジットは1年で失効・返金なし。" + BILLING_DELAY["openai_lab"][0],
         "tax": "消費税10%（直接契約の日本の顧客）",
-        "sources": ["https://developers.openai.com/api/docs/models/gpt-live-1",
-                    "https://help.openai.com/en/articles/8264644-setting-up-and-managing-prepaid-api-billing",
+        "sources": ["https://developers.openai.com/api/docs/models/gpt-live-1", BILLING_DELAY["openai_lab"][1],
                     "https://help.openai.com/en/articles/10242647-the-japanese-consumption-tax-on-your-openai-invoices"]},
     "google_lab": {
-        "vendor": "Google（Gemini 3.8 Live）", "plan": "無料枠、または有料枠（Cloud Billing＋前払い）",
-        "prepay_min_usd": 5.0, "plan_usd": 0.0, "quota": "無料枠：入出力とも無料（回数・量の上限はAI Studioの画面だけに表示＝未確認）",
+        "vendor": "Google（Gemini 3.8 Live）", "plan": "無料枠、または有料枠（Cloud Billing＋前払い$5から）",
+        "quota": "無料枠：入出力とも無料（回数・量の上限はAI Studioの画面だけに表示＝未確認）",
         "free_condition": "無料枠の入出力は、Googleの製品の改善に使われ、人が読むことがある。有料枠では使われない",
         "overage": "有料枠：音声入力$3・出力$12（1Mトークン）。履歴はターンごとに再計算されて課金（記号 Ctx_gem）",
-        "expiry": "前払いは12か月で失効・返金なし。残高0でHTTP 402（残高が上限になる）",
+        "expiry": "前払いは12か月で失効・返金なし。" + BILLING_DELAY["google_lab"][0],
         "tax": "消費税10%（日本の顧客。価格は税抜）",
         "sources": ["https://ai.google.dev/gemini-api/docs/pricing", "https://ai.google.dev/gemini-api/terms",
-                    "https://ai.google.dev/gemini-api/docs/billing",
-                    "https://ai.google.dev/gemini-api/docs/live-api/best-practices"]},
-    "elevenlabs_lab": {
-        "vendor": "ElevenLabs（ElevenAgents）", "plan": "Free $0（15分）／Starter $6/月（75分）／Creator $22/月（275分）",
-        "prepay_min_usd": 0.0, "plan_usd": 0.0, "plan_options": [("Free", 0.0, 15), ("Starter", 6.0, 75), ("Creator", 22.0, 275)],
-        "quota": "プランの分数（Free 15分、Starter 75分）",
-        "free_condition": "Freeは非商用・表示義務。学習への利用は既定でオン（設定で外せる）。Freeでclient toolsが使えるかは未確認",
-        "overage": "追加の分は全プラン$0.08/分（従量のクレジットが必要）。10秒を超える無音は95%引き。LLMは別料金（記号 L_11）",
-        "expiry": "月ごとのプラン。Starterの初月割引（期限付き）は恒久の価格に使わない",
-        "tax": "未確認（法令で必要な場合は課税、リバースチャージの場合は課税しない、との記載）",
-        "sources": ["https://elevenlabs.io/pricing/agents",
-                    "https://elevenlabs.io/docs/eleven-agents/customization/llm",
-                    "https://elevenlabs.io/docs/help-center/legal/is-my-data-used-to-improve-eleven-labs-ai-models"]},
-    "cartesia_lab": {
-        "vendor": "Cartesia（Managed Agents）", "plan": "Free $0（エージェント$1分≈17分）／Pro $5/月（$5分≈83分）",
-        "prepay_min_usd": 0.0, "plan_usd": 0.0, "plan_options": [("Free", 0.0, 1.0), ("Pro", 5.0, 5.0)],
-        "quota": "エージェントの利用額（Free $1、Pro $5。$0.06/分で換算）",
-        "free_condition": "Freeは商用不可。Freeで$1を超えて使えるかは未確認（超過の説明は有料プラン向け）",
-        "overage": "有料プランは同じ単価$0.06/分。LLMは未確認（記号 L_cart。無料期間は2026-10-01まで、との記載と食い違い）",
-        "expiry": "月ごとのプラン", "tax": "未確認（規約に日本の消費税の記載なし）",
-        "sources": ["https://cartesia.ai/pricing", "https://docs.cartesia.ai/agents/models",
-                    "https://docs.cartesia.ai/agents/client-tools"]},
+                    BILLING_DELAY["google_lab"][1], "https://ai.google.dev/gemini-api/docs/live-api/best-practices"]},
+}
+HELD_NOTE = {   # reference only: no sessions are planned until the user releases them
+    "gpt-realtime-2.1": "保留（再開すると同じOpenAIの前払いから引かれる。$0.30/分を上限に留保）",
+    "elevenagents": "保留。Free 15分／Starter $6/月（75分）。超過$0.08/分、LLMは別料金（L_11）",
+    "cartesia-agents": "保留。Free $1／Pro $5/月。$0.06/分、LLMの単価は未確認（L_cart）",
 }
 
 
 def browser_stage_estimate() -> dict:
-    """Two stages: connection check first, then the detailed comparison for candidates that connected."""
-    from ..browser_lab.config import CANDIDATES, LAB_LIMITS_BY_STAGE, MAX_SESSION_MIN, SESSIONS
+    """Connection check first, then the detailed comparison for the candidates that connected.
+
+    Four things are kept apart: what is paid, the estimate of the known cost items (assumptions), costs that
+    are not confirmed (symbols, never 0), and the in-app limits (which stop sessions but cap no vendor bill)."""
+    from ..browser_lab import config as lc
     cand = {c["id"]: c for c in json.loads((pathlib.Path(__file__).resolve().parent / "candidates.json")
                                            .read_text())["candidates"]}
     from . import candidate_costs as cc
+    live = lc.CANDIDATES["gpt-live-1"]
+    model = lc.delegation_model(live, {})
+    backend = {"typical": lc.backend_usd(model, lc.BACKEND_TYPICAL), "strict": lc.backend_usd(model, lc.BACKEND_STRICT)}
     stages = {}
     for stage in ("connection", "detailed"):
         rows = []
         for cid in BROWSER_CONFIGS:
-            lab = CANDIDATES[cid]
-            sessions = SESSIONS[stage][cid]
-            exp_min, max_min = sessions * BROWSER_AVG_MIN, sessions * MAX_SESSION_MIN
-            ai = cc.ai_part(cand[cid])
-            ref_per_min = ai.usd / 3.0
-            row = {"id": cid, "name": lab["name"], "sessions": sessions, "expected_min": exp_min, "max_min": max_min,
-                   "ref_usd_per_min": round(ref_per_min, 4), "upper_usd_per_min": lab["upper_usd_per_min"],
-                   "expected_usd": round(exp_min * ref_per_min, 2), "max_usd": round(max_min * lab["upper_usd_per_min"], 2),
-                   "symbols": sorted(ai.terms), "ledger_vendor": lab["vendor"]}
-            if cid == "gpt-realtime-2.1":
-                row["expected_usd_no_cache"] = round(exp_min * cc.ai_part(cand[cid], cache=False).usd / 3.0, 2)
+            lab = lc.CANDIDATES[cid]
+            n = lc.SESSIONS[stage][cid]
+            exp_min, max_min = n * BROWSER_AVG_MIN, n * lc.MAX_SESSION_MIN
+            ref_per_min = cc.ai_part(cand[cid]).usd / 3.0
+            row = {"id": cid, "name": lab["name"], "held": cid in HELD, "sessions": n, "expected_min": exp_min,
+                   "max_min": max_min, "ref_usd_per_min": round(ref_per_min, 4),
+                   "upper_usd_per_min": lab["upper_usd_per_min"], "ledger_vendor": lab["vendor"],
+                   "voice_expected_usd": round(exp_min * ref_per_min, 2),
+                   "voice_max_usd": round(max_min * lab["upper_usd_per_min"], 2),
+                   "backend_typical_usd": 0.0, "backend_strict_usd": 0.0,
+                   "symbols": sorted(cc.ai_part(cand[cid]).terms)}
+            if cid == "gpt-live-1":
+                row["backend_typical_usd"] = round(n * backend["typical"], 3)
+                row["backend_strict_usd"] = round(n * backend["strict"], 3)
+            row["expected_usd"] = round(row["voice_expected_usd"] + row["backend_typical_usd"], 2)
+            row["max_usd"] = round(n * lc.session_reserve_usd(lab, {}), 2)   # what the ledger reserves
             rows.append(row)
-        caps = {v: LAB_LIMITS_BY_STAGE[stage][v].max_cost_usd for v in LAB_LIMITS_BY_STAGE[stage]}
+        limits = lc.LAB_LIMITS_BY_STAGE[stage]
+        caps = {v: limits[v].max_cost_usd for v in limits}
         stages[stage] = {"rows": rows, "expected_usd": round(sum(r["expected_usd"] for r in rows), 2),
                          "max_usd": round(sum(r["max_usd"] for r in rows), 2), "runtime_caps_usd": caps,
-                         "runtime_caps_total_usd": round(sum(caps.values()), 2)}
-    # minutes / amounts that fall inside a plan's quota (not extra cash; never counted twice)
-    used = {cid: {st: SESSIONS[st][cid] * MAX_SESSION_MIN for st in SESSIONS} for cid in BROWSER_CONFIGS}
-    quota = {
-        "elevenagents": {"connection": "Free（15分）の範囲：最大8分",
-                         "detailed": f"累計で最大{used['elevenagents']['connection'] + used['elevenagents']['detailed']:.0f}分"
-                                     "→ Starter（75分、$6/月）の範囲"},
-        "cartesia-agents": {"connection": f"Free（$1）の範囲：最大${used['cartesia-agents']['connection'] * 0.06:.2f}",
-                            "detailed": f"累計で最大${(used['cartesia-agents']['connection'] + used['cartesia-agents']['detailed']) * 0.06:.2f}"
-                                        "→ Pro（$5/月）の範囲"},
+                         "runtime_caps_total_usd": round(sum(caps.values()), 2),
+                         "requests_caps": {v: limits[v].max_requests for v in limits}}
+    cum = {v: sum(r["max_usd"] for st in stages.values() for r in st["rows"] if r["ledger_vendor"] == v)
+           for v in ("openai_lab", "google_lab")}
+    conn = {v: sum(r["max_usd"] for r in stages["connection"]["rows"] if r["ledger_vendor"] == v)
+            for v in ("openai_lab", "google_lab")}
+    payments = {
+        "connection": [("OpenAI 前払い（残高がなければ。最低額）", 5.0),
+                       ("Google 無料枠（架空のデータだけ）。有料枠を選ぶ場合は前払い$5", 0.0)],
+        "detailed": [("OpenAI 追加の前払い（累計の最大が最初の$5を超えるため。残高しだい）", 5.0 if cum["openai_lab"] > 5 else 0.0),
+                     ("Google 有料枠の前払い（無料枠を使わない場合）", 5.0)],
     }
-    openai_conn = sum(r["max_usd"] for r in stages["connection"]["rows"] if r["ledger_vendor"] == "openai_lab")
-    openai_det = sum(r["max_usd"] for r in stages["detailed"]["rows"] if r["ledger_vendor"] == "openai_lab")
-    google_det = sum(r["max_usd"] for r in stages["detailed"]["rows"] if r["ledger_vendor"] == "google_lab")
-    totals = {
-        "connection": {"prepaid_usd": {"OpenAI前払い（残高がなければ）": 5.0},
-                       "plans_usd": {"ElevenLabs Free": 0.0, "Cartesia Free": 0.0, "Gemini 無料枠": 0.0},
-                       "consumption_max_usd": {"OpenAI（前払いから引かれる）": round(openai_conn, 2)},
-                       "inside_quota": {"ElevenLabs": quota["elevenagents"]["connection"],
-                                        "Cartesia": quota["cartesia-agents"]["connection"],
-                                        "Gemini": "無料枠（データの扱いの条件あり）"}},
-        "detailed": {"prepaid_usd": {"OpenAI前払いの追加": 10.0, "Gemini 有料枠の前払い（無料枠を使わない場合）": 5.0},
-                     "plans_usd": {"ElevenLabs Starter（1か月）": 6.0, "Cartesia Pro（1か月）": 5.0},
-                     "consumption_max_usd": {"OpenAI（前払いから引かれる）": round(openai_det, 2),
-                                             "Gemini（有料枠の場合、前払いから引かれる）": round(google_det, 2)},
-                     "inside_quota": {"ElevenLabs": quota["elevenagents"]["detailed"],
-                                      "Cartesia": quota["cartesia-agents"]["detailed"]}},
+    unconfirmed = [
+        ("L_live", "GPT-Liveの裏方のモデルに渡る量", "入力は指示文（最大16,384トークン）と会話の履歴。渡る量が公式に書かれていないため、"
+         "典型と厳しめの仮定を並べるだけで、上限は確定しない"),
+        ("—", "GPT-Liveの日本語", "公式の言語の一覧がない。声の追加の表は英語・ポルトガル語だけ。最初の接続で聞いて確かめる"),
+        ("Ctx_gem", "Gemini Liveの履歴の再計算", "会話が長いほど増える。接続の設定で履歴を短く保つ（contextWindowCompression）"),
+        ("—", "Geminiの無料枠の上限", "回数・量の上限はAI Studioの画面だけに表示される"),
+        ("—", "課金の集計の遅れ", "OpenAI：" + BILLING_DELAY["openai_lab"][0] + "。Google：" + BILLING_DELAY["google_lab"][0]),
+        ("FX", "為替", f"1ドル＝{FX_ASSUMED:.0f}円の仮置き（140〜160円で変わる）"),
+    ]
+    in_app = {
+        "sessions": {st: {cid: lc.SESSIONS[st][cid] for cid in BROWSER_CONFIGS} for st in lc.SESSIONS},
+        "max_session_min": lc.MAX_SESSION_MIN, "grace_s": lc.SESSION_GRACE_S,
+        "tool_calls": lc.MAX_TOOL_CALLS, "backend_responses": lc.MAX_BACKEND_RESPONSES,
+        "response_creates": lc.MAX_RESPONSE_CREATES, "mint_failures": lc.MAX_MINT_FAILURES,
     }
-    return {"stages": stages, "plans": PLANS, "quota": quota, "totals": totals, "max_session_min": MAX_SESSION_MIN,
-            "avg_session_min": BROWSER_AVG_MIN, "checked": CHECKED, "fx_jpy_per_usd": FX_ASSUMED, "tax": 0.10,
-            # kept for older callers: the whole browser stage (connection + detailed)
-            "rows": stages["connection"]["rows"] + stages["detailed"]["rows"],
-            "expected_usd": round(stages["connection"]["expected_usd"] + stages["detailed"]["expected_usd"], 2),
-            "max_usd": round(stages["connection"]["max_usd"] + stages["detailed"]["max_usd"], 2),
+    return {"stages": stages, "plans": PLANS, "held_note": HELD_NOTE, "payments": payments,
+            "unconfirmed": unconfirmed, "in_app": in_app, "backend_per_session": backend, "backend_model": model,
+            "backend_assumptions": {"typical": lc.BACKEND_TYPICAL, "strict": lc.BACKEND_STRICT},
+            "cumulative_max_usd": {k: round(v, 2) for k, v in cum.items()},
+            "connection_max_usd": {k: round(v, 2) for k, v in conn.items()},
+            "max_session_min": lc.MAX_SESSION_MIN, "avg_session_min": BROWSER_AVG_MIN, "checked": CHECKED,
+            "fx_jpy_per_usd": FX_ASSUMED, "tax": 0.10,
             "runtime_caps_usd": stages["detailed"]["runtime_caps_usd"],
             "runtime_caps_total_usd": stages["detailed"]["runtime_caps_total_usd"]}
 
 
-FX_ASSUMED = 150.0
-
-
 def browser_budget_markdown() -> str:
-    """The six tables of the implementation instruction v1, 5章 (for docs/measurement-plan-v2.md)."""
+    """5章 of docs/measurement-plan-v2.md: payments, the known-cost estimate, unconfirmed costs, in-app limits."""
     e = browser_stage_estimate()
     out = []
     w = out.append
-    stage_title = {"connection": "接続の予備試験", "detailed": "詳しい会話比較（接続できた候補だけ）"}
+    title = {"connection": "接続の予備試験", "detailed": "詳しい会話比較（接続できた候補だけ）"}
+    w("**① 支払い額（税抜。前払い・プラン）**\n")
+    w("| 段階 | 支払うもの | 額 |")
+    w("| --- | --- | --- |")
+    for stage in ("connection", "detailed"):
+        for label, usd in e["payments"][stage]:
+            w(f"| {title[stage]} | {label} | ${usd:g} |")
+    w("")
+    w("- 前払いの残高は、**費用の上限ではありません**。停止と集計の遅れで、残高を超えて使われることがあります"
+      "（OpenAI：残高がマイナスになり、次の購入から引かれる。Google：集計に約10分の遅れ）。出典は下の固定費の表。")
+    w(f"- 税：OpenAI・Googleは消費税10%。例：$5は税込で約{5 * 1.1 * e['fx_jpy_per_usd']:.0f}円（1ドル＝{e['fx_jpy_per_usd']:.0f}円の仮置き）。")
+    w("- 無料枠は試験の条件（架空のデータだけ）でだけ使います。本番の料金には流用しません。\n")
+    w(f"**② 既知の費目の試算（仮定。1回最大{e['max_session_min']:.0f}分、平均{e['avg_session_min']:.0f}分と仮定）**\n")
+    b = e["backend_assumptions"]
+    w(f"GPT-Liveの裏方のモデル（{e['backend_model']}）は、典型（{b['typical']['responses']}応答×入力{b['typical']['input_tokens']:,}"
+      f"・出力{b['typical']['output_tokens']:,}トークン、1会話 ${e['backend_per_session']['typical']:.3f}）と、"
+      f"厳しめ（{b['strict']['responses']}応答×入力{b['strict']['input_tokens']:,}・出力{b['strict']['output_tokens']:,}トークン、"
+      f"1会話 ${e['backend_per_session']['strict']:.3f}）の2つの仮定で示します。どちらも保証ではありません。\n")
     for stage in ("connection", "detailed"):
         st = e["stages"][stage]
-        w(f"**{stage_title[stage]}**（1回最大{e['max_session_min']:.0f}分で自動終了、平均{e['avg_session_min']:.0f}分と仮定）\n")
-        w("| 候補 | 回数 | 最大時間 | 見込み額（参考の分単価） | 最大額（最大時間×上限の分単価） | 記号で残す費用 |")
-        w("| --- | --- | --- | --- | --- | --- |")
+        w(f"*{title[stage]}*\n")
+        w("| 候補 | 回数 | 最大時間 | 声の見込み（参考の分単価） | 裏方の見込み（典型） | 留保する最大額（声は上限の分単価、裏方は厳しめ） | 記号で残す費用 |")
+        w("| --- | --- | --- | --- | --- | --- | --- |")
         for r in st["rows"]:
-            exp = f"約${r['expected_usd']:.2f}（${r['ref_usd_per_min']}/分）"
-            if "expected_usd_no_cache" in r:
-                exp += f"／キャッシュなし約${r['expected_usd_no_cache']:.2f}"
-            w(f"| {r['name']} | {r['sessions']} | {r['max_min']:.0f}分 | {exp} | ${r['max_usd']:.2f}（${r['upper_usd_per_min']}/分） | "
-              f"{'、'.join(r['symbols']) or '—'} |")
-        w(f"| **合計** | {sum(r['sessions'] for r in st['rows'])} | {sum(r['max_min'] for r in st['rows']):.0f}分 | "
-          f"約${st['expected_usd']:.2f} | ${st['max_usd']:.2f} | ＋記号 |\n")
-        caps = "、".join(f"{v} ${c:g}" for v, c in st["runtime_caps_usd"].items())
-        w(f"- 実行側の上限（台帳。{'累計' if stage == 'detailed' else 'この段階'}）：{caps}（合計 ${st['runtime_caps_total_usd']:g}）。"
-          f"{'`LAB_STAGE=detailed` で起動したときだけ使える' if stage == 'detailed' else '既定の段階（`LAB_STAGE=connection`）'}。\n")
-    w("**固定費・利用枠**\n")
-    w("| 業者 | 契約するプラン | 含まれる分数・クレジット | 無料枠の適用条件 | 超過料金 | 期限・税 |")
-    w("| --- | --- | --- | --- | --- | --- |")
-    for p in e["plans"].values():
-        w(f"| {p['vendor']} | {p['plan']} | {p['quota']} | {p['free_condition']} | {p['overage']} | {p['expiry']}。{p['tax']} |")
-    w("")
-    w("**別料金（上の分単価に含まれないもの）**\n")
-    w("| 記号 | 内容 | 範囲・抑え方 |")
+            if r["held"]:
+                continue
+            back = f"${r['backend_typical_usd']:.2f}" if r["id"] == "gpt-live-1" else "—"
+            w(f"| {r['name']} | {r['sessions']} | {r['max_min']:.0f}分 | 約${r['voice_expected_usd']:.2f}（${r['ref_usd_per_min']}/分） | "
+              f"{back} | ${r['max_usd']:.2f}（${r['upper_usd_per_min']}/分"
+              f"{'＋裏方 $' + format(r['backend_strict_usd'], '.2f') if r['id'] == 'gpt-live-1' else ''}） | {'、'.join(r['symbols']) or '—'} |")
+        tested = [r for r in st["rows"] if not r["held"]]
+        w(f"| **合計** | {sum(r['sessions'] for r in tested)} | {sum(r['max_min'] for r in tested):.0f}分 | "
+          f"約${sum(r['voice_expected_usd'] for r in tested):.2f} | ${sum(r['backend_typical_usd'] for r in tested):.2f} | "
+          f"${sum(r['max_usd'] for r in tested):.2f} | ＋記号 |\n")
+    w("保留の候補（回数0。参考）：" + "／".join(f"{next(r['name'] for r in e['stages']['connection']['rows'] if r['id'] == k)}：{v}"
+                                       for k, v in e["held_note"].items()) + "。\n")
+    w("**③ 未確認の費用（0円にしない。上限を確定できない理由）**\n")
+    w("| 記号 | 項目 | 確定できない理由・抑え方 |")
     w("| --- | --- | --- |")
-    w("| L_live | GPT-Liveのバックエンドのモデル（delegation）とツール | 単価はモデルで変わる。1応答の出力上限1,200トークン、ツールは1発話3回まで |")
-    w("| L_11 | ElevenAgentsのLLM | プロバイダーの単価でクレジットから引かれる。エージェントの設定で安いモデルを選ぶ |")
-    w("| L_cart | Cartesia Managed AgentsのLLM | 単価はAPI（要キー）でしか見られない＝未確認 |")
-    w("| Ctx_gem | Gemini Liveの履歴の再計算 | 接続の設定で履歴を短く保つ（contextWindowCompression） |")
-    w("| サーバー | 試験のサーバー | 利用者のPCで動かすので$0。外部に置く場合は別途（今回は提案しない） |\n")
-    w("**総額（前払い・プランと、消費の見込みを分ける。利用枠の中の分は二重に数えない）**\n")
-    w("| 段階 | 前払い・プラン（税抜） | 消費の最大（前払いから引かれる。税抜） | プランの枠の中（追加の支払いなし） |")
-    w("| --- | --- | --- | --- |")
+    for sym, item, why in e["unconfirmed"]:
+        w(f"| {sym} | {item} | {why} |")
+    w("")
+    w("**④ アプリ内の制限（会話を止める仕組み。業者の課金の上限は保証しない）**\n")
+    a = e["in_app"]
+    w("| 制限 | 値 | 守り方 |")
+    w("| --- | --- | --- |")
     for stage in ("connection", "detailed"):
-        t = e["totals"][stage]
-        pre = "、".join(f"{k} ${v:g}" for k, v in {**t["prepaid_usd"], **t["plans_usd"]}.items())
-        con = "、".join(f"{k} ${v:.2f}" for k, v in t["consumption_max_usd"].items())
-        inside = "、".join(f"{k}：{v}" for k, v in t["inside_quota"].items())
-        w(f"| {stage_title[stage]} | {pre} | {con}（＋記号） | {inside} |")
-    conn_cash = sum(e["totals"]["connection"]["prepaid_usd"].values())
-    det_cash = sum(e["totals"]["detailed"]["prepaid_usd"].values()) + sum(e["totals"]["detailed"]["plans_usd"].values())
+        cnt = "、".join(f"{r['name'].split('（')[0]} {r['sessions']}回" for r in e["stages"][stage]["rows"])
+        w(f"| 開始の回数（{title[stage]}） | {cnt} | サーバーのデータベースで数える（再起動・同時の開始を含む）。送る前に拒否する |")
+    w(f"| 1回の長さ | 最大{a['max_session_min']:.0f}分 | 画面が止め、サーバーの見張りも{a['max_session_min']:.0f}分＋{a['grace_s']}秒で期限切れにする |")
+    w(f"| 業務処理（ツール）の呼び出し | 1会話{a['tool_calls']}回 | 超えたらサーバーが停止を指示する |")
+    w(f"| GPT-Liveの裏方の応答 | 1会話{a['backend_responses']}回 | 画面が数えてサーバーへ送る。超えたら停止 |")
+    w(f"| 画面から送る response.create | 1会話{a['response_creates']}回 | 同上 |")
+    w(f"| 接続情報の発行の失敗 | 候補×段階で{a['mint_failures']}回 | 超えたら人が `--reset-mint-failures` で解除する |")
+    for stage in ("connection", "detailed"):
+        st = e["stages"][stage]
+        caps = "、".join(f"{v} ${c:g}（{st['requests_caps'][v]}回）" for v, c in st["runtime_caps_usd"].items() if c > 0)
+        w(f"| 台帳の上限（{title[stage]}、{'累計' if stage == 'detailed' else 'この段階'}） | {caps} | "
+          f"開始の前に留保し、超えるなら始めない。{'`LAB_STAGE=detailed` で起動したときだけ' if stage == 'detailed' else '既定の段階'} |")
     w("")
-    w(f"- 支払う額の目安（税抜）：接続の予備試験は **${conn_cash:g}**（OpenAIに残高がなければ前払い。消費は前払いの中）。"
-      f"詳しい会話比較まで進むと、追加で **最大${det_cash:g}**（OpenAIの追加の前払い$10、Geminiの有料枠$5を使う場合、"
-      "ElevenLabs Starter $6、Cartesia Pro $5）。")
-    w(f"- 税：OpenAI・Googleは消費税10%。ElevenLabs・Cartesiaは未確認なので、安全側に10%を加えて見る。"
-      f"為替は1ドル＝{e['fx_jpy_per_usd']:.0f}円の仮置き（140〜160円で変わる）。例：$5は税込で約{5 * 1.1 * e['fx_jpy_per_usd']:.0f}円。")
-    w("- 前払いのクレジットは、自動の追加購入を切っておけば、残高が業者側の上限になる（OpenAI、Gemini有料枠）。"
-      "台帳の上限は、こちら側の見積もりで止める仕組みで、業者の課金の上限を保証しない。")
-    w("- 無料枠は試験の条件だけで使う。本番の料金には流用しない。\n")
-    w("**未確定項目（上限を確定できない理由と、外して実行できる案）**\n")
-    w("| 項目 | 確定できない理由 | 外して実行できる案 |")
-    w("| --- | --- | --- |")
-    w("| GPT-Liveのバックエンドの費用（L_live） | モデルの単価と、会話で呼ばれる回数による | 接続の予備試験の2回だけにし、OpenAIのプロジェクトの予算と前払いの残高で止める。業務処理の比較は基準のGPT-Realtime-2.1で代える |")
-    w("| ElevenLabsのLLM（L_11）、Freeでのclient tools | LLMの単価は選ぶモデルによる。Freeでの機能の制限は公式に明記がない | Freeの15分の範囲で接続だけ確かめる。業務処理が使えなければ、音声だけの比較にして「業務処理は未評価」と記録する |")
-    w("| CartesiaのLLM（L_cart）、Freeの超過 | 単価がAPIでしか見られない。Freeで$1を超えられるかが不明 | Freeの$1の範囲で接続だけ確かめる。超えた場合の請求が不明なうちは、Proへ進まない |")
-    w("| Geminiの履歴の課金（Ctx_gem）、無料枠の上限 | 会話の長さで増える。無料枠の上限は画面でしか見られない | 無料枠（架空のデータだけ）で接続を確かめる。有料枠は前払い$5の残高で止まる |")
-    w("| ElevenLabs・Cartesiaの消費税 | 公式の記載が日本向けに明確でない | 10%を加えて見る |")
+    w("- 留保は、終了の後も**照合待ち**として残ります。業者の利用画面の額で照合したときに閉じます（推定では閉じない）。")
+    w(f"- 留保の最大：接続の予備試験 OpenAI ${e['connection_max_usd']['openai_lab']:.2f}・Google ${e['connection_max_usd']['google_lab']:.2f}、"
+      f"詳しい比較まで累計 OpenAI ${e['cumulative_max_usd']['openai_lab']:.2f}・Google ${e['cumulative_max_usd']['google_lab']:.2f}。"
+      "裏方のモデルを高いもの（GPT_LIVE_DELEGATION_MODEL）に変えると、台帳の上限で開始できません（上限の見直しは判断が要ります）。\n")
+    w("**固定費・利用枠（出典つき）**\n")
+    w("| 業者 | 契約するプラン | 含まれる分数・クレジット | 無料枠の適用条件 | 超過料金 | 期限・集計の遅れ・税 | 出典 |")
+    w("| --- | --- | --- | --- | --- | --- | --- |")
+    for pl in e["plans"].values():
+        src = " ".join(f"[{i + 1}]({u})" for i, u in enumerate(pl["sources"]))
+        w(f"| {pl['vendor']} | {pl['plan']} | {pl['quota']} | {pl['free_condition']} | {pl['overage']} | {pl['expiry']}。{pl['tax']} | {src} |")
     return "\n".join(out)
 
 

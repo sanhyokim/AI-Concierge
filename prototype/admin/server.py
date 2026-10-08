@@ -385,6 +385,7 @@ def main() -> int:
     app = AdminApp(Store(args.db), ledger_path=pathlib.Path(args.ledger), results_dir=pathlib.Path(args.results_dir))
     generated = app.auth.ensure_admin(app.env.get("ADMIN_PASSWORD"))
     httpd = serve(app, args.host, args.port, set(args.allow_host))
+    app.lab.start_watchdog()   # expires browser-lab sessions past the maximum length
     port = httpd.server_address[1]
     print(f"admin app: http://127.0.0.1:{port}  (Ctrl+C to stop)", flush=True)
     print("デモ・試作：会社の回線には接続していません。LINE等の実際の通知も送りません。", flush=True)

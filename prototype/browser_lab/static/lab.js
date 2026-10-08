@@ -1,6 +1,11 @@
 // Core of the browser conversation lab: candidate switching, device-side measurement, judgments, saving.
 // Measurement uses only audio levels on this device (microphone and the AI audio being played),
 // so every candidate is measured the same way regardless of what events its API sends.
+// The device level cannot tell "the AI finished" from "the AI was cut off", so it never invalidates a readback:
+// only an interruption the vendor reports (ctx.vendorInterrupted) does, on the server.
+// Caller transcripts go to the server as numbered utterances (the only replies the confirmation guard accepts).
+// The server can tell the page to stop (spoken AI refusal, in-app limits, maximum length) through the replies
+// and a heartbeat every 10 s.
 
 const SCENARIOS = [
   { id: "C1", title: "相づち", how: "AIが話している途中で「はい」「うん」と短く相づちする",
@@ -19,17 +24,19 @@ const SCENARIOS = [
 // Audio-only judgments (any candidate) and business-logic judgments (only where tool calls reached the server).
 const JUDGE_AUDIO = [
   ["needless_stop", "相づちで不要に止まった"], ["missed_correction", "訂正を取りこぼした"],
-  ["stop_ok", "停止の求めに応じた"], ["natural", "自然さ（1〜5）"],
+  ["stop_ok", "停止の求めに応じた"], ["audible_stop", "実際に再生が止まった（耳で確認）"],
+  ["unsaid_ok", "聞かれていない部分を、伝えた扱いにしていない"], ["natural", "自然さ（1〜5）"],
 ];
 const JUDGE_LOGIC = [["readback_ok", "番号・日時の復唱と確認が正しい"], ["data_ok", "受付記録が会話と一致"]];
 const JUDGE_ITEMS = [...JUDGE_AUDIO, ...JUDGE_LOGIC];
-const STOP_WINDOW_MS = 2500;   // a stop within this counts as a reaction to the caller
+const STOP_WINDOW_MS = 2500;   // a guide for reading the numbers, not a pass criterion
 const SLOW_LIMIT_MS = 6000;    // a later stop is still measured and reported as slow
 const AI_END_HOLD_MS = 250;    // the AI's end is confirmed this long after its audio drops
 const SHORT_UTTERANCE_MS = 600;
-const OUTCOME_LABELS = { stopped: "2.5秒以内に停止", slow_stop: "遅い停止（2.5〜6秒）", not_stopped: "止まらず（6秒以内に停止なし）",
+const OUTCOME_LABELS = { stopped: "2.5秒以内に停止（目安）", slow_stop: "遅い停止（2.5〜6秒）", not_stopped: "止まらず（6秒以内に停止なし）",
   superseded: "判定前に次の発話（未判定）", open_at_end: "会話の終了で未判定" };
 const C5_DELAY_MS = 4000;
+const HEARTBEAT_MS = 10000;
 const $ = (id) => document.getElementById(id);
 
 const st = {
@@ -38,7 +45,9 @@ const st = {
   events: [], transcripts: [], toolCalls: [], latencies: [], stops: [], flags: [], interruptions: [], csrf: "", lastInterrupt: null,
   user: { on: false, since: null, below: null, startT: null }, ai: { on: false, since: null, below: null, startT: null },
   lastUserEnd: null, lastAiEnd: null, pendingInterrupt: null, userSpeechListeners: new Set(),
+  uttSeq: 0, aiStopped: false, closing: false, hb: null,
 };
+const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
 const now = () => Math.round(performance.now() - st.t0);
 
@@ -109,7 +118,7 @@ function updateSummary() {
   const n = (o) => st.interruptions.filter((r) => r.outcome === o).length;
   const shortNot = st.interruptions.filter((r) => r.outcome === "not_stopped" && r.user_utterance_ms !== null && r.user_utterance_ms < SHORT_UTTERANCE_MS).length;
   $("summary").textContent = `応答の遅延：中央値 ${f(pct(st.latencies, 0.5))}・p90 ${f(pct(st.latencies, 0.9))}（${st.latencies.length}件）／` +
-    `割り込み ${st.interruptions.length}件：2.5秒以内に停止 ${n("stopped")}件・遅い停止 ${n("slow_stop")}件・止まらず ${n("not_stopped")}件（うち短い発話 ${shortNot}件）・` +
+    `割り込み ${st.interruptions.length}件：2.5秒以内に停止（目安。合格の基準ではない） ${n("stopped")}件・遅い停止 ${n("slow_stop")}件・止まらず ${n("not_stopped")}件（うち短い発話 ${shortNot}件）・` +
     `未判定 ${n("superseded") + n("open_at_end")}件。停止までの中央値 ${f(pct(st.stops, 0.5))}・p90 ${f(pct(st.stops, 0.9))}は、停止を測れた${st.stops.length}件だけで計算／` +
     `相づちで停止の可能性：${st.flags.length}件（自動推定。判定欄で確認）。AIが自然に話し終えた場合も停止に数えることがあり、自動では区別できない`;
 }
@@ -182,25 +191,100 @@ function tick() {
   });
 }
 
+// --- what the server must hear: caller utterances, vendor interruptions, vendor counts ----------------------
+
+async function sendUtterance(text) {
+  const seq = ++st.uttSeq;
+  try {
+    const r = await post("api/utterance", { session_id: st.session.session_id, text, seq });
+    if (r.recording_stopped) log("録音の拒否（発話）", "録音を止め、拒否より前の録音を削除する。AIの利用は拒否されていないので、会話は続ける");
+    if (r.human_request) log("人との会話の希望", "ライブ転送はできない。折り返しを案内する（X-02）");
+    if (r.stop_ai) await stopAi(r.reason || "ai_refused_by_speech", "AIの拒否（発話）");
+    return r;
+  } catch (e) { log("utterance_error", String(e.message || e)); return null; }
+}
+
+async function reportInterrupted(source) {
+  log("業者の割り込みの通知", source);
+  if (!st.session || st.aiStopped || st.closing) return null;
+  try {
+    const r = await post("api/interrupted", { session_id: st.session.session_id, source });
+    if (r.invalidated && r.invalidated.length) log("復唱を無効にした（返事の前に遮られた）", r.invalidated);
+    return r;
+  } catch (e) { log("interrupted_error", String(e.message || e)); return null; }
+}
+
+async function reportVendorEvent(kind, data) {
+  if (!st.session) return null;
+  try {
+    const r = await post("api/vendor_event", { session_id: st.session.session_id, kind, data: data || {} });
+    if (r.stop && !st.closing) { log("アプリ内の制限で終了", r.reason); stop(`アプリ内の制限（${r.reason}）`); }
+    return r;
+  } catch (e) { log("vendor_event_error", String(e.message || e)); return null; }
+}
+
+// AI refusal: stop sending and playing at once, then close the connection. Later transcripts are not kept.
+async function stopAi(reason, label) {
+  if (st.aiStopped) return;
+  st.aiStopped = true;
+  if (st.mic) st.mic.getTracks().forEach((t) => { t.enabled = false; });
+  try { if (st.conn && st.conn.mute) st.conn.mute(); } catch (e) { /* closing anyway */ }
+  if (st.ac) { try { await st.ac.suspend(); } catch (e) { /* closed */ } }
+  const n = st.transcripts.length;
+  st.transcripts = [];
+  st.events = st.events.filter((e) => e.kind !== "お客様" && e.kind !== "AI");
+  log(label, `AIへの送信と再生を止め、接続を閉じる。拒否より前の文字起こし${n}件を結果から除いた（サーバーでも削除）。` +
+    "認識されるまでに業者へ送った音声は取り消せない");
+  await stop(`${label}（${reason}）`);
+}
+
 function makeCtx(creds) {
   return {
-    session: st.session, credentials: creds, micStream: st.mic, audioContext: st.ac, post,
-    log, onTranscript: (role, text) => { if (!text) return; st.transcripts.push({ t_ms: now(), scenario: st.scenario, role, text }); log(role === "user" ? "お客様" : "AI", text); },
+    session: st.session, credentials: creds, micStream: st.mic, audioContext: st.ac, post, log,
+    // returns the server's answer for a caller transcript (adapters may await it; most do not need to)
+    onTranscript: (role, text) => {
+      if (!text || st.aiStopped) return Promise.resolve(null);
+      st.transcripts.push({ t_ms: now(), scenario: st.scenario, role, text });
+      log(role === "user" ? "お客様" : "AI", text);
+      return role === "user" && st.session && !st.closing ? sendUtterance(text) : Promise.resolve(null);
+    },
+    vendorInterrupted: (source) => reportInterrupted(source),
+    vendorEvent: (kind, data) => reportVendorEvent(kind, data),
     attachOutputNode(node) { node.connect(st.aiAnalyser); node.connect(st.ac.destination); },
     attachOutputStream(stream) { st.ac.createMediaStreamSource(stream).connect(st.aiAnalyser); },
     onUserSpeech(cb) { st.userSpeechListeners.add(cb); return () => st.userSpeechListeners.delete(cb); },
-    async toolCall(name, args, callerUtterance) {
+    async toolCall(name, args) {   // the caller's words are never attached here: the server uses utterances only
+      if (st.aiStopped) return { ok: false, reason: "ai_refused" };
       const delay = st.scenario === "C5" ? C5_DELAY_MS : 0;
       const call = { t_ms: now(), scenario: st.scenario, name, args, delay_ms: delay };
       log("業務処理", { name, args, delay_ms: delay || undefined });
       try {
-        call.result = await post("api/tool", { session_id: st.session.session_id, name, args, caller_utterance: callerUtterance || "", delay_ms: delay });
+        call.result = await post("api/tool", { session_id: st.session.session_id, name, args, delay_ms: delay });
       } catch (e) { call.result = { ok: false, reason: String(e.message || e) }; }
       st.toolCalls.push(call);
       log("業務処理の結果", call.result);
+      if (call.result && call.result.stop && !st.closing) stop(`アプリ内の制限（${call.result.reason}）`);
       return call.result;
     },
   };
+}
+
+function heartbeat() {
+  st.hb = setInterval(async () => {
+    if (!st.session || st.closing) return;
+    try {
+      const r = await post("api/session/heartbeat", { session_id: st.session.session_id });
+      if (!r.stop || st.closing) return;
+      log("サーバーの停止の指示", r.reason);
+      if (String(r.reason).startsWith("ai_refused")) await stopAi(r.reason, "AIの拒否");
+      else await stop(`サーバーの指示で終了（${r.reason}）`);
+    } catch (e) { log("heartbeat_error", String(e.message || e)); }
+  }, HEARTBEAT_MS);
+}
+
+function appliedText(a) {
+  if (!a) return "";
+  return `<br>この会話に反映する設定：指示 ${esc(a.instructions)}／声 ${esc(a.voice)}／FAQ ${esc(a.faq)}`;
 }
 
 async function start() {
@@ -208,7 +292,8 @@ async function start() {
   if (!cand || !cand.ready) return;
   $("startBtn").disabled = true;
   Object.assign(st, { events: [], transcripts: [], toolCalls: [], latencies: [], stops: [], flags: [], interruptions: [],
-    lastUserEnd: null, lastAiEnd: null, pendingInterrupt: null, lastInterrupt: null });
+    lastUserEnd: null, lastAiEnd: null, pendingInterrupt: null, lastInterrupt: null, session: null, conn: null,
+    uttSeq: 0, aiStopped: false, closing: false });
   $("saveBtn").disabled = true;
   st.user = { on: false, since: null, below: null, startT: null };
   st.ai = { on: false, since: null, below: null, startT: null };
@@ -223,15 +308,21 @@ async function start() {
     st.aiAnalyser = st.ac.createAnalyser(); st.aiAnalyser.fftSize = 1024;
     st.ac.createMediaStreamSource(st.mic).connect(st.micAnalyser);
     $("status").textContent = "接続中";
-    st.session = await post("api/session/start", { candidate: cand.id });
+    const fakeScript = new URLSearchParams(location.search).get("fake_script") || undefined;
+    st.session = await post("api/session/start", { candidate: cand.id, fake_script: fakeScript });
     st.t0 = performance.now();
-    log("session_start", { candidate: cand.id, verified: st.session.verified, call_id: st.session.call_id, voice: st.session.voice });
+    log("session_start", { candidate: cand.id, verified: st.session.verified, call_id: st.session.call_id, voice: st.session.voice,
+      applied: st.session.applied, counts: st.session.counts });
     if (!st.session.verified) log("注意", "この構成は公式資料に沿って書いたが、接続はまだ確かめていない");
-    $("callInfo").innerHTML = `業務処理：${st.session.logic_path}。受付の記録 <code>${st.session.call_id}</code>（設定 v${st.session.config_version}、FAQ ${st.session.faq_codes.join(", ")}）` +
-      (location.pathname.startsWith("/lab/") ? ` <a href="../#/call/${encodeURIComponent(st.session.call_id)}" target="_blank" rel="noopener">管理画面で開く</a>` : "");
+    const c = st.session.counts || {};
+    $("callInfo").innerHTML = `業務処理：${esc(st.session.logic_path)}。受付の記録 <code>${esc(st.session.call_id)}</code>（設定 v${esc(st.session.config_version)}、FAQ ${esc(st.session.faq_codes.join(", "))}）` +
+      (c.limit != null ? `。この段階の開始 ${c.sessions}/${c.limit}回` : "") +
+      (location.pathname.startsWith("/lab/") ? ` <a href="../#/call/${encodeURIComponent(st.session.call_id)}" target="_blank" rel="noopener">管理画面で開く</a>` : "") +
+      appliedText(st.session.applied);
     const mod = await import(`./adapters/${st.session.adapter}.js`);
     st.conn = await mod.connect(makeCtx(st.session.credentials));
     st.loop = setInterval(tick, 20);
+    heartbeat();
     const maxMs = st.session.max_session_min * 60 * 1000;
     st.timer = setInterval(() => {
       const t = now();
@@ -245,23 +336,32 @@ async function start() {
     log("エラー", String(e.message || e));
     $("status").textContent = "開始できませんでした";
     await stop("開始の失敗");
+    $("status").textContent = `開始できませんでした：${String(e.message || e).slice(0, 200)}`;
+    loadCandidates();   // counts changed
   }
 }
 
 async function stop(reason) {
+  if (st.closing) return;
+  st.closing = true;
   $("stopBtn").disabled = true;
   $("refuseBtn").disabled = true;
   if (st.pendingInterrupt) resolveInterrupt(st.pendingInterrupt, "open_at_end", null);
-  clearInterval(st.loop); clearInterval(st.timer);
+  clearInterval(st.loop); clearInterval(st.timer); clearInterval(st.hb);
   st.userSpeechListeners.clear();
   const duration = st.t0 ? (performance.now() - st.t0) / 1000 : 0;
-  try { if (st.conn) await st.conn.close(); } catch (e) { log("close_error", String(e)); }
+  if (st.mic) st.mic.getTracks().forEach((t) => { t.enabled = false; });
+  let closeInfo = {};
+  try { if (st.conn) closeInfo = (await st.conn.close()) || {}; } catch (e) { log("close_error", String(e)); }
   if (st.mic) st.mic.getTracks().forEach((t) => t.stop());
   if (st.session) {
-    try { st.session.ended = await post("api/session/end", { session_id: st.session.session_id, duration_s: duration, reason: reason || "試験者が終了" }); }
-    catch (e) { log("end_error", String(e.message || e)); }
+    try {
+      st.session.ended = await post("api/session/end", { session_id: st.session.session_id, duration_s: duration,
+        reason: reason || "試験者が終了", close_confirmed: !!closeInfo.closed, final_usage: closeInfo.usage || null });
+    } catch (e) { log("end_error", String(e.message || e)); st.session.ended = { error: String(e.message || e) }; }
     st.session.duration_s = duration;
-    log("session_end", { reason: reason || "試験者が終了", duration_s: Math.round(duration), estimate: st.session.ended });
+    log("session_end", { reason: reason || "試験者が終了", duration_s: Math.round(duration), estimate: st.session.ended,
+      vendor_close: closeInfo.closed === undefined ? "対象外" : closeInfo.closed ? "業者の終了を確認" : "業者の終了・使用量は未確認" });
     $("saveBtn").disabled = false;
   }
   st.conn = null;
@@ -274,8 +374,19 @@ async function refuseAi() {
   // the tester plays a caller who refuses AI processing: the server records it and refuses further AI work
   const r = await post("api/consent", { session_id: st.session.session_id, kind: "ai_refused" });
   log("AIの拒否（模擬）", r.actions.map((a) => a.label));
-  if (r.stop_ai) await stop("AIの拒否（業者への接続を閉じた）");
+  if (r.stop_ai) await stopAi("ai_refused", "AIの拒否（業者への接続を閉じた）");
 }
+
+// closing the tab: tell the server (keepalive) so the session does not wait for the watchdog
+window.addEventListener("pagehide", () => {
+  if (!st.session || st.session.ended || st.closing) return;
+  const body = JSON.stringify({ session_id: st.session.session_id, reason: "画面を閉じた（pagehide）",
+    duration_s: st.t0 ? (performance.now() - st.t0) / 1000 : 0 });
+  try {
+    fetch("api/session/end", { method: "POST", keepalive: true, body,
+      headers: { "Content-Type": "application/json", "X-CSRF-Token": st.csrf } });
+  } catch (e) { /* the watchdog expires it */ }
+});
 
 async function save() {
   const judgments = {}, audio = {}, logic = {};
@@ -316,22 +427,42 @@ function renderStatic() {
     SCENARIOS.map((s) => `<div><b>${s.id}</b></div>${JUDGE_ITEMS.map(([k]) => `<select id="j-${s.id}-${k}" aria-label="${s.id} ${k}">${opts(k)}</select>`).join("")}`).join("");
 }
 
+function envHelp(c) {
+  if (!c.missing_env.length) return "";
+  const items = c.missing_env.map((k) => `<li><code>${esc(k)}</code>：${esc(c.env_help[k] || "")}</li>`).join("");
+  const unix = c.missing_env.map((k) => `export ${k}='（ここに値）'`).join("\n");
+  const win = c.missing_env.map((k) => `$env:${k} = '（ここに値）'`).join("\n");
+  return `<details open><summary>この候補に必要な設定（この端末だけで行う）</summary><ul>${items}</ul>` +
+    `<p>mac・Linux（ターミナル）</p><pre>${esc(unix)}\npython3 -m prototype.browser_lab</pre>` +
+    `<p>Windows（PowerShell）</p><pre>${esc(win)}\npython -m prototype.browser_lab</pre>` +
+    "<p>鍵の値は、チャット・メール・ファイルに貼らず、この端末のターミナルにだけ入力します。設定したターミナルで試験のサーバーを起動し直します。</p></details>";
+}
+
 async function loadCandidates() {
   try { st.csrf = (await (await fetch("api/csrf")).json()).csrf || ""; } catch (e) { st.csrf = ""; }
   const r = await fetch("api/candidates");
   const listed = await r.json();
+  const keep = $("candidate").value;
   st.candidates = listed.candidates;
   st.stage = listed.stage_label;
-  $("candidate").innerHTML = st.candidates.map((c) => `<option value="${c.id}" ${c.ready ? "" : "disabled"}>` +
-    `${c.name}${c.ready ? "" : `（未設定：${c.missing_env.join("・")}）`}${c.verified ? "" : "［接続未確認］"}</option>`).join("");
-  const first = st.candidates.find((c) => c.ready);
+  $("candidate").innerHTML = st.candidates.map((c) => `<option value="${esc(c.id)}" ${c.ready ? "" : "disabled"}>` +
+    `${esc(c.name)}${c.hold ? "（保留）" : c.ready ? "" : `（未設定：${esc(c.missing_env.join("・"))}）`}${c.verified ? "" : "［接続未確認］"}</option>`).join("");
+  const first = st.candidates.find((c) => c.id === keep && c.ready) || st.candidates.find((c) => c.ready);
   if (first) $("candidate").value = first.id;
   const showNote = () => {
     const c = st.candidates.find((x) => x.id === $("candidate").value);
-    $("candNote").textContent = c ? `${c.verified ? "" : "接続未確認の構成です。"}業務処理の経路：${c.logic_path}。${c.note || ""}` : "";
-    $("limit").textContent = c ? `いまの段階：${st.stage}。1回の会話は最大${c.max_session_min}分（自動で終了）。上限の目安 $${c.upper_usd_per_min}/分で台帳に留保し、段階ごとの上限を超える会話は始めません。` : "";
+    if (!c) { $("candNote").innerHTML = ""; $("limit").textContent = ""; return; }
+    const n = c.counts || {};
+    $("candNote").innerHTML = (c.hold ? `<p><b>保留中：</b>${esc(c.hold)}</p>` : "") +
+      `<p>${c.verified ? "" : "接続未確認の構成です。"}業務処理の経路：${esc(c.logic_path)}。${esc(c.note || "")}</p>` +
+      `<p>管理画面の設定の反映：指示 ${esc(c.applies.instructions)}／声 ${esc(c.applies.voice)}</p>` +
+      (n.limit != null ? `<p>この段階の開始：${n.sessions}/${n.limit}回。接続情報の発行の失敗：${n.mint_failures}/${n.mint_failure_limit}回</p>` : "") +
+      envHelp(c);
+    $("limit").textContent = `いまの段階：${st.stage}。1回の会話は最大${c.max_session_min}分で、画面とサーバーの両方が止める。` +
+      `開始の前に、最大時間×上限の分単価（$${c.upper_usd_per_min}/分。GPT-Liveは裏方のモデルの厳しめの仮定を足す）を台帳に留保し、` +
+      "業者の利用画面と照合するまで残す。台帳とアプリ内の制限は、業者の課金の上限を保証しない。";
   };
-  $("candidate").addEventListener("change", showNote);
+  $("candidate").onchange = showNote;
   showNote();
 }
 

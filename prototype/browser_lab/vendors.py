@@ -15,7 +15,8 @@ import urllib.request
 from typing import Callable
 
 from ..engines.budget import MAX_OUTPUT_TOKENS
-from .config import GREETING, LAB_INSTRUCTIONS, gemini_function_declarations, openai_tools
+from .config import (GREETING, LAB_INSTRUCTIONS, MAX_SESSION_MIN, delegation_model, gemini_function_declarations,
+                     openai_tools)
 
 Http = Callable[[str, str, dict, dict | None], tuple[int, dict | str]]
 
@@ -53,15 +54,17 @@ def _function_tools() -> list:
 
 
 def mint(cfg: dict, env: dict, http: Http = http_json, instructions: str = LAB_INSTRUCTIONS,
-         voice: str | None = None) -> dict:
+         voice: str | None = None, overrides: dict | None = None, script: list | None = None) -> dict:
     """Credentials and session settings for the page. Never returns a key from env.
 
-    instructions and voice come from the call's settings snapshot when the reception service is attached."""
+    instructions and voice come from the call's settings snapshot when the reception service is attached.
+    Short-lived credentials are kept as short as each vendor allows, for starting this one session only."""
     adapter = cfg["adapter"]
     if adapter == "fake":
-        return {"greeting": GREETING}
+        return {"greeting": GREETING, "script": list(script or [])}
     if adapter == "openai-realtime":
-        body = {"session": {
+        body = {"expires_after": {"anchor": "created_at", "seconds": 60},   # one key could open several sessions
+                "session": {
             "type": "realtime", "model": cfg["model"], "instructions": instructions,
             "audio": {"input": {"transcription": {"model": "gpt-4o-transcribe", "language": "ja"},
                                 "turn_detection": {"type": "semantic_vad"}},
@@ -76,7 +79,8 @@ def mint(cfg: dict, env: dict, http: Http = http_json, instructions: str = LAB_I
     if adapter == "gpt-live":
         return {"sdp_exchange": "api/session/sdp", "greeting": GREETING}  # the offer is exchanged server-side
     if adapter == "gemini-live":
-        body = {"uses": 1, "expireTime": _iso(dt.timedelta(minutes=30)),
+        # one use, started within a minute, and no messages after the maximum session length (+1 minute)
+        body = {"uses": 1, "expireTime": _iso(dt.timedelta(minutes=MAX_SESSION_MIN + 1)),
                 "newSessionExpireTime": _iso(dt.timedelta(minutes=1))}
         _, data = http("POST", "https://generativelanguage.googleapis.com/v1beta/auth_tokens",
                        {"x-goog-api-key": env["GEMINI_API_KEY"], "Content-Type": "application/json"}, body)
@@ -101,12 +105,15 @@ def mint(cfg: dict, env: dict, http: Http = http_json, instructions: str = LAB_I
         _, data = http("GET", url, {"xi-api-key": env["ELEVENLABS_API_KEY"]}, None)
         if not isinstance(data, dict) or "signed_url" not in data:
             raise VendorError("get-signed-url: no 'signed_url' in the response")
-        return {"signed_url": data["signed_url"], "client_esm": ELEVENLABS_CLIENT_ESM}
+        out = {"signed_url": data["signed_url"], "client_esm": ELEVENLABS_CLIENT_ESM}
+        if overrides:   # only fields the agent allows in its Security tab (ELEVENLABS_OVERRIDES on this PC)
+            out["overrides"] = overrides
+        return out
     if adapter == "cartesia":
         _, data = http("POST", "https://api.cartesia.ai/access-token",
                        {"Authorization": f"Bearer {env['CARTESIA_API_KEY']}",
                         "Cartesia-Version": cfg["cartesia_version"], "Content-Type": "application/json"},
-                       {"grants": {"agent": True}, "expires_in": 600})
+                       {"grants": {"agent": True}, "expires_in": 60})
         token = data.get("token") if isinstance(data, dict) else None
         if not token:
             raise VendorError("access-token: no 'token' in the response")
@@ -125,7 +132,7 @@ def exchange_live_sdp(cfg: dict, env: dict, offer_sdp: str, http: Http = http_js
     Business logic uses Responses delegation: the backend model gets the reception tools as functions and its
     function calls reach the page as response.event / response.output_item.done, which the page sends to the
     common reception service and answers with response.item.create + response.create."""
-    model = env.get(cfg["delegation_model_env"]) or cfg["delegation_model_default"]
+    model = delegation_model(cfg, env)
     body = {"session": {
         "model": cfg["model"], "instructions": instructions, "audio": {"output": {"voice": voice or "marin"}},
         "delegation": {"type": "responses", "responses": {

@@ -41,6 +41,7 @@ class CandidateFrameTest(unittest.TestCase):
         self.assertIn("接続の調査を優先", lst)
 
     def test_browser_budget_caps_cover_the_maximum_per_vendor(self):
+        from prototype.browser_lab import config as lc
         est = mb.browser_stage_estimate()
         cumulative = {}
         for stage in ("connection", "detailed"):
@@ -49,22 +50,32 @@ class CandidateFrameTest(unittest.TestCase):
             for r in st["rows"]:
                 per_vendor[r["ledger_vendor"]] = per_vendor.get(r["ledger_vendor"], 0) + r["max_usd"]
                 cumulative[r["ledger_vendor"]] = cumulative.get(r["ledger_vendor"], 0) + r["max_usd"]
+                # the table's maximum is what the lab reserves before each session
+                self.assertAlmostEqual(r["max_usd"], round(r["sessions"] * lc.session_reserve_usd(
+                    lc.CANDIDATES[r["id"]], {}), 2))
             caps = st["runtime_caps_usd"]
             for vendor, mx in (per_vendor if stage == "connection" else cumulative).items():
                 self.assertGreaterEqual(caps[vendor] + 1e-9, mx, (stage, vendor))
             self.assertGreater(st["max_usd"], st["expected_usd"])
         conn = {r["id"]: r["sessions"] for r in est["stages"]["connection"]["rows"]}
-        self.assertTrue(all(1 <= n <= 2 for n in conn.values()))           # 1-2 sessions per candidate first
-        self.assertEqual(est["runtime_caps_total_usd"], 29.0)
+        self.assertEqual(conn, {"gpt-live-1": 2, "gemini-3.8-live": 2, "gpt-realtime-2.1": 0, "elevenagents": 0,
+                                "cartesia-agents": 0})                # user decision 2026-10-07
+        self.assertEqual(est["runtime_caps_total_usd"], 10.5)
+        live = next(r for r in est["stages"]["connection"]["rows"] if r["id"] == "gpt-live-1")
+        self.assertGreater(live["backend_strict_usd"], live["backend_typical_usd"])   # two assumptions, both shown
 
-    def test_budget_tables_cover_the_six_items(self):
+    def test_budget_keeps_payments_estimates_unconfirmed_and_limits_apart(self):
         md = mb.browser_budget_markdown()
-        for head in ("接続の予備試験", "詳しい会話比較", "固定費・利用枠", "別料金", "総額", "未確定項目"):
+        for head in ("① 支払い額", "② 既知の費目の試算", "③ 未確認の費用", "④ アプリ内の制限", "固定費・利用枠"):
             self.assertIn(head, md)
-        self.assertIn("二重に数えない", md)
+        self.assertNotIn("残高が上限", md)                      # a prepaid balance is not a spending cap
+        self.assertIn("費用の上限ではありません", md)
+        self.assertIn("約10分", md)
+        self.assertIn("L_live", md)
+        self.assertIn("消費税10%", md)
         doc = (pathlib.Path(__file__).resolve().parents[2] / "docs" / "measurement-plan-v2.md").read_text()
         self.assertIn(md, doc)   # the plan shows exactly what the code computes
-        self.assertIn("消費税10%", md)
+        self.assertNotIn("残高が上限", doc)
 
 
 if __name__ == "__main__":

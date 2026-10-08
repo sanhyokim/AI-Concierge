@@ -114,7 +114,8 @@ class AdminHttpTest(unittest.TestCase):
         for path in ("/api/voices", "/api/status", "/lab/api/candidates", "/api/config", "/api/targets"):
             self.assertEqual(self.req("GET", path, cookie=cookie)[0], 200)
         cands = json.loads(self.bodies[-3])["candidates"]
-        self.assertTrue(next(c for c in cands if c["id"] == "gpt-realtime-2.1")["ready"])
+        self.assertTrue(next(c for c in cands if c["id"] == "gpt-live-1")["ready"])
+        self.assertFalse(next(c for c in cands if c["id"] == "gpt-realtime-2.1")["ready"])   # held
         self.assertFalse(any(FAKE_KEY in b for b in self.bodies))
         dump = "\n".join(str(r) for r in self.app.store.q("SELECT * FROM audit_log"))
         self.assertNotIn(FAKE_KEY, dump)

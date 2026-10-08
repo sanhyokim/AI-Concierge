@@ -81,6 +81,37 @@ function fail(msg) { console.error("FAIL:", msg); process.exitCode = 1; }
     await page.waitForFunction(() => document.getElementById("status").textContent === "終了", null, { timeout: 15000 });
     const refused = await page.evaluate(() => window.__lab.events.some((e) => e.kind === "AIの拒否（模擬）"));
     if (!refused) fail("AI refusal not recorded");
+    if (!stats.kinds.includes("業者の割り込みの通知")) fail("a barge-in must be reported to the server as a vendor interruption");
+
+    // spoken recording refusal: recording stops, the AI conversation continues
+    await page.goto(url + "/?fake_script=recording");
+    await page.waitForFunction(() => document.querySelectorAll("#candidate option").length > 1);
+    await page.selectOption("#candidate", "fake");
+    await page.click("#startBtn");
+    await page.waitForFunction(() => document.getElementById("status").textContent === "会話中", null, { timeout: 15000 });
+    await page.waitForFunction(() => window.__lab.events.some((e) => e.kind === "録音の拒否（発話）"), null, { timeout: 20000 });
+    const toolsAtRefusal = await page.evaluate(() => window.__lab.toolCalls.length);
+    await page.waitForFunction((n) => window.__lab.toolCalls.length > n, toolsAtRefusal, { timeout: 20000 });
+    const rec = await page.evaluate(() => ({ status: document.getElementById("status").textContent, aiStopped: window.__lab.aiStopped,
+      lastTool: window.__lab.toolCalls[window.__lab.toolCalls.length - 1].result }));
+    if (rec.status !== "会話中" || rec.aiStopped) fail("recording refusal alone must not close the AI connection");
+    if (rec.lastTool && rec.lastTool.reason === "ai_refused") fail("tools must keep working after a recording refusal");
+    await page.click("#stopBtn");
+    await page.waitForFunction(() => document.getElementById("status").textContent === "終了");
+
+    // spoken AI refusal (mixed with a request for a person): the page stops sending and closes the connection
+    await page.goto(url + "/?fake_script=refusal");
+    await page.waitForFunction(() => document.querySelectorAll("#candidate option").length > 1);
+    await page.selectOption("#candidate", "fake");
+    await page.click("#startBtn");
+    await page.waitForFunction(() => document.getElementById("status").textContent === "会話中", null, { timeout: 15000 });
+    await page.waitForFunction(() => document.getElementById("status").textContent === "終了", null, { timeout: 30000 });
+    const spoken = await page.evaluate(() => ({ stopped: window.__lab.aiStopped, kinds: window.__lab.events.map((e) => e.kind),
+      transcripts: window.__lab.transcripts.length, end: (window.__lab.session || {}).ended }));
+    if (!spoken.stopped || !spoken.kinds.includes("AIの拒否（発話）")) fail("spoken AI refusal must stop the AI");
+    if (spoken.transcripts !== 0) fail("pre-refusal transcripts must not be kept on the page");
+    const sessions = await (await page.request.get(url + "/api/sessions")).json();
+    if (!String(sessions.sessions[0].stop_reason || "").startsWith("ai_refused")) fail("server must record why the session stopped");
     if (errors.length) fail("page errors: " + errors.join(" | "));
     console.log(JSON.stringify({ latencies: stats.lat, interruption_stops: stats.stops, interruptions: ints.map((r) => r.outcome),
       tool_calls: stats.tools, saved: files[0], business_logic: saved.comparison.business_logic_status, event_kinds: stats.kinds }, null, 1));

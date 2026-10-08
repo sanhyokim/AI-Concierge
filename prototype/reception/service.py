@@ -24,6 +24,7 @@ from ..concierge.readings import digits_only
 from ..engines.tools import ToolHandler
 from . import settings as S
 from .faq import TOOL_RULES, faq_block, faq_lookup
+from .speech_consent import detect as detect_spoken_consent
 from .notify import Outbox
 from .routing import Decision, decide
 from .store import Store, dumps, iso, now_jst, parse_at
@@ -98,7 +99,12 @@ class ReceptionService:
                                                      "note": row["note"]}
 
     def save_config(self, data: dict, user: str | None, note: str = "") -> int:
+        from ..browser_lab.config import CANDIDATES, voice_applies
         cfg = S.validate_config(data)
+        active = next(v for v in cfg["voices"] if v["id"] == cfg["active_voice"])
+        if active["candidate"] in CANDIDATES and not voice_applies(active["candidate"], self.env):
+            raise ValueError(f"{CANDIDATES[active['candidate']]['name']} の声は、業者のエージェント設定で固定です。"
+                             "この画面で選んでも反映されないため、使う声にはできません（記録としての登録はできます）")
         with self.store.tx():
             vid = self.store.x("INSERT INTO config_versions(created_at, created_by, note, data) VALUES(?, ?, ?, ?)",
                                (iso(self.clock()), user, note[:200], dumps(cfg))).lastrowid
@@ -290,7 +296,19 @@ class ReceptionService:
             self._event(call_id, "caller", {"text": text if store else "（文字起こしを保存しない設定）",
                                             "seq": sess.tools.utterance_seq})
             sess.new_utterance.notify_all()
-            return {"forward": True, "stop_ai": False}
+            heard = detect_spoken_consent(text)
+            out: dict = {"forward": True, "stop_ai": False, "human_request": heard.human_request}
+            if heard.recording_refused and sess.flow.consent.recording != "refused":
+                # recording only: stop and delete the recording; the AI conversation continues
+                out["actions"] = self.consent_event(call_id, "recording_refused", source="speech")["actions"]
+                out["recording_stopped"] = True
+            if heard.ai_refused:
+                # stop sending to the AI at once; the transcript before the refusal (this one included) is deleted
+                acts = self.consent_event(call_id, "ai_refused", source="speech")["actions"]
+                out = {"forward": False, "stop_ai": True, "reason": "ai_refused_by_speech",
+                       "recording_stopped": out.get("recording_stopped", False),
+                       "actions": out.get("actions", []) + acts}
+            return out
 
     def ai_interrupted(self, call_id: str, source: str) -> dict:
         """The vendor reported that the AI's speech was cut off (not a device-level observation)."""
@@ -373,7 +391,7 @@ class ReceptionService:
         return {"ok": True, "play": clip, "next": next_step, "notified": notified}
 
     # --- consent, refusal, push buttons -----------------------------------------------------------------
-    def consent_event(self, call_id: str, kind: str, value=None) -> dict:
+    def consent_event(self, call_id: str, kind: str, value=None, source: str = "operator") -> dict:
         sess = self._session(call_id)
         with sess.lock:
             call = self._call(call_id)
@@ -387,7 +405,7 @@ class ReceptionService:
                         "human_request_answer": lambda: f.on_human_request_answer(bool(value))}
             if kind not in handlers:
                 raise ValueError(f"unknown consent event {kind}")
-            self._event(call_id, "consent", {"kind": kind, "value": value})
+            self._event(call_id, "consent", {"kind": kind, "value": value, "source": source})
             applied = self._apply(call_id, sess, handlers[kind]())
             self._persist(call_id, sess)
         return {"actions": applied, "call": self.call_view(call_id)}

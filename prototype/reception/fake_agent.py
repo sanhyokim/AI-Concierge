@@ -50,9 +50,15 @@ class RuleAgent:
         return [GREETING]
 
     def hear(self, text: str) -> dict:
-        r = self.svc.caller_utterance(self.call_id, text)
+        r = self.svc.caller_utterance(self.call_id, text)   # spoken refusals are judged here, in the common logic
         if not r["forward"]:
-            return {"forwarded": False, "reason": r["reason"], "say": []}
+            return {"forwarded": False, "reason": r["reason"], "stop_ai": r.get("stop_ai", False),
+                    "actions": r.get("actions", []), "say": []}
+        if r.get("recording_stopped"):
+            say = ["承知しました。ここからの録音を止め、これまでの録音も削除します。ご用件の受付は、このままAIが続けます。"]
+            for line in say:
+                self.svc.ai_utterance(self.call_id, line)
+            return {"forwarded": True, "recording_stopped": True, "actions": r.get("actions", []), "say": say}
         say = self._reply(_norm(text))
         for line in say:
             self.svc.ai_utterance(self.call_id, line)
@@ -142,12 +148,7 @@ class RuleAgent:
 
     # --- the reply -------------------------------------------------------------------------------------
     def _reply(self, text: str) -> list[str]:
-        if "録音" in text and any(w in text for w in ("止め", "しないで", "やめ", "嫌", "いや")):
-            self.svc.consent_event(self.call_id, "recording_refused")
-            return ["承知しました。ここからの録音を止め、これまでの録音も削除します。ご用件の受付は、このままAIが続けます。"]
-        if any(w in text for w in ("AI", "機械")) and any(w in text for w in ("嫌", "話したくない", "やめ", "いらない", "断")):
-            self.svc.consent_event(self.call_id, "ai_refused")
-            return []          # recorded clips and the keypad take over; the AI says nothing more
+        # AI and recording refusals were already handled by ReceptionService.caller_utterance.
         if self.human_pending:
             reply = classify_reply(text)
             if reply != Reply.UNCLEAR:

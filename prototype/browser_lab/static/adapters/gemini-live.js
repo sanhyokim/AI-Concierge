@@ -1,6 +1,7 @@
 // Google Gemini 3.8 Live over WebSocket with a one-use ephemeral token (BidiGenerateContentConstrained).
 // Mic: 16 kHz PCM. Model audio: PCM (24 kHz unless the mimeType says otherwise). On serverContent.interrupted
-// everything not yet heard is dropped. Tool calls go to the local server.
+// everything not yet heard is dropped and the interruption is reported to the server (an unanswered readback
+// is then not confirmed). Caller transcripts are sent before tool calls so the server sees the reply first.
 // Written from the public docs (2026-10-05); the connection has not been confirmed with a real account.
 import { createPlayer, fromBase64, startCapture, toBase64 } from "../pcm.js";
 
@@ -10,7 +11,8 @@ export async function connect(ctx) {
   const out = ac.createGain();
   ctx.attachOutputNode(out);
   let player = createPlayer(ac, out, 24000);
-  let capture = null, lastUser = "", userBuf = "", aiBuf = "";
+  let capture = null, userBuf = "", aiBuf = "";
+  const flushUser = () => { const t = userBuf; userBuf = ""; return t ? ctx.onTranscript("user", t) : Promise.resolve(null); };
   const ws = new WebSocket(`${wsUrl}?access_token=${encodeURIComponent(token)}`);
   const send = (obj) => ws.readyState === WebSocket.OPEN && ws.send(JSON.stringify(obj));
 
@@ -38,22 +40,27 @@ export async function connect(ctx) {
           player.enqueue(fromBase64(d.data));
         }
       }
-      if (sc.interrupted) { player.clear(); ctx.log("vendor_event", { type: "interrupted" }); }
+      if (sc.interrupted) { player.clear(); ctx.vendorInterrupted("gemini.serverContent.interrupted"); }
       if (sc.inputTranscription && sc.inputTranscription.text) userBuf += sc.inputTranscription.text;
       if (sc.outputTranscription && sc.outputTranscription.text) aiBuf += sc.outputTranscription.text;
       if (sc.turnComplete || sc.generationComplete) {
-        if (userBuf) { lastUser = userBuf; ctx.onTranscript("user", userBuf); userBuf = ""; }
+        flushUser();
         if (aiBuf) { ctx.onTranscript("ai", aiBuf); aiBuf = ""; }
       }
     }
     if (ev.toolCall) {
       const responses = [];
+      const heard = await flushUser();
+      if (heard && heard.stop_ai) return;
       for (const fc of ev.toolCall.functionCalls || []) {
-        const result = await ctx.toolCall(fc.name, fc.args || {}, lastUser || userBuf);
+        const result = await ctx.toolCall(fc.name, fc.args || {});
         responses.push({ id: fc.id, name: fc.name, response: { result } });
       }
       send({ toolResponse: { functionResponses: responses } });
     }
   };
-  return { async close() { if (capture) capture.stop(); player.clear(); ws.close(); } };
+  return {
+    mute() { out.gain.value = 0; player.clear(); },
+    async close() { if (capture) capture.stop(); player.clear(); ws.close(); },
+  };
 }

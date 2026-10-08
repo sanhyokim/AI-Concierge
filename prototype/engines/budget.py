@@ -96,7 +96,9 @@ class UsageLedger:
                 continue
             if kind != "usage":
                 continue
-            totals["requests"] += 1
+            counts = rec.get("counts_request", True)   # e.g. a session's backend usage is part of that session
+            if counts:
+                totals["requests"] += 1
             totals["audio_seconds"] += rec.get("audio_seconds", 0.0)
             totals["est_cost_usd"] += rec.get("est_cost_usd", 0.0)
             for k, v in (rec.get("units", {}).get("tokens") or {}).items():
@@ -109,7 +111,7 @@ class UsageLedger:
                 agg = linked.setdefault(rid, {"usd": 0.0, "audio": 0.0, "n": 0})
                 agg["usd"] += rec.get("est_cost_usd", 0.0)
                 agg["audio"] += rec.get("audio_seconds", 0.0)
-                agg["n"] += 1
+                agg["n"] += 1 if counts else 0
         adjusted = {rec["reservation"] for rec in lines if rec.get("kind") == "adjustment" and rec.get("reservation")}
         open_ids = {r["rid"] for r in self.open_reservations()}
         for rid in adjusted - open_ids:  # reconciled request with no usage line: it was still a request
@@ -154,12 +156,16 @@ class UsageLedger:
         return rid
 
     def record(self, operation: str, path: str, est_cost_usd: float, run_id: str, audio_seconds: float = 0.0,
-               reservation: str | None = None, **units) -> dict:
+               reservation: str | None = None, counts_request: bool = True, **units) -> dict:
+        """counts_request=False for a line that belongs to a request already counted (a session's backend
+        usage) or to one that was never a billable request (a failed credential mint)."""
         rec = {"ts": _now(), "vendor": self.vendor, "kind": "usage", "operation": operation, "path": path,
                "run_id": run_id, "audio_seconds": round(audio_seconds, 3), "est_cost_usd": round(est_cost_usd, 6),
                "units": units}
         if reservation:
             rec["reservation"] = reservation
+        if not counts_request:
+            rec["counts_request"] = False
         return self._write(rec)
 
     def close(self, rid: str, note: str = "") -> dict:

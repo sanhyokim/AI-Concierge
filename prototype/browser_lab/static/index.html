@@ -43,19 +43,21 @@
   code { font-size: 12px; }
   .judge select { padding: 2px; }
   .flag { color: var(--warn); }
+  #candNote p { margin: 4px 0; }
+  pre { white-space: pre-wrap; font-size: 12px; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 6px; }
 </style>
 </head>
 <body>
 <main>
   <h1>ブラウザー会話試験（AI受電）</h1>
-  <p class="sub">共通の受付業務と台本で、候補を切り替えて実際に話します。架空の情報だけを使ってください。計測は端末の音量で行い、業者のイベントには頼りません。業務処理（FAQ・確認・保存）は管理画面と同じ共通の処理で、FAQ・声は会話の開始時の設定を使います。</p>
+  <p class="sub">共通の受付業務と台本で、候補を切り替えて実際に話します。架空の情報だけを使ってください。計測は端末の音量で行います（2.5秒は目安で、合格の基準ではありません。実際に止まったかは耳で判定します）。業務処理（FAQ・確認・保存）は管理画面と同じ共通の処理で、FAQ・声は会話の開始時の設定を使います。</p>
   <p class="note">まず各候補1〜2回の接続と短い会話だけを確かめ、動いた候補で詳しい比較（C1〜C6）へ進みます。音声だけの評価と、業務処理を含む評価は分けて記録します。</p>
 
   <div class="grid">
     <section>
       <h2>1. 候補と条件</h2>
       <label>候補 <select id="candidate"></select></label>
-      <p id="candNote" class="note"></p>
+      <div id="candNote" class="note"></div>
       <label>音の出し方
         <select id="output"><option value="headset">ヘッドセット（推奨）</option><option value="speaker">スピーカー</option></select></label>
       <label><input type="checkbox" id="echo" checked> エコー抑制（ブラウザーの機能）</label>

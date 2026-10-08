@@ -1,7 +1,8 @@
 // Cartesia Managed Agents over the agent WebSocket (wss://api.cartesia.ai/v1/agents/websocket/{agent_id})
 // with a short-lived access token. Protocol from the public docs (2026-10-07):
 //   session_create -> session_ready; audio_input / audio_output (base64, same format both ways: pcm_16000);
-//   audio_output_clear (barge-in); turn_output_text_delta / turn_ended (transcripts);
+//   audio_output_clear (barge-in, reported to the server as an interruption); turn_output_text_delta /
+//   turn_ended (transcripts; turn_ended.interrupted is reported too);
 //   client_tool_call -> client_tool_result (business logic through the common reception service).
 // The client tools must be created in Cartesia (dashboard "Client function" or POST /v1/agents/tools) and
 // attached to the agent: docs/browser-lab-setup.md. The connection has not been confirmed with a real account.
@@ -13,7 +14,7 @@ export async function connect(ctx) {
   const out = ac.createGain();
   ctx.attachOutputNode(out);
   const player = createPlayer(ac, out, 16000);
-  let capture = null, lastUser = "", aiBuf = "";
+  let capture = null, aiBuf = "";
   const ws = new WebSocket(`${wsUrl}?cartesia_version=${encodeURIComponent(version)}&access_token=${encodeURIComponent(token)}`);
   const send = (obj) => ws.readyState === WebSocket.OPEN && ws.send(JSON.stringify(obj));
   ws.onopen = () => send(start);   // session_create must be the first message, within 10 s
@@ -29,13 +30,17 @@ export async function connect(ctx) {
       player.enqueue(fromBase64(ev.audio));
     } else if (ev.type === "audio_output_clear") {
       player.clear();
+      ctx.vendorInterrupted("cartesia.audio_output_clear");
     } else if (ev.type === "turn_output_text_delta") {
       aiBuf += ev.text || "";
     } else if (ev.type === "turn_ended") {
-      if (ev.role === "user") { lastUser = ev.text || ""; ctx.onTranscript("user", lastUser); }
-      else { ctx.onTranscript("ai", aiBuf || ev.text || ""); aiBuf = ""; if (ev.interrupted) ctx.log("vendor_event", { type: "turn_interrupted" }); }
+      if (ev.role === "user") ctx.onTranscript("user", ev.text || "");
+      else {
+        ctx.onTranscript("ai", aiBuf || ev.text || ""); aiBuf = "";
+        if (ev.interrupted) ctx.vendorInterrupted("cartesia.turn_ended.interrupted");
+      }
     } else if (ev.type === "client_tool_call") {
-      const result = await ctx.toolCall(ev.tool_name, ev.parameters || {}, lastUser);
+      const result = await ctx.toolCall(ev.tool_name, ev.parameters || {});
       if (ev.expects_response !== false) {
         send({ type: "client_tool_result", tool_call_id: ev.tool_call_id, result: JSON.stringify(result).slice(0, 4000), is_error: false });
       }
@@ -43,5 +48,8 @@ export async function connect(ctx) {
       ctx.log("vendor_error", { code: ev.code, message: ev.message, fatal: ev.fatal });
     }
   };
-  return { async close() { if (capture) capture.stop(); player.clear(); ws.close(1000); } };
+  return {
+    mute() { out.gain.value = 0; player.clear(); },
+    async close() { if (capture) capture.stop(); player.clear(); ws.close(1000); },
+  };
 }
