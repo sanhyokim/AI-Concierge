@@ -13,9 +13,12 @@ import pathlib
 import sqlite3
 import threading
 from contextlib import contextmanager
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-JST = ZoneInfo("Asia/Tokyo")
+try:
+    JST = ZoneInfo("Asia/Tokyo")
+except ZoneInfoNotFoundError:   # Windows ships no time-zone database; Japan has no daylight saving time
+    JST = dt.timezone(dt.timedelta(hours=9), "JST")
 DEFAULT_DB = pathlib.Path(__file__).resolve().parents[1] / "data" / "reception.sqlite3"
 
 SCHEMA = """

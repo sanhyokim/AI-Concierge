@@ -10,16 +10,11 @@
 
 このクラウドの環境から、利用者がURLで開ける安全なプレビューは用意できません（外部からつなげる入口がない）。そのため、**利用者のPCで動かします**。必要なのはPython 3.11以上だけで、追加のパッケージや有料のサービスは要りません。
 
-```bash
-git clone https://github.com/sanhyokim/AI-Concierge.git
-cd AI-Concierge
-git checkout claude/new-session-w4sjel
-python3 -m prototype.admin
-```
+- **Windows**：[はじめての起動（Windows）](./start-windows.md) のとおりです。展開したフォルダーの `start_windows` をダブルクリックすると、最初の起動でパスワードを決め、ブラウザーが開きます。コマンドの入力は不要です。
+- **mac・Linux**：展開したフォルダーで `python3 -m prototype.admin --setup` を実行します。
 
-1. コンソールに表示される `http://127.0.0.1:8780` をブラウザーで開きます。
-2. ユーザー名 `admin` と、最初の起動のときにコンソールに**1回だけ**表示されるパスワードでログインします。
-   - パスワードを自分で決めたいときは、起動の前に環境変数 `ADMIN_PASSWORD` を設定します。
+1. ブラウザーで `http://127.0.0.1:8780` を開きます（`--setup` では自動で開きます）。
+2. ユーザー名 `admin` と、最初の起動で決めたパスワードでログインします。忘れたときは `reset_password_windows`（mac・Linux は `python3 -m prototype.admin --reset-password`）。
 3. 上の「着信テスト」の画面で「着信を入れる」→「例の会話を流す」→「通話を終える」と押すと、一連の動作を確かめられます。
 
 **スマートフォンで試す場合**（同じWi-Fiの中だけ）
@@ -27,7 +22,7 @@ python3 -m prototype.admin
 - PCで次のように起動し、表示された `http://<PCのIPアドレス>:8780` をスマートフォンで開きます。
 
   ```bash
-  python3 -m prototype.admin --host 0.0.0.0
+  python3 -m prototype.admin --host 0.0.0.0        # Windows は py -3 -m prototype.admin --host 0.0.0.0
   ```
 
 - HTTPSではないため、自宅・事務所のWi-Fiの中だけで、架空のデータで使ってください。
@@ -42,7 +37,7 @@ python3 -m prototype.admin
 
 - データは `prototype/data/reception.sqlite3` に保存されます（gitの対象外）。設定・FAQ・受付・補正・通知の記録が、再起動の後も残ります。
 - 初めからやり直すときは、サーバーを止めてこのファイルを消します。
-- 停止は Ctrl+C です。
+- 停止は、黒い画面（ターミナル）を閉じるか、Ctrl+C です。
 
 ## 2. 構成と選んだ理由
 

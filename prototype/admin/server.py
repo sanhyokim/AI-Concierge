@@ -22,6 +22,7 @@ import socket
 import sys
 import threading
 import traceback
+import webbrowser
 from http import HTTPStatus
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -35,6 +36,7 @@ from ..reception.notify import CHANNELS, SIMULATE, STATUS_LABELS
 from ..reception.service import ReceptionService
 from ..reception.store import DEFAULT_DB, Store, now_jst
 from ..reception.summary import build_summary, notification_body
+from . import setup
 from .auth import COOKIE, SESSION_S, Auth
 
 STATIC = pathlib.Path(__file__).resolve().parent / "static"
@@ -234,6 +236,12 @@ def app_ledgers(app: AdminApp) -> dict:
     return out
 
 
+def port_in_use(port: int) -> bool:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.settimeout(0.5)
+        return s.connect_ex(("127.0.0.1", port)) == 0
+
+
 def lan_addresses() -> set[str]:
     out = set()
     try:
@@ -415,10 +423,27 @@ def main() -> int:
     ap.add_argument("--db", default=str(DEFAULT_DB))
     ap.add_argument("--results-dir", default=str(labsrv.RESULTS))
     ap.add_argument("--ledger", default=str(DEFAULT_LEDGER))
+    ap.add_argument("--setup", action="store_true", help="ask for the admin password (first start) and the API "
+                    "keys in this window, then open the browser (used by start_windows.bat)")
+    ap.add_argument("--reset-password", action="store_true", help="set a new admin password, then exit")
     args = ap.parse_args()
-    app = AdminApp(Store(args.db), ledger_path=pathlib.Path(args.ledger), results_dir=pathlib.Path(args.results_dir))
+    store = Store(args.db)
+    if args.reset_password:
+        return 0 if setup.reset_password(store) else 1
+    if args.setup:
+        print("AI受電 管理画面（試作）を起動します。会社の回線にはつながりません。LINEへも送りません。", flush=True)
+        setup.ensure_password(store, Auth(store))
+        setup.ask_keys(os.environ)
+    app = AdminApp(store, ledger_path=pathlib.Path(args.ledger), results_dir=pathlib.Path(args.results_dir))
     generated = app.auth.ensure_admin(app.env.get("ADMIN_PASSWORD"))
-    httpd = serve(app, args.host, args.port, set(args.allow_host))
+    try:
+        if args.port and port_in_use(args.port):   # Windows lets a second server bind the same port silently
+            raise OSError("port in use")
+        httpd = serve(app, args.host, args.port, set(args.allow_host), log_requests=not args.setup)
+    except OSError:
+        print(f"ポート {args.port} が使われています。すでに起動している画面（黒い画面）がないか確かめ、"
+              "あればそれを使うか、閉じてからもう一度起動してください。", flush=True)
+        return 1
     app.lab.start_watchdog()   # expires browser-lab sessions past the maximum length
     port = httpd.server_address[1]
     print(f"admin app: http://127.0.0.1:{port}  (Ctrl+C to stop)", flush=True)
@@ -429,6 +454,15 @@ def main() -> int:
         addrs = ", ".join(f"http://{a}:{port}" for a in sorted(lan_addresses())) or "（このPCのIPアドレス）"
         print(f"注意：同じネットワークの他の端末から開けます：{addrs}。HTTPSではないため、自宅・事務所のWi-Fiの中だけで、"
               "架空のデータで使ってください。", flush=True)
+    if args.setup:
+        url = f"http://127.0.0.1:{port}/lab/"
+        print("", flush=True)
+        print("準備ができました。ブラウザーで会話試験の画面が開きます。", flush=True)
+        print(f"  開かないときは、ブラウザーの上の住所の欄に入力：{url}", flush=True)
+        print("  ログイン：ユーザー名 admin と、決めたパスワード", flush=True)
+        print("  管理画面（設定・受付履歴・費用の台帳）：http://127.0.0.1:%d/" % port, flush=True)
+        print("この黒い画面は、試験が終わるまで閉じないでください。終えるときは、この画面を閉じます。", flush=True)
+        webbrowser.open(f"http://127.0.0.1:{port}/login?next=/lab/")
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:

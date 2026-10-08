@@ -218,4 +218,4 @@ GPT-Liveの裏方のモデル（gpt-6-luna）は、典型（10応答×入力6,00
 | 詳しい会話比較の費用 | 予備試験の結果を見てから判断（追加の前払い：OpenAI $5、Geminiの有料枠 $5。税抜） |
 | アカウント | 当面は OpenAI と Google AI Studio の2つだけ。ElevenLabs・Cartesiaは後回し |
 | 鍵の置き場所 | 試験をする人のPCの環境変数（サーバー側）。チャットやリポジトリには置かない |
-| 試験をする人とPC | 自分のPCで管理画面のサーバーを動かし（`python3 -m prototype.admin`）、`/lab/` で話す。ヘッドセットの用意 |
+| 試験をする人とPC | 自分のPCで管理画面のサーバーを動かし（Windowsは `start_windows` をダブルクリック。[はじめての起動](./start-windows.md)）、`/lab/` で話す。ヘッドセットの用意 |
