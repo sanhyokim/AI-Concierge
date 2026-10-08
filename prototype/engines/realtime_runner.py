@@ -194,7 +194,7 @@ class RealtimeRunner:
             elif et == "input_audio_buffer.committed":
                 self.acct.committed(ev.get("item_id"))
             elif et == "conversation.item.input_audio_transcription.completed":
-                self.tools.last_caller_utterance = ev.get("transcript", "")
+                self.tools.caller_said(ev.get("transcript", ""), ev.get("item_id"))   # duplicates are ignored
                 self._log("caller_transcript", text=self.tools.last_caller_utterance)
                 usage = ev.get("usage")
                 status = self.acct.transcription(ev.get("item_id"), usage, transcription_cost(usage))

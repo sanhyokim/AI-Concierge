@@ -89,7 +89,7 @@ class RelaySession:
             return []
         if kind == "prompt":
             text = msg.get("voicePrompt", "")
-            self.tools.last_caller_utterance = text
+            self.tools.caller_said(text)   # each prompt message is one final caller transcript
             self.history.append({"role": "user", "content": text})
             segments = await self.brain.reply(self.history, self.tools)
             self.history.append({"role": "assistant", "content": "".join(s.text for s in segments)})

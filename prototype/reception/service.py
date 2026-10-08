@@ -41,9 +41,13 @@ ACTION_LABELS = {"stop_ai_stream": "AIへの音声送信を停止", "stop_record
 SOURCES = {"demo": "架空の着信テスト", "browser_lab": "ブラウザー会話試験", "relay": "電話経路（未接続）"}
 
 
+CONFIRM_WAIT_S = 1.5   # a reply transcript may arrive slightly after the model's confirm_field call
+
+
 class CallSession:
     def __init__(self, tools: ToolHandler, flow: CallFlow) -> None:
         self.tools, self.flow, self.lock = tools, flow, threading.RLock()
+        self.new_utterance = threading.Condition(self.lock)
 
 
 def _flow_dump(f: CallFlow) -> dict:
@@ -268,19 +272,34 @@ class ReceptionService:
     def snapshot(self, call_id: str) -> dict:
         return json.loads(self._call(call_id)["snapshot"])
 
-    def caller_utterance(self, call_id: str, text: str) -> dict:
-        """Called by an adapter before caller content goes to the AI. forward=False means: do not send it."""
+    def caller_utterance(self, call_id: str, text: str, utterance_id: str | int | None = None) -> dict:
+        """A final caller transcript event. forward=False means: do not send it (or anything after it) to the AI.
+
+        This is the only way a caller utterance is registered for the confirmation guard. A repeated
+        utterance_id is a duplicate: it is acknowledged and otherwise ignored."""
         sess = self._session(call_id)
         with sess.lock:
             call = self._call(call_id)
             block = self._ai_block_reason(call, sess)
             if block:
                 self._event(call_id, "ai_send_blocked", {"reason": block})   # the content itself is not stored
-                return {"forward": False, "reason": block}
-            sess.tools.last_caller_utterance = text
+                return {"forward": False, "stop_ai": True, "reason": block}
+            if not sess.tools.caller_said(text, utterance_id):
+                return {"forward": True, "stop_ai": False, "duplicate": True}
             store = json.loads(call["snapshot"])["config"]["store_transcript"]
-            self._event(call_id, "caller", {"text": text if store else "（文字起こしを保存しない設定）"})
-            return {"forward": True}
+            self._event(call_id, "caller", {"text": text if store else "（文字起こしを保存しない設定）",
+                                            "seq": sess.tools.utterance_seq})
+            sess.new_utterance.notify_all()
+            return {"forward": True, "stop_ai": False}
+
+    def ai_interrupted(self, call_id: str, source: str) -> dict:
+        """The vendor reported that the AI's speech was cut off (not a device-level observation)."""
+        sess = self._session(call_id)
+        with sess.lock:
+            invalidated = sess.tools.readback_interrupted(source)
+            self._event(call_id, "vendor_interrupted", {"source": source, "invalidated": invalidated})
+            self._persist(call_id, sess)
+            return {"invalidated": invalidated}
 
     def ai_utterance(self, call_id: str, text: str) -> None:
         sess = self._session(call_id)
@@ -292,6 +311,8 @@ class ReceptionService:
             self._event(call_id, "ai", {"text": text if store else "（文字起こしを保存しない設定）"})
 
     def tool(self, call_id: str, name: str, args: dict, caller_utterance: str = "") -> dict:
+        """caller_utterance (text an adapter attaches to a tool call) is ignored on purpose: only transcript
+        events registered through caller_utterance() count as what the caller said."""
         sess = self._session(call_id)
         with sess.lock:
             call = self._call(call_id)
@@ -299,8 +320,9 @@ class ReceptionService:
             if block:
                 self._event(call_id, "ai_blocked", {"tool": name, "reason": block})
                 return {"ok": False, "reason": block}
-            if caller_utterance:
-                sess.tools.last_caller_utterance = caller_utterance
+            if name == "confirm_field" and sess.tools.awaiting_reply(str((args or {}).get("field", ""))):
+                sess.new_utterance.wait_for(lambda: not sess.tools.awaiting_reply(str(args.get("field", ""))),
+                                            timeout=CONFIRM_WAIT_S)
             snap = json.loads(call["snapshot"])
             args = dict(args or {})
             logged_args = args
