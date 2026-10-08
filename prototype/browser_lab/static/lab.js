@@ -329,7 +329,7 @@ async function start() {
       $("timer").textContent = `${Math.floor(t / 60000)}:${String(Math.floor((t % 60000) / 1000)).padStart(2, "0")}`;
       if (t >= maxMs) stop("最大時間で自動終了");
     }, 250);
-    $("status").textContent = "会話中";
+    $("status").textContent = cand.id === "fake" ? "会話中（オフラインの模擬：AIには接続していません。音は電子音です）" : "会話中";
     $("stopBtn").disabled = false;
     $("refuseBtn").disabled = false;
   } catch (e) {
@@ -447,7 +447,9 @@ async function loadCandidates() {
   st.stage = listed.stage_label;
   $("candidate").innerHTML = st.candidates.map((c) => `<option value="${esc(c.id)}" ${c.ready ? "" : "disabled"}>` +
     `${esc(c.name)}${c.hold ? "（保留）" : c.ready ? "" : `（未設定：${esc(c.missing_env.join("・"))}）`}${c.verified ? "" : "［接続未確認］"}</option>`).join("");
-  const first = st.candidates.find((c) => c.id === keep && c.ready) || st.candidates.find((c) => c.ready);
+  // a real candidate first when one is ready: the offline stand-in only beeps and is easy to start by mistake
+  const first = st.candidates.find((c) => c.id === keep && c.ready) || st.candidates.find((c) => c.ready && c.id !== "fake")
+    || st.candidates.find((c) => c.ready);
   if (first) $("candidate").value = first.id;
   const showNote = () => {
     const c = st.candidates.find((x) => x.id === $("candidate").value);

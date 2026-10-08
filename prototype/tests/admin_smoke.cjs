@@ -263,9 +263,11 @@ const lastAi = (page) => page.$$eval("#chat .msg.ai", (els) => (els.at(-1) || {}
     // --- browser lab behind the same login, using the same reception service ----------------------------------------
     await page.goto(url + "/lab/");
     await page.waitForFunction(() => document.querySelectorAll("#candidate option").length > 1);
+    check("a real candidate is chosen by default when its key is set", (await page.$eval("#candidate", (x) => x.value)) === "gpt-live-1");
     await page.selectOption("#candidate", "fake");
     await page.click("#startBtn");
-    await page.waitForFunction(() => document.getElementById("status").textContent === "会話中", null, { timeout: 15000 });
+    await page.waitForFunction(() => document.getElementById("status").textContent.startsWith("会話中"), null, { timeout: 15000 });
+    check("the offline stand-in says it is not the AI", (await page.textContent("#status")).includes("AIには接続していません"));
     await page.waitForTimeout(9000);
     await page.click("#stopBtn");
     await page.waitForFunction(() => document.getElementById("status").textContent === "終了");
