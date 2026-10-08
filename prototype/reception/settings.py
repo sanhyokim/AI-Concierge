@@ -1,41 +1,32 @@
 """Reception settings: provisional defaults, validation, FAQ seeds and the voice catalog.
 
-Every default here is PROVISIONAL and FICTITIOUS (暫定・架空). Production business days, holidays, hours,
-FAQ wording and voices are still the user's decisions (spec 3-1, 4-1); nothing here is a decided setting.
+Every default here is PROVISIONAL and FICTITIOUS (暫定・架空). FAQ wording and voices are still the user's
+decisions (spec 4-1); nothing here is a decided setting.
+
+There is no reception mode or schedule: the AI is switched on and off by changing the NTT call forwarding (line
+plan 2, user decision 2026-10-07/08). Every call that reaches this app is answered by the AI; only what happens when
+the AI cannot be used is a setting here.
 """
 from __future__ import annotations
 
 import copy
-import datetime as dt
-import re
 
-MODES = ("always_ai", "always_normal", "schedule")
-MODE_LABELS = {"always_ai": "常時AI受電", "always_normal": "常時普通受電", "schedule": "スケジュール運用"}
-ROUTE_MODES = ("ai", "normal")
-ROUTE_LABELS = {"ai": "AI受電", "normal": "普通受電", "dtmf": "録音の案内とプッシュボタン（AIなし）"}
-FAILURE_ACTIONS = ("normal", "dtmf")
-WEEKDAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
-WEEKDAY_LABELS = dict(zip(WEEKDAYS, "月火水木金土日"))
+ROUTE_LABELS = {"ai": "AI受付", "forward": "担当者の携帯へ転送（AIが止まったとき）",
+                "dtmf": "録音の案内とプッシュボタン（AIなし）"}
+FAILURE_ACTIONS = ("forward", "dtmf")
+FAILURE_LABELS = {"forward": "担当者の携帯へ転送する（転送先へ1回分の通話料がかかる）",
+                  "dtmf": "録音の案内を流し、プッシュボタンで折り返し先を受け付ける"}
 FIELD_KEYS = ("shop_name", "caller_name", "callback_number", "request", "preferred_datetime")
 FIELD_LABELS = {"shop_name": "店舗名", "caller_name": "お名前", "callback_number": "折り返し先",
                 "request": "用件", "preferred_datetime": "希望日時"}
-_TIME = re.compile(r"^([01]\d|2[0-4]):([0-5]\d)$")
 
 DEFAULT_CONFIG = {
     "provisional": True,
-    "mode": "schedule",
-    "ai_failure_action": "normal",
-    "schedule": {
-        "weekly": {d: ([{"start": "09:00", "end": "17:00", "mode": "normal"}] if d in WEEKDAYS[:5] else [])
-                   for d in WEEKDAYS},
-        "outside": "ai",
-        "special_days": [],
-    },
+    "ai_failure_action": "forward",
     "voices": [   # the first connection check uses GPT-Live and Gemini only (user decision 2026-10-07)
         {"id": "v1", "candidate": "gpt-live-1", "voice": "marin", "label": "GPT-Liveの既定の声（日本語は未確認）"},
         {"id": "v2", "candidate": "gemini-3.8-live", "voice": "Kore", "label": "Geminiの声（候補・日本語は未確認）"},
         {"id": "v3", "candidate": "fake", "voice": "tone", "label": "オフラインの模擬（音声の評価には使えない）"},
-        {"id": "v4", "candidate": "gpt-realtime-2.1", "voice": "marin", "label": "基準の候補（保留）"},
     ],
     "active_voice": "v1",
     "fields": {k: {"store": True, "summary": True, "notify": True} for k in FIELD_KEYS},
@@ -43,7 +34,9 @@ DEFAULT_CONFIG = {
     "retention_days": None,
 }
 
-# Seeds: the FAQ recommendations of spec 4-1 (NOT approved). FAQ-04 is generated from the schedule.
+# Seeds: the FAQ recommendations of spec 4-1 (NOT approved).
+HOURS_ANSWER = ("担当者がお電話をお受けする時間は、9時から17時です。担当者が出られないときは、AIがご用件を伺い、"
+                "担当者から折り返しご連絡します。")   # provisional; it used to be generated from the schedule
 FAQ_SEEDS = [
     ("FAQ-01", "点検は無料ですか", "点検は無料です。", "点検,無料,タダ"),
     ("FAQ-02", "無煙ロースターの清掃はいくらですか",
@@ -51,7 +44,7 @@ FAQ_SEEDS = [
      "正式な金額は、無料の現地調査のあとにお見積もりします。", "ロースター,無煙"),
     ("FAQ-03", "フードやダクトの清掃はいくらですか",
      "クリアフード、焼き場のフード、ダクトの清掃は、現地を調査したうえでお見積もりします。", "フード,ダクト,見積"),
-    ("FAQ-04", "電話は何時まで受け付けていますか", "（スケジュールから自動で作ります）", "何時,受付時間,営業時間,電話の受付"),
+    ("FAQ-04", "電話は何時まで受け付けていますか", HOURS_ANSWER, "何時,受付時間,営業時間,電話の受付"),
     ("FAQ-05", "夜中や早朝に作業してもらえますか",
      "清掃の作業は、深夜や早朝にも対応しています。ご希望の日時を伺って、担当者から折り返しご相談します。", "夜中,深夜,早朝,夜間"),
     ("FAQ-06", "どの地域に来てもらえますか", "福岡を中心に、九州・中国・四国で対応しています。", "地域,エリア,どこまで,対応地域"),
@@ -67,66 +60,18 @@ FAQ_SEEDS = [
 FALLBACK_ANSWER = "その点は、担当者が確認してご連絡します。"   # FAQ-10: recorded as an open question
 
 
-def _minutes(hhmm: str) -> int:
-    h, m = hhmm.split(":")
-    return int(h) * 60 + int(m)
-
-
-def _clock(hhmm: str) -> str:
-    h, m = hhmm.split(":")
-    return f"{int(h)}時" + (f"{int(m)}分" if int(m) else "")
-
-
 def validate_config(data: dict) -> dict:
     """Return a normalised copy or raise ValueError with a message the admin page can show."""
     if not isinstance(data, dict):
         raise ValueError("設定の形式が正しくありません")
     cfg = copy.deepcopy(DEFAULT_CONFIG)
-    for key in ("mode", "ai_failure_action", "active_voice", "store_transcript", "retention_days", "provisional"):
+    for key in ("ai_failure_action", "active_voice", "store_transcript", "retention_days", "provisional"):
         if key in data:
             cfg[key] = data[key]
-    if cfg["mode"] not in MODES:
-        raise ValueError(f"受電設定が正しくありません：{cfg['mode']}")
+    if cfg["ai_failure_action"] == "normal":   # saved before the schedule was removed
+        cfg["ai_failure_action"] = "forward"
     if cfg["ai_failure_action"] not in FAILURE_ACTIONS:
-        raise ValueError("AI障害時の動作が正しくありません")
-    sched = data.get("schedule", cfg["schedule"])
-    weekly_in = sched.get("weekly", {})
-    weekly = {}
-    for d in WEEKDAYS:
-        bands = []
-        for b in weekly_in.get(d, []) or []:
-            start, end, mode = str(b.get("start", "")), str(b.get("end", "")), b.get("mode")
-            if not _TIME.match(start) or not _TIME.match(end) or _minutes(start) > 24 * 60 or _minutes(end) > 24 * 60:
-                raise ValueError(f"{WEEKDAY_LABELS[d]}曜日の時刻の形式が正しくありません（例 09:00、終わりは24:00まで）")
-            if _minutes(start) >= _minutes(end):
-                raise ValueError(f"{WEEKDAY_LABELS[d]}曜日 {start}〜{end}：終わりは始まりより後にしてください"
-                                 "（日をまたぐ場合は2つに分けます）")
-            if mode not in ROUTE_MODES:
-                raise ValueError(f"{WEEKDAY_LABELS[d]}曜日の時間帯のモードが正しくありません")
-            bands.append({"start": start, "end": end, "mode": mode})
-        bands.sort(key=lambda b: _minutes(b["start"]))
-        for a, b in zip(bands, bands[1:]):
-            if _minutes(b["start"]) < _minutes(a["end"]):
-                raise ValueError(f"{WEEKDAY_LABELS[d]}曜日の時間帯が重なっています（{a['start']}〜{a['end']} と "
-                                 f"{b['start']}〜{b['end']}）")
-        weekly[d] = bands
-    outside = sched.get("outside", "ai")
-    if outside not in ROUTE_MODES:
-        raise ValueError("時間外の扱いが正しくありません")
-    specials, seen = [], set()
-    for s in sched.get("special_days", []) or []:
-        try:
-            day = dt.date.fromisoformat(str(s.get("date")))
-        except ValueError:
-            raise ValueError(f"特別日の日付が正しくありません：{s.get('date')}") from None
-        if day in seen:
-            raise ValueError(f"特別日が重複しています：{day}")
-        if s.get("mode") not in ROUTE_MODES:
-            raise ValueError(f"特別日 {day} のモードが正しくありません")
-        seen.add(day)
-        specials.append({"date": day.isoformat(), "mode": s["mode"], "note": str(s.get("note", ""))[:100]})
-    specials.sort(key=lambda s: s["date"])
-    cfg["schedule"] = {"weekly": weekly, "outside": outside, "special_days": specials}
+        raise ValueError("AIが止まったときの扱いが正しくありません")
     voices = data.get("voices", cfg["voices"])
     if not voices:
         raise ValueError("声を1つ以上登録してください")
@@ -166,32 +111,6 @@ def validate_config(data: dict) -> dict:
         cfg["retention_days"] = rd
     cfg["provisional"] = bool(cfg.get("provisional", True))
     return cfg
-
-
-def staff_ranges(config: dict) -> list[str]:
-    """Distinct staff ('normal') bands of the weekly schedule, e.g. ['9時から17時']. Weekdays are not named
-    while business days are undecided (spec FAQ-04)."""
-    seen: list[str] = []
-    for d in WEEKDAYS:
-        for b in config["schedule"]["weekly"].get(d, []):
-            if b["mode"] == "normal":
-                text = f"{_clock(b['start'])}から{_clock(b['end'])}"
-                if text not in seen:
-                    seen.append(text)
-    return seen
-
-
-def hours_answer(config: dict) -> str:
-    """FAQ-04 generated from the saved settings so it never contradicts the reception mode."""
-    if config["mode"] == "always_ai":
-        return "現在、お電話はAIがご用件を伺い、担当者から折り返しご連絡しています。"
-    ranges = staff_ranges(config)
-    if not ranges:
-        return FALLBACK_ANSWER
-    text = f"担当者がお電話をお受けする時間は、{'、'.join(ranges)}です。"
-    if config["mode"] == "schedule" and config["schedule"]["outside"] == "ai":
-        text += "受付時間外のお電話は、AIがご用件を伺い、担当者から折り返します。"
-    return text
 
 
 # --- voices ------------------------------------------------------------------------------------------------

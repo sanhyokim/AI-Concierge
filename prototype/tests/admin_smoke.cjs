@@ -52,12 +52,12 @@ async function toastSays(page, text) {
 }
 async function login(page, url) {
   await page.goto(url + "/");
-  await page.waitForSelector("#password, #homeMode");
+  await page.waitForSelector("#password, #homeFailure");
   if (await page.$("#password")) {   // after a restart the session (stored in the database) may still be valid
     await page.fill("#password", PASSWORD);
     await page.click("button[type=submit]");
   }
-  await page.waitForSelector("#homeMode");
+  await page.waitForSelector("#homeFailure");
 }
 async function demoCall(page, url, at, opts = {}) {
   await page.goto(url + "/#/calls");          // leave the demo screen so it is drawn afresh (no stale result)
@@ -108,9 +108,11 @@ const lastAi = (page) => page.$$eval("#chat .msg.ai", (els) => (els.at(-1) || {}
     await login(page, url);
     await shot(page, "pc-home");
 
-    // --- 1: save a mode, restart the server, still there ------------------------------------------------
+    // --- 1: save a setting, restart the server, still there (no reception mode or schedule any more) ---------
+    check("no schedule screen in the menu", !(await page.textContent("#nav")).includes("スケジュール"));
+    check("home says the switch is the NTT forwarding", (await page.textContent("main")).includes("NTTの転送の切り替え"));
     await page.goto(url + "/#/mode");
-    await page.check("input[name=mode][value=always_ai]");
+    await page.selectOption("#failure", "dtmf");
     await page.fill("#note", "ブラウザー試験");
     await page.click("#saveMode");
     await toastSays(page, "保存しました");
@@ -118,33 +120,20 @@ const lastAi = (page) => page.$$eval("#chat .msg.ai", (els) => (els.at(-1) || {}
     await stopServer(srv);
     ({ srv, url } = await startServer(tmp, logs));
     await login(page, url);
-    check("mode survives a server restart", (await page.textContent("#homeMode")).includes("常時AI受電"), await page.textContent("#homeMode"));
+    check("setting survives a server restart", (await page.textContent("#homeFailure")).includes("録音の案内"), await page.textContent("#homeFailure"));
     await page.goto(url + "/#/mode");
-    await page.check("input[name=mode][value=schedule]");
+    await page.selectOption("#failure", "forward");
     await page.click("#saveMode");
     await toastSays(page, "保存しました");
 
-    // --- 2: JST boundaries through the schedule screen (server-side rule) --------------------------------
-    await page.goto(url + "/#/schedule");
-    await page.waitForSelector("#checkBtn");
-    const expect = { "2026-10-05T08:59:59": "AI受電", "2026-10-05T09:00:00": "普通受電", "2026-10-05T16:59:59": "普通受電",
-      "2026-10-05T17:00:00": "AI受電", "2026-10-10T10:00:00": "AI受電" };
-    for (const [at, want] of Object.entries(expect)) {
-      await page.$eval("#checkAt", (el, v) => { el.value = v; }, at);   // Chrome drops ":00" seconds on fill
-      await page.click("#checkBtn");
-      await page.waitForFunction((a) => (document.querySelector("#checkOut").textContent || "").includes(a.replace("T", " ")), at);
-      const got = (await page.textContent("#checkRoute")).trim();
-      check(`schedule ${at} -> ${want}`, got === want, got);
+    // --- 2: every call that reaches the app goes to the AI, at any hour; AI stopped -> forwarded -----------
+    for (const at of ["2026-10-05T10:00", "2026-10-05T18:00", "2026-10-10T10:00"]) {
+      check(`call at ${at} goes to the AI`, (await demoCall(page, url, at)) === "AI受付");
     }
-    await shot(page, "pc-schedule");
-    // edit: add a Saturday band, save, check it
-    await page.click("button[data-add=sat]");
-    await page.click("#saveSchedule");
-    await toastSays(page, "保存しました");
-    await page.$eval("#checkAt", (el) => { el.value = "2026-10-10T10:00:00"; });
-    await page.click("#checkBtn");
-    await page.waitForFunction(() => document.querySelector("#checkOut").textContent.includes("土曜日"));
-    check("saturday band applies after save", (await page.textContent("#checkRoute")).trim() === "普通受電");
+    check("AI stopped: forwarded to the staff mobile", (await demoCall(page, url, "2026-10-05T10:00", { aiDown: true })).startsWith("担当者の携帯へ転送"));
+    await say(page, "点検は無料ですか？");
+    check("forwarded call: utterance not sent to the AI", (await page.textContent("#chat")).includes("AIへは送っていません"));
+    await shot(page, "pc-demo-forward");
 
     // --- FAQ and voice screens ----------------------------------------------------------------------------
     await page.goto(url + "/#/faq");
@@ -157,7 +146,7 @@ const lastAi = (page) => page.$$eval("#chat .msg.ai", (els) => (els.at(-1) || {}
     await shot(page, "pc-voice");
 
     // --- end to end: AI call with number/date corrections --------------------------------------------------
-    check("evening call goes to AI", (await demoCall(page, url, "2026-10-05T18:00")) === "AI受電");
+    check("evening call goes to AI", (await demoCall(page, url, "2026-10-05T18:00")) === "AI受付");
     await page.click("#runScript");
     await page.waitForFunction(() => [...document.querySelectorAll("#chat .msg.ai")].some((m) => m.textContent.includes("失礼いたします")), null, { timeout: 30000 });
     const chatText = await page.textContent("#chat");
@@ -200,7 +189,7 @@ const lastAi = (page) => page.$$eval("#chat .msg.ai", (els) => (els.at(-1) || {}
     await shot(page, "pc-call-detail");
 
     // --- 3 and 4: change settings during a call --------------------------------------------------------------
-    check("call A is AI", (await demoCall(page, url, "2026-10-05T18:00")) === "AI受電");
+    check("call A is AI", (await demoCall(page, url, "2026-10-05T18:00")) === "AI受付");
     const admin2 = await pc.newPage();
     await admin2.goto(url + "/#/faq");
     await admin2.waitForSelector("[data-toggle]");
@@ -208,25 +197,22 @@ const lastAi = (page) => page.$$eval("#chat .msg.ai", (els) => (els.at(-1) || {}
     await faq01.uncheck();
     await toastSays(admin2, "無効");
     await admin2.goto(url + "/#/mode");
-    await admin2.check("input[name=mode][value=always_normal]");
+    await admin2.selectOption("#failure", "dtmf");
     await admin2.click("#saveMode");
     await toastSays(admin2, "保存しました");
     await say(page, "点検は無料ですか？");
     check("ongoing call keeps its FAQ (FAQ-01 still answered)", (await lastAi(page)).includes("点検は無料です") ||
       (await page.textContent("#chat")).includes("点検は無料です。"));
-    check("ongoing call keeps its route", (await page.textContent("#demoRoute")).trim() === "AI受電");
+    check("ongoing call keeps its route", (await page.textContent("#demoRoute")).trim() === "AI受付");
     await page.click("#endCall");
     await page.waitForSelector("#summaryText");
-    check("next call follows the new mode (always normal)", (await demoCall(page, url, "2026-10-05T18:00")) === "普通受電");
-    // 8: normal route never sends to the AI
-    await say(page, "点検は無料ですか？");
-    check("normal route: utterance not sent to the AI", (await page.textContent("#chat")).includes("AIへは送っていません"));
-    await shot(page, "pc-demo-normal");
+    check("next call follows the new setting (AI stopped -> push buttons)",
+      (await demoCall(page, url, "2026-10-05T18:00", { aiDown: true })).startsWith("録音の案内とプッシュボタン"));
     await admin2.goto(url + "/#/mode");
-    await admin2.check("input[name=mode][value=schedule]");
+    await admin2.selectOption("#failure", "forward");
     await admin2.click("#saveMode");
     await toastSays(admin2, "保存しました");
-    check("call C is AI again", (await demoCall(page, url, "2026-10-05T18:00")) === "AI受電");
+    check("call C is AI again", (await demoCall(page, url, "2026-10-05T18:00")) === "AI受付");
     await say(page, "点検は無料ですか？");
     check("next call uses the disabled FAQ state", (await page.textContent("#chat")).includes("担当者が確認してご連絡します"));
     // 8: AI refusal stops sending and deletes the earlier transcript
@@ -248,7 +234,7 @@ const lastAi = (page) => page.$$eval("#chat .msg.ai", (els) => (els.at(-1) || {}
     await admin2.close();
 
     // --- a vendor's interruption notice invalidates an unanswered read-back (demo button) -------------------------
-    check("call D is AI", (await demoCall(page, url, "2026-10-05T18:00")) === "AI受電");
+    check("call D is AI", (await demoCall(page, url, "2026-10-05T18:00")) === "AI受付");
     await say(page, "折り返しは090-1234-5678です。");
     await page.click("#interruptBtn");
     await page.waitForFunction(() => document.getElementById("chat").textContent.includes("確認済みにしません"));
@@ -315,13 +301,9 @@ const lastAi = (page) => page.$$eval("#chat .msg.ai", (els) => (els.at(-1) || {}
     check("no horizontal page scroll at 390 px", overflow <= 1, overflow);
     await shot(m, "sp-home");
     await m.goto(url + "/#/mode");
-    await m.check("input[name=mode][value=schedule]");
-    await m.click("#saveMode");
-    await toastSays(m, "保存しました");
-    await m.goto(url + "/#/schedule");
-    await m.waitForSelector("#checkBtn");
-    await shot(m, "sp-schedule");
-    check("phone call works", (await demoCall(m, url, "2026-10-06T20:30")) === "AI受電");
+    await m.waitForSelector("#saveMode");
+    await shot(m, "sp-mode");
+    check("phone call works", (await demoCall(m, url, "2026-10-06T20:30")) === "AI受付");
     await m.click("#runScript");
     await m.waitForFunction(() => [...document.querySelectorAll("#chat .msg.ai")].some((x) => x.textContent.includes("失礼いたします")), null, { timeout: 30000 });
     await m.click("#endCall");

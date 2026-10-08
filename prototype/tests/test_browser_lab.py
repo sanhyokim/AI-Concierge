@@ -318,18 +318,14 @@ class LabSessionControlTest(unittest.TestCase):
             with self.assertRaises(SessionLimit):
                 again.start("gemini-3.8-live")
 
-    def test_mint_failures_stop_after_two_until_a_person_resets(self):
-        from prototype.browser_lab.server import SessionLimit
+    def test_mint_failures_are_recorded_but_do_not_block(self):
+        """The user removed the limits (2026-10-08): failed starts are recorded, the next start is allowed."""
         lab = self.lab({"GEMINI_API_KEY": "k"}, {"auth_tokens": vendors.VendorError("HTTP 401")})
-        for _ in range(2):
+        for _ in range(3):
             with self.assertRaises(vendors.VendorError):
                 lab.start("gemini-3.8-live")
-        calls = len(lab.http.calls)
-        with self.assertRaises(SessionLimit) as cm:
-            lab.start("gemini-3.8-live")
-        self.assertIn("--reset-mint-failures", str(cm.exception))
-        self.assertEqual(len(lab.http.calls), calls)                 # nothing sent
-        self.assertEqual(lab.reset_mint_failures("gemini-3.8-live"), 2)
+        self.assertEqual(lab.counts("gemini-3.8-live")["mint_failures"], 3)
+        self.assertEqual(lab.counts("gemini-3.8-live")["sessions"], 0)
         lab.http.responses["auth_tokens"] = {"name": "auth_tokens/ok"}
         self.assertIn("session_id", lab.start("gemini-3.8-live"))
         self.assertEqual(lab.counts("gemini-3.8-live")["sessions"], 1)

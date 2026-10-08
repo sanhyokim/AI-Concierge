@@ -125,16 +125,17 @@ class FailedStartTest(unittest.TestCase):
         self.assertEqual(lab.http.calls, [])
         self.assertEqual(lab.ledger("openai_lab").totals()["open_reservations"], 0)
 
-    def test_two_refusals_stop_until_a_person_clears_them(self):
+    def test_refusals_do_not_block_the_next_start(self):
         lab = self.lab(http_400(), http_400(), LIVE_OK)
         for _ in range(2):
             sid = lab.start("gpt-live-1")["session_id"]
             with self.assertRaises(vendors.VendorError):
                 lab.sdp(sid, "v=0 offer")
-        with self.assertRaises(SessionLimit) as cm:
-            lab.start("gpt-live-1")
-        self.assertIn("費用の台帳", str(cm.exception))
-        self.assertEqual(lab.reset_mint_failures("gpt-live-1"), 2)
+        self.assertEqual(lab.counts("gpt-live-1")["mint_failures"], 2)   # recorded, no limit (2026-10-08)
+        from unittest import mock
+        from prototype.browser_lab import server as labsrv
+        with mock.patch.object(labsrv, "MAX_MINT_FAILURES", 2), self.assertRaises(SessionLimit):
+            lab.start("gpt-live-1")                                    # the gate still works if a limit is set
         sid = lab.start("gpt-live-1")["session_id"]
         self.assertEqual(lab.sdp(sid, "v=0 offer")["sdp"], "v=0 answer")
         self.assertEqual(lab.counts("gpt-live-1")["sessions"], 1)

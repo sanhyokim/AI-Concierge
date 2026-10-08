@@ -62,7 +62,7 @@ class CandidateFrameTest(unittest.TestCase):
         msgs, lp, money = cc.line_cost(cm.SCENARIOS["中"]["ai"], 1)
         self.assertEqual((round(msgs), money.jpy), (198, 0))    # one recipient stays in the free 200 messages
         text = cc.render_frame()
-        for want in ("回線案2（検討中）", "採用は未確定", "今すでに払っている費用", "ΔF", "8-4"):
+        for want in ("回線案2（採用）", "採用しました", "回線案1は採用しない", "今すでに払っている費用", "ΔF", "8-4"):
             self.assertIn(want, text)
         docs = pathlib.Path(__file__).resolve().parents[2] / "docs"
         doc = (docs / "candidate-comparison-v1.md").read_text(encoding="utf-8")

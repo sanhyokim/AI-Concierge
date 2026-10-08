@@ -75,12 +75,8 @@ class AdminApp:
         if path == "/api/config":
             vid, cfg, meta = svc.config()
             return {"version": vid, "config": cfg, "meta": meta, "history": svc.config_history(),
-                    "labels": {"modes": S.MODE_LABELS, "routes": S.ROUTE_LABELS, "weekdays": S.WEEKDAY_LABELS,
-                               "fields": S.FIELD_LABELS, "failure_actions": {"normal": "普通受電として担当者へ",
-                                                                            "dtmf": "録音の案内とプッシュボタン"}},
-                    "hours_answer": S.hours_answer(cfg)}
-        if path == "/api/route/check":
-            return svc.check_route(query.get("at"), query.get("ai_available", "1") != "0")
+                    "labels": {"routes": S.ROUTE_LABELS, "fields": S.FIELD_LABELS,
+                               "failure_actions": S.FAILURE_LABELS}}
         if path == "/api/faqs":
             return {"faqs": svc.faqs()}
         if path == "/api/voices":

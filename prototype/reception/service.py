@@ -1,6 +1,6 @@
 """ReceptionService: the business logic every voice adapter uses (demo, browser lab, phone relay).
 
-- Settings are versioned. At call start the effective settings (mode decision, FAQ, voice, storage rules)
+- Settings are versioned. At call start the effective settings (route decision, FAQ, voice, storage rules)
   are frozen into the call's snapshot; later edits apply from the next call only.
 - Intake fields go through the existing ToolHandler / FieldState guard: a value becomes
   ``confirmed_by_caller`` only after a read-back and an explicit affirmative reply.
@@ -84,7 +84,9 @@ class ReceptionService:
                 for i, (code, q, a, kw) in enumerate(S.FAQ_SEEDS):
                     self.store.x("INSERT INTO faqs(code, question, answer, keywords, enabled, approval, generated, "
                                  "position, updated_at, updated_by) VALUES(?, ?, ?, ?, 1, '未承認（推奨案）', ?, ?, ?, ?)",
-                                 (code, q, a, kw, "hours" if code == "FAQ-04" else None, i, now, "system"))
+                                 (code, q, a, kw, None, i, now, "system"))
+            # FAQ-04 used to be generated from the schedule: give it its own (editable) answer
+            self.store.x("UPDATE faqs SET answer = ?, generated = NULL WHERE generated = 'hours'", (S.HOURS_ANSWER,))
             if not self.store.q1("SELECT id FROM notify_targets LIMIT 1"):
                 for name, ch, sim, en in (("担当者A（架空）", "simulation", "success", 1),
                                           ("担当者B（架空）", "simulation", "fail_500_once", 1),
@@ -95,7 +97,8 @@ class ReceptionService:
     # --- settings --------------------------------------------------------------------------------------
     def config(self) -> tuple[int, dict, dict]:
         row = self.store.q1("SELECT * FROM config_versions ORDER BY id DESC LIMIT 1")
-        return row["id"], json.loads(row["data"]), {"created_at": row["created_at"], "created_by": row["created_by"],
+        # validated on read too: a version saved before the schedule was removed loses its mode and schedule
+        return row["id"], S.validate_config(json.loads(row["data"])), {"created_at": row["created_at"], "created_by": row["created_by"],
                                                      "note": row["note"]}
 
     def save_config(self, data: dict, user: str | None, note: str = "") -> int:
@@ -108,27 +111,18 @@ class ReceptionService:
         with self.store.tx():
             vid = self.store.x("INSERT INTO config_versions(created_at, created_by, note, data) VALUES(?, ?, ?, ?)",
                                (iso(self.clock()), user, note[:200], dumps(cfg))).lastrowid
-            self.store.audit(user, "config_save", f"v{vid}", {"mode": cfg["mode"], "note": note[:200]})
+            self.store.audit(user, "config_save", f"v{vid}", {"ai_failure_action": cfg["ai_failure_action"],
+                                                              "note": note[:200]})
         return vid
 
     def config_history(self, limit: int = 20) -> list[dict]:
         return self.store.q("SELECT id, created_at, created_by, note FROM config_versions ORDER BY id DESC LIMIT ?",
                             (limit,))
 
-    def check_route(self, at=None, ai_available: bool = True) -> dict:
-        vid, cfg, _ = self.config()
-        d = decide(cfg, parse_at(at, self.clock()), ai_available).as_dict()
-        d["config_version"] = vid
-        return d
-
     # --- FAQ -------------------------------------------------------------------------------------------
     def faqs(self) -> list[dict]:
         _, cfg, _ = self.config()
-        rows = self.store.q("SELECT * FROM faqs ORDER BY position, id")
-        for r in rows:
-            if r["generated"] == "hours":
-                r["answer"] = S.hours_answer(cfg)
-        return rows
+        return self.store.q("SELECT * FROM faqs ORDER BY position, id")
 
     def save_faq(self, data: dict, user: str | None, fid: int | None = None) -> int:
         q, a = str(data.get("question", "")).strip(), str(data.get("answer", "")).strip()
@@ -150,8 +144,6 @@ class ReceptionService:
                 if not row:
                     raise ValueError("FAQが見つかりません")
                 q, a = q or row["question"], a or row["answer"]
-                if row["generated"]:
-                    a = row["answer"]   # generated from the schedule; edit the schedule instead
                 kw = kw if "keywords" in data else row["keywords"]
                 self.store.x("UPDATE faqs SET question = ?, answer = ?, keywords = ?, enabled = ?, updated_at = ?, "
                              "updated_by = ? WHERE id = ?", (q, a, kw, enabled, now, user, fid))
@@ -161,8 +153,7 @@ class ReceptionService:
     def snapshot_faqs(self, cfg: dict) -> list[dict]:
         out = []
         for r in self.store.q("SELECT * FROM faqs WHERE enabled = 1 ORDER BY position, id"):
-            answer = S.hours_answer(cfg) if r["generated"] == "hours" else r["answer"]
-            out.append({"code": r["code"], "question": r["question"], "answer": answer, "keywords": r["keywords"]})
+            out.append({"code": r["code"], "question": r["question"], "answer": r["answer"], "keywords": r["keywords"]})
         return out
 
     # --- voices ----------------------------------------------------------------------------------------
@@ -187,7 +178,7 @@ class ReceptionService:
         vid, cfg, _ = self.config()
         t = parse_at(at, self.clock())
         if force_ai:   # the browser lab always talks to the AI; the routing rule is not under test there
-            d = Decision("ai", "browser_lab", "ブラウザー会話試験（経路の判定を使わずにAIで会話）", iso(t), False)
+            d = Decision("ai", "browser_lab", "ブラウザー会話試験（AIで会話）", iso(t))
         else:
             d = decide(cfg, t, ai_available)
         voice = next(v for v in cfg["voices"] if v["id"] == cfg["active_voice"])
@@ -196,7 +187,7 @@ class ReceptionService:
         call_id = f"{t:%Y%m%d-%H%M%S}-{uuid.uuid4().hex[:6]}"
         caller = digits_only(caller_id or "") or None
         flow = CallFlow(caller_id=caller, ai_available=ai_available)
-        state = {"ai": "ai_conversation", "normal": "handed_to_normal", "dtmf": "dtmf_entry"}[d.route]
+        state = {"ai": "ai_conversation", "forward": "forwarded_to_staff", "dtmf": "dtmf_entry"}[d.route]
         with self.store.tx():
             self.store.x("INSERT INTO calls(id, source, started_at, dialed, caller_id, route, route_rule, route_reason, "
                          "config_version, snapshot, flow, state) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -204,18 +195,19 @@ class ReceptionService:
                           dumps(_flow_dump(flow)), state))
             self._event(call_id, "route", {"route": d.route, "label": d.as_dict()["route_label"], "reason": d.reason,
                                            "config_version": vid, "voice": voice})
-            if d.route == "normal":
+            if d.route == "forward":
                 self.store.x("UPDATE calls SET ended_at = ?, end_reason = ? WHERE id = ?",
-                             (iso(t), "普通受電へ渡した", call_id))
-                self._event(call_id, "handoff_normal",
-                            {"text": "普通受電へ渡す判定。AIの会話は始めない（デモ：会社の電話機は鳴らさない）"})
+                             (iso(t), "AIが止まっていたため、担当者の携帯へ転送した", call_id))
+                self._event(call_id, "forward_to_staff",
+                            {"text": "AIが使えないため、担当者の携帯へ転送する。AIの会話は始めない（デモ：電話はかけない）"})
         sess = CallSession(ToolHandler(), flow)
         with self._lock:
             self._live[call_id] = sess
         if d.route == "ai":
             self._event(call_id, "play", {"clip": "A-01", "text": "冒頭の案内（AIの受付であること・録音の告知）"})
-            if source != "browser_lab" and not d.within_staff_hours:
-                self._event(call_id, "play", {"clip": "A-04", "text": "時間外の補足（担当者の受付時間外）"})
+            if source != "browser_lab":
+                self._event(call_id, "play", {"clip": "A-04", "text": "担当者が出られないための案内"
+                                                                    "（ただいま担当者が電話に出られないため、AIがご用件を伺います）"})
         elif d.route == "dtmf":
             with sess.lock:
                 self._apply(call_id, sess, flow.on_ai_failure())
@@ -399,8 +391,8 @@ class ReceptionService:
         sess = self._session(call_id)
         with sess.lock:
             call = self._call(call_id)
-            if call["route"] == "normal":
-                raise ValueError("普通受電の通話では、AIを使っていません")
+            if call["route"] == "forward":
+                raise ValueError("担当者へ転送した通話では、AIを使っていません")
             if call["ended_at"]:
                 raise ValueError("通話は終わっています")
             f = sess.flow
@@ -515,7 +507,7 @@ class ReceptionService:
         call = self._call(call_id)
         latest = self.store.q1("SELECT * FROM summaries WHERE call_id = ? ORDER BY version DESC LIMIT 1", (call_id,))
         if not latest:
-            raise ValueError("この受付には要約がありません（普通受電、または通話中）")
+            raise ValueError("この受付には要約がありません（担当者へ転送した通話、または通話中）")
         kinds = json.loads(call["notify_kinds"]) + ([f"emergency_{call['emergency']}"] if call["emergency"] else [])
         summ = {"items": json.loads(latest["items"]), "kinds": kinds}
         res = self._enqueue(call, latest["version"], summ)
@@ -526,8 +518,8 @@ class ReceptionService:
         call = self._call(call_id)
         if not call["ended_at"]:
             raise ValueError("通話中の受付は補正できません。通話の終了後に補正してください")
-        if call["route"] == "normal":
-            raise ValueError("普通受電の通話には受付項目がありません")
+        if call["route"] == "forward":
+            raise ValueError("担当者へ転送した通話には受付項目がありません")
         if field not in S.FIELD_KEYS:
             raise ValueError("補正できない項目です")
         snap = json.loads(call["snapshot"])
@@ -599,7 +591,8 @@ class ReceptionService:
             "dialed": call["dialed"], "caller_id": call["caller_id"], "route": call["route"],
             "route_label": snap["decision"]["route_label"], "route_reason": call["route_reason"],
             "config_version": call["config_version"], "voice": snap["voice"],
-            "snapshot_mode": S.MODE_LABELS[snap["config"]["mode"]], "faq_codes": [f["code"] for f in snap["faqs"]],
+            "snapshot_failure_action": S.FAILURE_LABELS.get(snap["config"].get("ai_failure_action"), ""),
+            "faq_codes": [f["code"] for f in snap["faqs"]],
             "state": flow["state"] if not call["ended_at"] else "ended", "consent": flow["consent"],
             "ai_allowed": self._ai_block_reason(call, self._session(call_id)) is None if not call["ended_at"] else False,
             "emergency": call["emergency"], "open_questions": json.loads(call["open_questions"]),
@@ -637,8 +630,8 @@ class ReceptionService:
     def status(self) -> dict:
         vid, cfg, meta = self.config()
         now = self.clock()
-        return {"now": iso(now), "config_version": vid, "config_meta": meta, "mode": cfg["mode"],
-                "mode_label": S.MODE_LABELS[cfg["mode"]], "decision_now": decide(cfg, now).as_dict(),
-                "manual_mode_warning": cfg["mode"] != "schedule", "provisional": cfg["provisional"],
+        return {"now": iso(now), "config_version": vid, "config_meta": meta,
+                "ai_failure_action": cfg["ai_failure_action"],
+                "ai_failure_label": S.FAILURE_LABELS[cfg["ai_failure_action"]], "provisional": cfg["provisional"],
                 "retention_unset": cfg["retention_days"] is None, "notification_problems": self.outbox.problems(),
                 "line_connected": False, "phone_line_connected": False}

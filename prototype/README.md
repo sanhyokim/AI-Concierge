@@ -113,7 +113,7 @@ TwiMLの生成、トークンの組み立て、割り込み時の履歴の切り
 python3 -m prototype.admin          # http://127.0.0.1:8780 を開く。最初の起動でパスワードが1回だけ表示される
 ```
 
-- 受電設定・スケジュール・FAQ・音声・受付履歴・補正・通知・架空の着信テスト・操作履歴の画面があります。詳しくは[管理画面と受付の共通処理 v1](../docs/admin-app-v1.md)。
+- 基本設定（AIが止まったときの扱い）・FAQ・音声・受付履歴・補正・通知・架空の着信テスト・操作履歴の画面があります。詳しくは[管理画面と受付の共通処理 v1](../docs/admin-app-v1.md)。
 - 設定と記録は `prototype/data/reception.sqlite3`（gitの対象外）に保存され、再起動後も残ります。
 - 会社回線・LINEには接続していません。通知はシミュレーションです。
 - 自動試験：`node prototype/tests/admin_smoke.cjs [画像の保存先]`（PCとスマートフォンの幅で画面を操作。Pythonのテストからも呼ばれる）
@@ -142,13 +142,13 @@ python3 -m prototype.browser_lab          # 単独で動かす場合：http://12
 | `concierge/ssml.py` | 部分減速用のSSML（1つのトークンの中で閉じる。`<mark>` 付き） |
 | `concierge/prompts.py` | 案Aの指示文と、関数の定義 |
 | `measure/` | WAV、μ-law、発話区間の検出、発音速度と間の計測、合成信号での検証 |
-| `engines/realtime_runner.py` | 案Aの対話試験を回す仕組み（通信部分は差し替えられる。テストでは偽のサーバーを使う） |
-| `engines/realtime_probe.py`、`engines/polly_probe.py`、`engines/run_dialog.py` | 業者を使う計測（認証情報が必要） |
-| `engines/relay_app.py` | 案Bのひな形（Twilioが必要） |
+| `engines/realtime_runner.py` | 【旧構成】案Aの対話試験を回す仕組み（通信部分は差し替えられる。テストでは偽のサーバーを使う） |
+| `engines/realtime_probe.py`、`engines/polly_probe.py`、`engines/run_dialog.py` | 【旧構成】業者を使う計測（認証情報が必要） |
+| `engines/relay_app.py` | 【旧構成】案Bのひな形（Twilioが必要） |
 | `engines/budget.py` | 利用量の台帳（送る前の留保、照合）、回数・音声の秒数・費用の上限、再試行の制限 |
 | `engines/accounting.py` | 対話の発話ごとの留保と、使用量のIDによるひも付け |
 | `browser_lab/` | ブラウザー会話試験（サーバー・画面・各社のアダプター） |
-| `reception/` | 受付の共通処理：保存（SQLite）、設定と初期値（暫定・架空）、受電モードの判定、FAQ、受付・同意・要約、通知の送信待ち、試験用の規則の応答 |
+| `reception/` | 受付の共通処理：保存（SQLite）、設定と初期値（暫定・架空）、届いた通話の扱い（すべてAI。AIが止まったときの扱い）、FAQ、受付・同意・要約、通知の送信待ち、試験用の規則の応答 |
 | `admin/` | 管理画面（サーバー・ログイン・画面） |
 | `cost/candidates.json`、`cost/candidate_costs.py` | 候補一覧と、同じ前提での比較枠 |
 | `engines/make_caller_audio.py` | 対話試験の発信者の音声を、候補ではない声で作る |

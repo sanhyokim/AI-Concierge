@@ -505,7 +505,7 @@ async function loadCandidates() {
     $("candNote").innerHTML = (c.hold ? `<p><b>保留中：</b>${esc(c.hold)}</p>` : "") +
       `<p>${c.verified ? "" : "接続未確認の構成です。"}業務処理の経路：${esc(c.logic_path)}。${esc(c.note || "")}</p>` +
       `<p>管理画面の設定の反映：指示 ${esc(c.applies.instructions)}／声 ${esc(c.applies.voice)}</p>` +
-      (c.hold ? "" : `<p>これまでの開始：${n.sessions}回${n.limit != null ? `（上限${n.limit}回）` : "（回数の上限なし）"}。接続の失敗：${n.mint_failures}/${n.mint_failure_limit}回（超えたら「費用の台帳」で解除）</p>`) +
+      (c.hold ? "" : `<p>これまでの会話：${n.sessions}回（回数の上限なし。1回の会話は${esc(String(c.max_session_min))}分で止まります）</p>`) +
       envHelp(c);
     $("limit").textContent = `1回の会話は${c.max_session_min}分で自動的に止まります（画面を閉じても、サーバーが止めます）。終わったら「終える」を押してください。` +
       `費用は、会話ごとに台帳へ見込みを記録します（最大時間×$${c.upper_usd_per_min}/分。GPT-Liveは裏方のモデルの分を足す）。` +

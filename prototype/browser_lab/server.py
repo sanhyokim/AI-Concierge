@@ -200,7 +200,7 @@ class Lab:
                 if c["limit"] is not None and c["sessions"] >= c["limit"]:
                     raise SessionLimit(f"{cfg['name']}：この段階（{LAB_STAGES[self.stage]}）の開始は{c['limit']}回までで、"
                                        f"すでに{c['sessions']}回です")
-                if c["mint_failures"] >= MAX_MINT_FAILURES:
+                if MAX_MINT_FAILURES is not None and c["mint_failures"] >= MAX_MINT_FAILURES:
                     raise SessionLimit(f"{cfg['name']}：接続情報の発行・接続が{c['mint_failures']}回失敗しました。"
                                        "原因を確かめてから、管理画面の「費用の台帳」で失敗の回数を解除してください（--reset-mint-failures でも可）")
             self.store.x("INSERT INTO lab_sessions(id, candidate, stage, status, vendor, started_at, started_ts) "
@@ -493,7 +493,7 @@ class Lab:
 def api_get(lab: Lab, path: str, csrf: str = "") -> dict | None:
     path = path.split("?")[0]
     if path == "/api/candidates":
-        cands = public_candidates(lab.env)
+        cands = [c for c in public_candidates(lab.env) if not c["hold"]]   # held candidates are not offered
         for c in cands:
             c["counts"] = lab.counts(c["id"])
         return {"candidates": cands, "stage": lab.stage, "stage_label": LAB_STAGES[lab.stage]}

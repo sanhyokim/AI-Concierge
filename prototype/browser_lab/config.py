@@ -75,7 +75,7 @@ MAX_RESPONSE_CREATES = 40      # response.create sent by the page after function
 BACKEND_TYPICAL = {"responses": 10, "input_tokens": 6_000, "output_tokens": 300}
 BACKEND_STRICT = {"responses": MAX_BACKEND_RESPONSES, "input_tokens": 32_000, "output_tokens": 1_200}
 SESSION_GRACE_S = 30           # the server expires a session this long after MAX_SESSION_MIN
-MAX_MINT_FAILURES = 2          # per candidate and stage; a person resets it (--reset-mint-failures)
+MAX_MINT_FAILURES = None       # no limit (user decision 2026-10-08: limits removed); failures are still recorded
 
 
 def backend_usd(model: str, assumption: dict) -> float:

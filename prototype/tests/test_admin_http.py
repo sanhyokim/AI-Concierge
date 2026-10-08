@@ -94,17 +94,17 @@ class AdminHttpTest(unittest.TestCase):
     def test_settings_and_records_survive_a_restart(self):
         _, cookie, csrf = self.login()
         cfg = json.loads(self.req("GET", "/api/config", cookie=cookie)[1])["config"]
-        cfg["mode"] = "always_ai"
+        cfg["ai_failure_action"] = "dtmf"
         self.assertEqual(self.req("POST", "/api/config", {"config": cfg, "note": "t"}, cookie=cookie, csrf=csrf)[0], 200)
         call = json.loads(self.req("POST", "/api/demo/start", {"at": "2026-10-05T10:00"}, cookie=cookie, csrf=csrf)[1])["call"]
-        self.assertEqual(call["route"], "ai")   # always AI ignores the 09:00-17:00 band
+        self.assertEqual(call["route"], "ai")   # every call that reaches the app goes to the AI, at any hour
         self.req("POST", "/api/demo/say", {"call_id": call["id"], "text": "折り返しは090-1234-5678です。"}, cookie=cookie, csrf=csrf)
         self.req("POST", "/api/demo/end", {"call_id": call["id"]}, cookie=cookie, csrf=csrf)
         self.stop()
         self.start()
         self.assertEqual(self.req("GET", "/api/config", cookie=cookie)[0], 200)   # the session lives in the database
         got = json.loads(self.req("GET", "/api/config", cookie=cookie)[1])
-        self.assertEqual(got["config"]["mode"], "always_ai")
+        self.assertEqual(got["config"]["ai_failure_action"], "dtmf")
         view = json.loads(self.req("GET", f"/api/calls/{call['id']}", cookie=cookie)[1])
         self.assertEqual(next(f for f in view["fields"] if f["name"] == "callback_number")["value"], "09012345678")
         self.assertEqual(len(view["notifications"]), 2)
@@ -115,7 +115,7 @@ class AdminHttpTest(unittest.TestCase):
             self.assertEqual(self.req("GET", path, cookie=cookie)[0], 200)
         cands = json.loads(self.bodies[-3])["candidates"]
         self.assertTrue(next(c for c in cands if c["id"] == "gpt-live-1")["ready"])
-        self.assertFalse(next(c for c in cands if c["id"] == "gpt-realtime-2.1")["ready"])   # held
+        self.assertNotIn("gpt-realtime-2.1", [c["id"] for c in cands])                      # held: not offered
         self.assertFalse(any(FAKE_KEY in b for b in self.bodies))
         dump = "\n".join(str(r) for r in self.app.store.q("SELECT * FROM audit_log"))
         self.assertNotIn(FAKE_KEY, dump)

@@ -1,4 +1,4 @@
-"""Reception core: routing rule, settings snapshot, confirmation through the service, consent, summary,
+"""Reception core: route (AI, or the AI-stopped action), settings snapshot, confirmation through the service, consent, summary,
 corrections and the notification outbox. Fake time and no vendor."""
 import datetime as dt
 import json
@@ -28,55 +28,46 @@ def service(clock=None):
 
 
 class RoutingTest(unittest.TestCase):
+    """No reception mode or schedule: the AI is switched on and off by the NTT forwarding (line plan 2)."""
+
     def setUp(self):
-        self.cfg = S.validate_config(S.DEFAULT_CONFIG)   # Mon-Fri 09:00-17:00 normal, otherwise AI
+        self.cfg = S.validate_config(S.DEFAULT_CONFIG)
 
-    def test_jst_boundaries(self):
-        cases = {"2026-10-05T08:59:59": "ai", "2026-10-05T09:00:00": "normal", "2026-10-05T16:59:59": "normal",
-                 "2026-10-05T17:00:00": "ai", "2026-10-04T23:59:59": "ai", "2026-10-05T00:00:00": "ai",
-                 "2026-10-10T10:00:00": "ai"}   # Sunday night -> Monday, Saturday daytime
-        for at, want in cases.items():
-            self.assertEqual(decide(self.cfg, at).route, want, at)
+    def test_every_call_that_reaches_the_app_goes_to_the_ai(self):
+        for at in ("2026-10-05T08:59:59", "2026-10-05T10:00", "2026-10-05T17:00", "2026-10-10T10:00",
+                   "2026-10-05T00:00:00Z"):
+            d = decide(self.cfg, at)
+            self.assertEqual((d.route, d.rule), ("ai", "received"), at)
+        self.assertEqual(decide(self.cfg, "2026-10-05T00:00:00Z").at_jst[:19], "2026-10-05T09:00:00")   # JST
 
-    def test_utc_input_is_judged_in_japan_time(self):
-        self.assertEqual(decide(self.cfg, "2026-10-05T00:00:00Z").route, "normal")    # 09:00 JST
-        self.assertEqual(decide(self.cfg, "2026-10-04T23:59:59Z").route, "ai")        # 08:59:59 JST
-        self.assertEqual(decide(self.cfg, dt.datetime(2026, 10, 5, 8, 0, tzinfo=dt.timezone.utc)).route, "ai")  # 17:00
-
-    def test_manual_modes_ignore_the_schedule(self):
-        for mode, want in (("always_ai", "ai"), ("always_normal", "normal")):
-            cfg = S.validate_config({**S.DEFAULT_CONFIG, "mode": mode})
-            for at in ("2026-10-05T10:00", "2026-10-05T20:00", "2026-10-11T10:00"):
-                d = decide(cfg, at)
-                self.assertEqual((d.route, d.rule), (want, f"manual_{mode}"), at)
-
-    def test_special_day_beats_weekly_band_and_ai_failure_is_forced(self):
-        cfg = S.validate_config({**S.DEFAULT_CONFIG, "schedule": {**S.DEFAULT_CONFIG["schedule"],
-                                 "special_days": [{"date": "2026-10-05", "mode": "ai", "note": "臨時休業（架空）"}]}})
-        self.assertEqual(decide(cfg, "2026-10-05T10:00").rule, "special_day")
-        self.assertEqual(decide(cfg, "2026-10-05T10:00").route, "ai")
-        self.assertEqual(decide(cfg, "2026-10-05T10:00", ai_available=False).route, "normal")
+    def test_ai_stopped_takes_the_saved_action(self):
+        self.assertEqual(self.cfg["ai_failure_action"], "forward")
+        d = decide(self.cfg, "2026-10-05T10:00", ai_available=False)
+        self.assertEqual((d.route, d.rule), ("forward", "ai_failure"))
         dtmf = S.validate_config({**S.DEFAULT_CONFIG, "ai_failure_action": "dtmf"})
         self.assertEqual(decide(dtmf, "2026-10-05T20:00", ai_available=False).route, "dtmf")
-        self.assertEqual(decide(dtmf, "2026-10-05T10:00", ai_available=False).route, "normal")   # not an AI slot
+        with self.assertRaises(ValueError):
+            S.validate_config({**S.DEFAULT_CONFIG, "ai_failure_action": "ring_the_office"})
 
-    def test_validation_rejects_overlaps_and_bad_times(self):
-        bad = [{"mon": [{"start": "09:00", "end": "12:00", "mode": "normal"}, {"start": "11:00", "end": "13:00", "mode": "ai"}]},
-               {"mon": [{"start": "17:00", "end": "09:00", "mode": "normal"}]},
-               {"mon": [{"start": "9:00", "end": "17:00", "mode": "normal"}]}]
-        for weekly in bad:
-            with self.assertRaises(ValueError):
-                S.validate_config({**S.DEFAULT_CONFIG, "schedule": {"weekly": weekly, "outside": "ai"}})
-        ok = S.validate_config({**S.DEFAULT_CONFIG, "schedule": {"weekly": {"fri": [{"start": "20:00", "end": "24:00", "mode": "ai"}]},
-                                                                  "outside": "normal"}})
-        self.assertEqual(decide(ok, "2026-10-09T23:59:59").route, "ai")
-        self.assertEqual(decide(ok, "2026-10-10T00:00:00").route, "normal")
+    def test_settings_saved_with_a_schedule_still_load(self):
+        old = {**S.DEFAULT_CONFIG, "mode": "schedule", "ai_failure_action": "normal",
+               "schedule": {"weekly": {"mon": [{"start": "09:00", "end": "17:00", "mode": "normal"}]}, "outside": "ai"}}
+        cfg = S.validate_config(old)
+        self.assertNotIn("mode", cfg)
+        self.assertNotIn("schedule", cfg)
+        self.assertEqual(cfg["ai_failure_action"], "forward")
 
-    def test_hours_faq_follows_the_mode(self):
-        self.assertIn("AIがご用件を伺い", S.hours_answer(self.cfg))
-        normal_outside = S.validate_config({**S.DEFAULT_CONFIG, "schedule": {**S.DEFAULT_CONFIG["schedule"], "outside": "normal"}})
-        self.assertNotIn("AI", S.hours_answer(normal_outside))
-        self.assertIn("9時から17時", S.hours_answer(normal_outside))
+    def test_after_hours_notice_is_a_fixed_text_for_every_ai_call(self):
+        svc = service()
+        for at in ("2026-10-05T10:00", "2026-10-05T20:00"):   # inside and outside the old 9-17 band alike
+            call = svc.start_call(at=at)
+            plays = [e["data"] for e in call["events"] if e["kind"] == "play"]
+            self.assertEqual([p["clip"] for p in plays], ["A-01", "A-04"], at)
+            self.assertIn("担当者が電話に出られないため", plays[1]["text"])
+
+    def test_hours_faq_is_ordinary_text(self):
+        self.assertIn("9時から17時", S.HOURS_ANSWER)
+        self.assertIn("AIがご用件を伺い", S.HOURS_ANSWER)
 
 
 class ServiceTest(unittest.TestCase):
@@ -85,10 +76,10 @@ class ServiceTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             path = pathlib.Path(d) / "r.db"
             svc = ReceptionService(Store(path), env={}, clock=Clock())
-            svc.save_config({**svc.config()[1], "mode": "always_ai"}, "tester")
+            svc.save_config({**svc.config()[1], "ai_failure_action": "dtmf"}, "tester")
             svc.store.close()
             again = ReceptionService(Store(path), env={}, clock=Clock())
-            self.assertEqual(again.config()[1]["mode"], "always_ai")
+            self.assertEqual(again.config()[1]["ai_failure_action"], "dtmf")
             self.assertEqual(len(again.faqs()), len(S.FAQ_SEEDS))   # seeds are not duplicated
 
     def test_mid_call_changes_apply_from_the_next_call(self):
@@ -97,13 +88,10 @@ class ServiceTest(unittest.TestCase):
         faq01 = next(f for f in svc.faqs() if f["code"] == "FAQ-01")
         svc.save_faq({**faq01, "enabled": False}, "tester", faq01["id"])
         cfg = svc.config()[1]
-        svc.save_config({**cfg, "mode": "always_normal", "active_voice": "v2"}, "tester")
+        svc.save_config({**cfg, "active_voice": "v2"}, "tester")
         self.assertTrue(svc.tool(a["id"], "lookup_faq", {"question": "点検は無料ですか"})["found"])   # snapshot FAQ
         self.assertEqual(svc.call_view(a["id"])["voice"]["id"], "v1")
         self.assertTrue(svc.ai_allowed(a["id"]))                                                       # route kept
-        b = svc.start_call(at="2026-10-05T18:00")
-        self.assertEqual(b["route"], "normal")
-        svc.save_config({**svc.config()[1], "mode": "schedule"}, "tester")
         c = svc.start_call(at="2026-10-05T18:00")
         self.assertEqual(c["voice"]["id"], "v2")
         res = svc.tool(c["id"], "lookup_faq", {"question": "点検は無料ですか"})
@@ -143,10 +131,10 @@ class ServiceTest(unittest.TestCase):
         self.assertNotIn("本人確認済み", view["summaries"][0]["text"])
         self.assertIn("未確認：折り返し先", view["notifications"][0]["body"])
 
-    def test_normal_route_never_reaches_the_ai(self):
+    def test_forward_route_never_reaches_the_ai(self):
         svc = service()
-        call = svc.start_call(at="2026-10-05T10:00")
-        self.assertEqual(call["route"], "normal")
+        call = svc.start_call(at="2026-10-05T10:00", ai_available=False)   # AI stopped: forwarded to the staff
+        self.assertEqual((call["route"], call["state"]), ("forward", "ended"))
         self.assertFalse(svc.caller_utterance(call["id"], "090-1234-5678")["forward"])
         self.assertEqual(svc.tool(call["id"], "save_field", {"field": "request", "value": "x"})["reason"],
                          "ai_not_used_for_this_call")
