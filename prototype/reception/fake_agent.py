@@ -55,7 +55,8 @@ class RuleAgent:
             return {"forwarded": False, "reason": r["reason"], "stop_ai": r.get("stop_ai", False),
                     "actions": r.get("actions", []), "say": []}
         if r.get("recording_stopped"):
-            say = ["承知しました。ここからの録音を止め、これまでの録音も削除します。ご用件の受付は、このままAIが続けます。"]
+            say = ["承知しました。ここからの録音を止め、これまでの録音も削除します。ご用件の受付は、このままAIが続けます。"
+                   "AIでの音声の処理もお望みでなければ、お申し付けください。"]   # A-02 (spec 4-2)
             for line in say:
                 self.svc.ai_utterance(self.call_id, line)
             return {"forwarded": True, "recording_stopped": True, "actions": r.get("actions", []), "say": say}
