@@ -30,7 +30,42 @@ if [ -z "$PY" ]; then
   echo "手順書 docs/start-mac.md の「手順1 Python を入れる」を行ってから、もう一度このファイルを開いてください。"
   finish 1
 fi
-if [ -n "$START_CHECK_ONLY" ]; then echo "python: $PY"; exit 0; fi   # used by the automated test
+if [ "$START_CHECK_ONLY" = "1" ]; then echo "python: $PY"; exit 0; fi   # used by the automated test
+
+# HTTPS certificates. python.org's Python has none until "Install Certificates.command" is run, and then every
+# connection to OpenAI fails with CERTIFICATE_VERIFY_FAILED. The check is a handshake only: nothing is sent.
+"$PY" -m prototype.admin --check-https
+https=$?
+if [ "$https" -eq 2 ] && command -v security >/dev/null 2>&1; then
+  # use the Mac's own root certificates (the same ones Safari trusts) for this start
+  roots="${TMPDIR:-/tmp}/ai-concierge-root-certificates.pem"
+  security find-certificate -a -p /System/Library/Keychains/SystemRootCertificates.keychain > "$roots" 2>/dev/null
+  security find-certificate -a -p /Library/Keychains/System.keychain >> "$roots" 2>/dev/null
+  if [ -s "$roots" ] && SSL_CERT_FILE="$roots" "$PY" -m prototype.admin --check-https; then
+    export SSL_CERT_FILE="$roots"
+    echo "  → Mac 本体の証明書を使います（この起動のあいだだけ）。"
+    https=0
+  fi
+fi
+if [ "$https" -eq 2 ]; then
+  echo
+  echo "------------------------------------------------------------"
+  echo "このMacの Python は、まだ HTTPS の証明書を持っていません。このままでは AI に接続できません"
+  echo "（オフラインの模擬だけは使えます）。次のファイルをダブルクリックして、終わったらこの画面を閉じ、"
+  echo "start_mac.command を開き直してください。"
+  found=""
+  for f in /Applications/Python\ 3.*/"Install Certificates.command"; do
+    [ -e "$f" ] && { echo "  $f"; found=1; }
+  done
+  [ -n "$found" ] || echo "  Finder →「アプリケーション」→「Python 3.x」フォルダー →「Install Certificates.command」"
+  echo "手順書 docs/start-mac.md の「手順1」の4です。"
+  echo "------------------------------------------------------------"
+  echo
+  read -r -p "このまま起動するときは Enter を押します（模擬だけ使えます）。" _
+elif [ "$https" -ne 0 ]; then
+  echo "  → インターネットにつながっていないようです。AI には接続できませんが、オフラインの模擬は使えます。"
+fi
+if [ "$START_CHECK_ONLY" = "https" ]; then echo "https: $https ${SSL_CERT_FILE:+cert-file}"; exit 0; fi
 
 "$PY" -m prototype.admin --setup
 status=$?

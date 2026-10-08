@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import socket
+import ssl
 import urllib.error
 import urllib.request
 from typing import Callable
@@ -24,14 +26,28 @@ ELEVENLABS_CLIENT_ESM = "https://cdn.jsdelivr.net/npm/@elevenlabs/client@1.26.0/
 
 
 class VendorError(RuntimeError):
-    def __init__(self, message: str, status: int | None = None) -> None:
+    def __init__(self, message: str, status: int | None = None, unreached: bool = False,
+                 certificate: bool = False) -> None:
         super().__init__(message)
         self.status = status   # HTTP status when the vendor answered; None for network failures and bad replies
+        self.unreached = unreached        # failed before the request left this PC: nothing reached the vendor
+        self.certificate = certificate    # this PC could not verify the vendor's HTTPS certificate
 
     @property
     def rejected(self) -> bool:
         """The vendor answered 4xx: the request was refused and no session was created."""
         return self.status is not None and 400 <= self.status < 500
+
+
+def network_error(url: str, exc: BaseException) -> VendorError:
+    """A failure without an HTTP answer. The reason is kept (it never contains headers). Certificate checks, name
+    lookups and refused connections fail before the request is sent; anything else (time-outs, resets) may have
+    reached the vendor."""
+    reason = exc.reason if isinstance(exc, urllib.error.URLError) else exc
+    certificate = isinstance(reason, ssl.SSLCertVerificationError)
+    unreached = certificate or isinstance(reason, (socket.gaierror, ConnectionRefusedError))
+    detail = f"{type(exc).__name__}: {reason}" if str(reason) else type(exc).__name__
+    return VendorError(f"{url}: {detail}"[:900], unreached=unreached, certificate=certificate)
 
 
 def http_json(method: str, url: str, headers: dict, body: dict | None = None, timeout: float = 20.0):
@@ -44,7 +60,7 @@ def http_json(method: str, url: str, headers: dict, body: dict | None = None, ti
     except urllib.error.HTTPError as exc:
         raise VendorError(f"{url}: HTTP {exc.code} {exc.read().decode('utf-8', 'replace')[:600]}", exc.code) from None
     except (urllib.error.URLError, TimeoutError, OSError) as exc:   # network failure: no headers in the message
-        raise VendorError(f"{url}: {type(exc).__name__}") from None
+        raise network_error(url, exc) from None
     try:
         return status, json.loads(raw)
     except json.JSONDecodeError:

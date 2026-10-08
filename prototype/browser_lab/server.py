@@ -55,6 +55,8 @@ COUNTED = ("starting", "active", "ended", "expired", "lost_on_restart", "connect
 FAILED = ("mint_failed", "vendor_rejected")
 # Not counted at all: nothing reached the vendor, or staff released it after checking the vendor's usage page.
 NOT_SENT, RELEASED = "not_sent", "released_by_staff"
+CERT_HINT = ("。このPCのPythonが、HTTPSの証明書を確かめられません。Macでは「アプリケーション」→「Python 3.x」フォルダーの"
+             "「Install Certificates.command」をダブルクリックし、起動し直してください（docs/start-mac.md）")
 FAKE_SCRIPTS = {   # what the offline candidate "hears" at each end of caller speech (no speech recognition)
     "default": ["（模擬）焼肉ほのか博多店の田中です", "（模擬）点検は無料ですか"],
     "refusal": ["（模擬）点検は無料ですか", "人と話したいので、AIは使わないでください"],
@@ -271,8 +273,12 @@ class Lab:
             print(f"[会話試験] {CANDIDATES[row['candidate']]['name']} の接続に失敗：{exc}", flush=True)
             if exc.rejected:   # refused with 4xx: no session exists, nothing to bill
                 self._release(row, "vendor_rejected", f"業者が接続を拒否（会話は作られていない）：{exc}"[:900])
+            elif exc.unreached:   # never left this PC (certificate check, name lookup, refused connection)
+                self._release(row, NOT_SENT, f"OpenAIに届いていない（数えない）：{exc}{CERT_HINT if exc.certificate else ''}"[:900])
             else:              # network failure or 5xx: a session may exist; keep it counted
                 self._set(sid, end_reason=f"接続の結果が不明（数える）：{exc}"[:900])
+            if exc.certificate:   # the page shows this message: say what to do on this PC
+                raise vendors.VendorError(f"{exc}{CERT_HINT}", unreached=True, certificate=True) from None
             raise
         self._set(sid, vendor_session_id=out.get("vendor_session_id"))
         return out

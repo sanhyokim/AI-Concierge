@@ -76,6 +76,45 @@ class FailedStartTest(unittest.TestCase):
         self.assertEqual(lab.counts("gpt-live-1")["sessions"], 2)
         self.assertEqual(lab.ledger("openai_lab").totals()["open_reservations"], 2)   # may have been billed
 
+    def test_certificate_failure_on_this_pc_is_not_counted(self):
+        """2026-10-08 on a Mac: python.org Python without "Install Certificates.command" -> URLError."""
+        import ssl
+        import urllib.error
+        cert = urllib.error.URLError(ssl.SSLCertVerificationError(1, "[SSL: CERTIFICATE_VERIFY_FAILED] certificate "
+                                                                     "verify failed: unable to get local issuer"))
+        err = vendors.network_error("https://api.openai.com/v1/live/sessions", cert)
+        self.assertTrue(err.unreached and err.certificate)
+        self.assertIn("CERTIFICATE_VERIFY_FAILED", str(err))              # the reason is shown, not just "URLError"
+        lab = self.lab(err)
+        sid = lab.start("gpt-live-1")["session_id"]
+        with self.assertRaises(vendors.VendorError) as shown:
+            lab.sdp(sid, "v=0 offer")
+        self.assertIn("Install Certificates.command", str(shown.exception))   # what the page shows
+        row = self.row(lab, sid)
+        self.assertEqual(row["status"], "not_sent")
+        self.assertIn("Install Certificates.command", row["end_reason"])
+        self.assertEqual(lab.end(sid, 3, "開始の失敗")["already"], "not_sent")
+        c = lab.counts("gpt-live-1")
+        self.assertEqual((c["sessions"], c["mint_failures"]), (0, 0))
+        t = lab.ledger("openai_lab").totals()
+        self.assertEqual((t["open_reservations"], t["requests"], t["est_cost_usd"]), (0, 0, 0.0))
+
+    def test_network_error_kinds(self):
+        import socket
+        import urllib.error
+        url = "https://api.openai.com/v1/live/sessions"
+        name = vendors.network_error(url, urllib.error.URLError(socket.gaierror(8, "nodename nor servname")))
+        self.assertTrue(name.unreached and not name.certificate)
+        self.assertIn("nodename", str(name))
+        self.assertTrue(vendors.network_error(url, urllib.error.URLError(ConnectionRefusedError(61, "refused")))
+                        .unreached)
+        for maybe_sent in (TimeoutError("timed out"), ConnectionResetError(54, "reset"),
+                           urllib.error.URLError(TimeoutError("timed out"))):
+            e = vendors.network_error(url, maybe_sent)
+            self.assertFalse(e.unreached, maybe_sent)                    # may have reached OpenAI: still counted
+            self.assertIsNone(e.status)
+        self.assertEqual(str(vendors.network_error(url, TimeoutError())), f"{url}: TimeoutError")
+
     def test_failure_before_anything_was_sent_is_not_counted(self):
         lab = self.lab()
         sid = lab.start("gpt-live-1")["session_id"]

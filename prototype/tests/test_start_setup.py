@@ -195,3 +195,64 @@ class MacStartFileTest(unittest.TestCase):
         outside.write_bytes((ROOT / "start_mac.command").read_bytes())
         r = self.run_start([str(fake)], outside)
         self.assertIn("展開したフォルダーの中から", r.stdout)
+
+    def test_certificate_check_uses_the_macs_own_certificates(self):
+        import shutil
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        fake = pathlib.Path(tmp.name) / "bin"
+        fake.mkdir()
+        for tool in ("dirname", "uname", "cat"):
+            (fake / tool).symlink_to(shutil.which(tool))
+        # a Python whose --check-https answers $FIRST, or $WITH_FILE when SSL_CERT_FILE is set
+        (fake / "python3").write_text('#!/bin/bash\ncase "$*" in *--check-https*) '
+                                      '[ -n "$SSL_CERT_FILE" ] && exit "$WITH_FILE"; exit "$FIRST";; esac\nexit 0\n',
+                                      encoding="utf-8")
+        security = fake / "security"
+        security.write_text("#!/bin/bash\necho '-----BEGIN CERTIFICATE-----'\n", encoding="utf-8")
+        for f in (fake / "python3", security):
+            f.chmod(0o755)
+
+        def run(first, with_file="0"):
+            env = {"PATH": str(fake), "START_CHECK_ONLY": "https", "FIRST": first, "WITH_FILE": with_file,
+                   "TMPDIR": tmp.name}
+            return subprocess.run(["/bin/bash", str(ROOT / "start_mac.command")], input="\n", env=env,
+                                  capture_output=True, text=True, encoding="utf-8", timeout=30)
+
+        r = run("0")
+        self.assertIn("https: 0 \n", r.stdout + "\n")                     # fine as is: no certificate file
+        r = run("2", "0")
+        self.assertIn("Mac 本体の証明書を使います", r.stdout)
+        self.assertIn("https: 0 cert-file", r.stdout)
+        self.assertIn("BEGIN CERTIFICATE", (pathlib.Path(tmp.name) / "ai-concierge-root-certificates.pem")
+                      .read_text(encoding="utf-8"))
+        r = run("2", "2")                                                 # the Mac's certificates do not help
+        self.assertIn("Install Certificates.command", r.stdout)
+        self.assertIn("https: 2", r.stdout)                               # still starts (the offline mock works)
+        security.unlink()
+        r = run("2")
+        self.assertIn("Install Certificates.command", r.stdout)
+        r = run("3")
+        self.assertIn("インターネットにつながっていない", r.stdout)
+        self.assertIn("https: 3", r.stdout)
+
+
+class HttpsCheckTest(unittest.TestCase):
+    def test_classification(self):
+        import socket
+        import ssl
+        said = []
+
+        def fails(exc):
+            def connect(host, timeout):
+                raise exc
+            return connect
+
+        self.assertEqual(setup.check_https(say=said.append, connect=lambda h, t: None), setup.HTTPS_OK)
+        cert = ssl.SSLCertVerificationError(1, "certificate verify failed")
+        cert.verify_message = "unable to get local issuer certificate"
+        self.assertEqual(setup.check_https(say=said.append, connect=fails(cert)), setup.HTTPS_CERTIFICATE)
+        self.assertIn("unable to get local issuer certificate", said[-1])
+        self.assertEqual(setup.check_https(say=said.append, connect=fails(socket.gaierror(8, "nodename"))),
+                         setup.HTTPS_NETWORK)
+        self.assertEqual(setup.check_https(say=said.append, connect=fails(TimeoutError())), setup.HTTPS_NETWORK)

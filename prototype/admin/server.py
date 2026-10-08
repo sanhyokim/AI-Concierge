@@ -437,7 +437,11 @@ def main() -> int:
     ap.add_argument("--setup", action="store_true", help="ask for the admin password (first start) and the API "
                     "keys in this window, then open the browser (used by start_windows.bat)")
     ap.add_argument("--reset-password", action="store_true", help="set a new admin password, then exit")
+    ap.add_argument("--check-https", action="store_true", help="check that this Python can verify api.openai.com's "
+                    "certificate (handshake only, nothing is sent), then exit: 0 ok, 2 certificate, 3 network")
     args = ap.parse_args()
+    if args.check_https:
+        return setup.check_https()
     store = Store(args.db)
     if args.reset_password:
         return 0 if setup.reset_password(store) else 1

@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import getpass
 import os
+import socket
+import ssl
 from typing import Callable
 
 from .auth import hash_password
@@ -100,3 +102,28 @@ def ask_keys(env: dict | None = None, ask: Ask = getpass.getpass, say: Say = pri
         else:
             say(f"  → {tries}回とも形が違ったため、この候補は選べません。キーを確かめて、起動し直してください。")
     return got
+
+
+HTTPS_OK, HTTPS_CERTIFICATE, HTTPS_NETWORK = 0, 2, 3
+
+
+def _handshake(host: str, timeout: float) -> None:
+    with socket.create_connection((host, 443), timeout=timeout) as raw:
+        with ssl.create_default_context().wrap_socket(raw, server_hostname=host):
+            pass
+
+
+def check_https(host: str = "api.openai.com", say: Say = print, connect=_handshake, timeout: float = 8.0) -> int:
+    """TLS handshake only: no HTTP request and no key, so nothing is sent to the vendor and nothing is billed.
+    0 = this PC can verify the vendor's certificate, 2 = it cannot (Mac python.org Python before
+    "Install Certificates.command"), 3 = no connection (offline, blocked)."""
+    try:
+        connect(host, timeout)
+    except ssl.SSLCertVerificationError as exc:
+        say(f"HTTPS の確認：{host} の証明書を、このPCのPythonで確かめられません（{exc.verify_message or exc}）。")
+        return HTTPS_CERTIFICATE
+    except OSError as exc:
+        say(f"HTTPS の確認：{host} につながりません（{type(exc).__name__}: {exc}）。")
+        return HTTPS_NETWORK
+    say(f"HTTPS の確認：{host} の証明書を確かめられました。")
+    return HTTPS_OK
