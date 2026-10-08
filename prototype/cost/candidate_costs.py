@@ -64,6 +64,117 @@ def monthly_total(c: dict, scn: dict, cache: bool = True) -> tuple[cm.Money, flo
     return total, storage.usd
 
 
+# --- line plan 2 (under consideration, not adopted): measured from today's forwarding to the staff mobile ----
+# Today every call to 0120 and 092 is forwarded by NTT to the staff member's mobile (user, 2026-10-07; set with
+# 142 as far as they remember). Plan 2 re-points that forward to the AI number only while the system is ON.
+# Calls answered by people never pass through the cloud, so plan 1's extra for human-answered calls does not apply.
+PLAN2_TESTED = ("gpt-live-1", "gemini-3.8-live")
+PLAN2_REFERENCE = ("gpt-realtime-2.1", "elevenagents", "cartesia-agents", "qwen-omni-realtime")
+DELTA_F = "ΔF"   # per AI call: F_050 (forward to the AI number) minus F_mob (forward to the mobile); may be negative
+
+
+def plan2_ai_call(c: dict, cache: bool = True) -> cm.Money:
+    """One AI-answered call under plan 2: the existing forward is re-pointed, so instead of a new NTT leg (F)
+    only the difference ΔF = F_050 - F_mob is added."""
+    common = common_ai_call()
+    common.terms.pop("F", None)
+    return common + ai_part(c, cache) + cm.Money(terms={DELTA_F: 1})
+
+
+def line_cost(ai_calls: float, recipients: int) -> tuple[float, dict, cm.Money]:
+    """One short push per AI call and recipient (details by reply, which is free), plus resends."""
+    messages = ai_calls * recipients * (1 + cm.RESEND_RATE)
+    lp = cm.line_plan(messages)
+    return messages, lp, cm.Money(jpy=(lp["fee_excl"] + lp["extra_excl"]) * (1 + TAX))
+
+
+def existing_monthly(scn: dict) -> cm.Money:
+    """What is already paid today and stays with plan 2: forwarding every call to the mobile, and the
+    forwarding service's monthly fee (both depend on the contract)."""
+    return cm.Money(terms={"F_mob": scn["ai"] + scn["human"], "B_fwd": 1})
+
+
+def plan2_monthly(c: dict, scn: dict, cache: bool = True) -> tuple[cm.Money, float]:
+    """What plan 2 adds or changes per month on top of today's cost. Returns the total and the recording
+    storage per retention month in USD."""
+    ai = plan2_ai_call(c, cache).scale(scn["ai"])
+    _, _, line = line_cost(scn["ai"], scn["recipients"])
+    storage_usd = cm.PRICES["twilio_recording_storage"]["value"] * scn["ai"] * cm.twilio_min(cm.DUR_MIN)
+    fixed = (cm.Money(usd=cm.PRICES["twilio_number_050"]["value"]) + line + cm.Money(terms={"S_srv": 1})
+             + monthly_plan(c) + cm.Money(terms={"R×録音保存": 1}))
+    return ai + fixed, storage_usd
+
+
+def plan2_terms(m: cm.Money, storage_usd: float) -> str:
+    parts = []
+    for sym, coef in m.terms.items():
+        if not coef:
+            continue
+        if sym in (DELTA_F, "F_mob"):
+            parts.append(f"{coef:,.0f}件×{sym}")
+        elif sym == "R×録音保存":
+            parts.append(f"R×{storage_usd * (1 + TAX) * FX:,.0f}円")
+        else:
+            parts.append(sym if coef == 1 else f"{coef:g}×{sym}")
+    return " ＋ ".join(parts) if parts else "なし"
+
+
+def render_plan2(by_id: dict) -> list[str]:
+    out: list[str] = []
+    w = out.append
+    scns = cm.SCENARIOS
+    w("## 8. 回線案2（検討中）：今の携帯への転送を基準にした月額\n")
+    w("- **今の運用**：0120・092のどちらへの着信も、NTTの転送で担当者の携帯へ全件を転送している（142番で設定した可能性）。")
+    w("- **回線案2**：システムをオンにしている間だけ、転送先を携帯からAIの番号（Twilioの050）に変える。オフの間は今のまま携帯へ転送する。"
+      "人が受ける通話はクラウドを通らないので、回線案1の「人が受ける通話の追加分」はかからない。")
+    w("- **採用は未確定**です。092の回線の種類、転送先の切り替えの方法（手動・遠隔の操作など）とその費用は、確認待ちです。")
+    w("- 記号：F_mob＝携帯への転送の1通話あたりの料金、F_050＝AIの番号への転送の1通話あたりの料金、"
+      "ΔF＝F_050−F_mob（転送先が変わる分の差。減る可能性もある）、B_fwd＝転送サービスの月額。どれも契約しだいで未確認。\n")
+    w("**8-1. 今すでに払っている費用（回線案2でも続く）**\n")
+    w("| 費目 | " + " | ".join(f"{k}（AI{v['ai']}件・人{v['human']}件）" for k, v in scns.items()) + " |")
+    w("| --- | --- | --- | --- |")
+    w("| 全件の携帯への転送料 | " + " | ".join(plan2_terms(existing_monthly(v), 0).split(" ＋ ")[0] for v in scns.values()) + " |")
+    w("| 転送サービスの月額（ボイスワープ等） | B_fwd | B_fwd | B_fwd |")
+    w("\n回線案2では、AIが受ける通話の分だけ、F_mob が F_050 に置き換わります（差は8-2の ΔF）。\n")
+    w("**8-2. 回線案2で増える・変わる費用（月額、税込換算）**\n")
+    w("含むもの：AIが受ける通話ごとの料金（AI＋Twilioの着信・音声の受け渡し・録音＋要約）、050番号、LINE（8-3）、"
+      "業者のプランの月額（分かっているもの）。記号で残すもの：ΔF、サーバー S_srv、録音の保存 R、各候補の未確認の費用。\n")
+    w("| 候補 | " + " | ".join(f"{k}（AI{v['ai']}件）" for k, v in scns.items()) + " | 記号で残す費用（少の場合） |")
+    w("| --- | --- | --- | --- | --- |")
+    for ids, label in ((PLAN2_TESTED, ""), (PLAN2_REFERENCE, "［参考］")):
+        for cid in ids:
+            c = by_id[cid]
+            cells = [yen(plan2_monthly(c, scn)[0].jpy_total()) for scn in scns.values()]
+            t_low, st = plan2_monthly(c, scns["少"])
+            flag = "（AIの部分を含まない）" if not ai_part(c).usd else ""
+            w(f"| {label}{c['name']}{flag} | " + " | ".join(cells) + f" | {plan2_terms(t_low, st)} |")
+    w("\n8-2は、少・中・多の通知人数（" + "・".join(str(v["recipients"]) for v in scns.values()) + "人）で計算しています。\n")
+    w("**8-3. LINEの費用（受け取る人数で決まる。1件につき短い通知を1通、詳細は返信で見る形）**\n")
+    w("返信（Reply API）と手動のチャットは無料です。プッシュの通知は、受け取る人数分を数えます（グループは人数分）。"
+      "無料プランは月200通までで、超えると送れません。\n")
+    w("| 受け取る人 | " + " | ".join(f"{k}（AI{v['ai']}件）" for k, v in scns.items()) + " |")
+    w("| --- | --- | --- | --- |")
+    for n in (1, 2, 3, 5):
+        cells = []
+        for scn in scns.values():
+            msgs, lp, money = line_cost(scn["ai"], n)
+            cells.append(f"{msgs:,.0f}通・{lp['name']} {yen(money.jpy)}")
+        w(f"| {n}人 | " + " | ".join(cells) + " |")
+    w("\n**8-4. 回線案1と並べる（同じ候補、月額の追加費用、税込換算）**\n")
+    w("| 候補 | 回線 | " + " | ".join(scns) + " | 違い |")
+    w("| --- | --- | --- | --- | --- | --- |")
+    for cid in PLAN2_TESTED:
+        c = by_id[cid]
+        p1 = [yen(monthly_total(c, scn)[0].jpy_total()) for scn in scns.values()]
+        p2 = [yen(plan2_monthly(c, scn)[0].jpy_total()) for scn in scns.values()]
+        w(f"| {c['name']} | 回線案1 | " + " | ".join(p1) + " | 人が受ける通話もクラウドを通る（Twilioの着信と、かけ直し）。"
+          "NTTの転送料 F・追加番号 B_num・U_ntt が別に増える |")
+        w(f"| {c['name']} | 回線案2 | " + " | ".join(p2) + " | 人が受ける通話は今のまま。AIの通話の転送料の差 ΔF だけが増減する |")
+    w("\n- 回線案1の額は3章の前提（人が受ける通話は事務所の電話へかけ直すH1）。今の運用のように携帯へかけ直す場合の単価は未確認。")
+    w("- どちらの案も、記号で残した費用（転送料、サーバー、録音の保存、未確認のAIの費用）を含みません。")
+    return out
+
+
 def yen(x: float) -> str:
     return f"{x:,.0f}円"
 
@@ -94,14 +205,16 @@ def render_frame() -> str:
     w("- **業者を使う実測は0件。** 金額は既知の単価と使用量の仮定に基づく概算で、記号の費用を含まない。品質の欄は空欄（未実測）。")
     w("- **採用の決め方**：必要な会話条件を満たした候補の中から、コストと性能のバランスで選ぶ（利用者の決定）。"
       "配点や予算の上限は、利用者が決めない限り置かない。安くても必要な会話条件を満たさない候補は採用しない。")
-    w("- 旧費用表（案A・案B）の約37円・約50円などは、旧構成と旧仮定による概算。この表の比較には、同じ前提で計算し直した値を使う。\n")
+    w("- 旧費用表（案A・案B）の約37円・約50円などは、旧構成と旧仮定による概算。この表の比較には、同じ前提で計算し直した値を使う。")
+    w("- 最初の接続の試験は GPT-Live 1 と Gemini 3.8 Live の2つだけ（利用者の決定、2026-10-07）。"
+      "ElevenLabs・Cartesia・GPT-Realtime-2.1 は保留で、Qwen は2つがよくなかった場合の次の候補。表には比較のため全候補を残す。\n")
 
     w("## 1. そろえた前提\n")
     w("| 項目 | 値 | 旧費用表との違い |")
     w("| --- | --- | --- |")
     w(f"| 件数・通知人数・為替・税 | 旧費用表の少・中・多と同じ（1ドル＝{FX:.0f}円、ドル建てに{TAX:.0%}） | なし |")
     w(f"| 通話時間・話す割合 | 3分、発信者{cm.CALLER_SPEECH_SHARE:.0%}・AI{cm.AI_SPEECH_SHARE:.0%} | なし |")
-    w("| 回線 | 回線案1（NTTで常時転送、Twilioの050番号で着信。人が受ける通話はH1） | なし |")
+    w("| 回線 | 回線案1（NTTで常時転送、Twilioの050番号で着信。人が受ける通話はH1）。回線案2（検討中）は8章 | なし |")
     w("| 音声の受け渡し | Twilio Media Streams（$0.0044/分）を全候補に仮定 | 旧案Bは Relay。SIPや各社のTwilio連携を使う場合の差は、接続方式を決めた後に置き換える |")
     w("| 要約・通知・記録 | 要約はHaiku 4.5、LINE通知、Twilioの録音を全候補で同じに置く | なし |")
     w("| 端数 | Twilioの区間は1通話ごとに1分単位の切り上げ（平均＋0.5分）。各社の分単価は3分ちょうどで計算 | 各社の端数処理は未確認 |")
@@ -175,7 +288,8 @@ def render_frame() -> str:
     ex = DATA["existing_service"]
     w("## 7. 既存サービス（自社で作る案の比較対象）\n")
     plans = "、".join(f"{k} {v:,}円〜" for k, v in ex["plans_jpy_excl_tax"].items())
-    w(f"- {ex['name']}：月払い・税別 {plans}。{ex['note']}（[出典]({ex['source']})）")
+    w(f"- {ex['name']}：月払い・税別 {plans}。{ex['note']}（[出典]({ex['source']})）\n")
+    out.extend(render_plan2({c["id"]: c for c in candidates()}))
     return "\n".join(out) + "\n"
 
 
@@ -223,15 +337,16 @@ def render_list() -> str:
         w(f"| 保留 | {e['name']} | {e['reason']} |")
     for e in DATA["parts_only"]:
         w(f"| 部品として比較 | {e['name']} | {e['reason']} |")
-    w("\n## 4. 初回の会話試験に提案する構成（採用の決定ではない）\n")
-    w("| 構成 | 比べる意味 |")
-    w("| --- | --- |")
+    w("\n## 4. 初回の会話試験の構成（利用者の決定。採用の決定ではない）\n")
+    w("| 構成 | 位置づけ | 比べる意味 |")
+    w("| --- | --- | --- |")
     for c in candidates():
-        if c["wave"] == "初回":
-            w(f"| {c['name']} | {c['reason']} |")
-    w("| GPT-Realtime-2.1（基準。少ない回数） | 既存の試作との比較の基準 |")
-    w("\n- Inworldは、接続の調査を優先して進める（ブラウザーからは中継が要り、提供段階がResearch previewのため、会話試験は2回目）。")
-    w("- Qwen・Grok・Deepgram・Retell・Vapiは、初回の結果と未確認の点の確認の後に、2回目以降で比べる。")
+        if c["wave"].startswith(("初回", "保留", "基準", "次の候補")):
+            w(f"| {c['name']} | {c['wave']} | {c['reason']} |")
+    w("\n- 最初の接続の確認は GPT-Live 1 と Gemini 3.8 Live の2つだけで行う（2026-10-07）。保留の候補は、採用の候補からは外していない。")
+    w("- GPT-Liveは、日本語の受付を最初に確かめる。業務処理を受け持つ裏方のモデル（delegation）も確かめる。")
+    w("- Inworldは、接続の調査を優先して進める（ブラウザーからは中継が要り、提供段階がResearch previewのため、会話試験は2回目）。")
+    w("- Grok・Deepgram・Retell・Vapiは、初回の結果と未確認の点の確認の後に比べる。")
     w("- 「同時に聞いて話す」「低遅延」などの機能名だけで順位を付けない。採用は共通の会話試験で決める。")
     return "\n".join(out) + "\n"
 

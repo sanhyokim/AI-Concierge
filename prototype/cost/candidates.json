@@ -2,10 +2,10 @@
   "checked": "2026-10-05",
   "note": "公式公開資料だけで確認した内容。アカウントごとの利用可否・実際の品質・実回線での性能は未確認。『日本語の記載あり』は品質の保証ではない。price.status: confirmed＝一次資料で確認 / reference＝『から』表記などプランで変わる / unconfirmed＝未確認（記号で残す）",
   "candidates": [
-    {"id": "gpt-live-1", "name": "OpenAI GPT-Live 1", "type": "会話モデル（同時に聞いて話す）", "wave": "初回",
+    {"id": "gpt-live-1", "name": "OpenAI GPT-Live 1", "type": "会話モデル（同時に聞いて話す）", "wave": "初回（試験の対象）",
      "model": "gpt-live-1",
      "confirmed": ["2026-09-10に一般提供（変更履歴）", "同時に聞いて話す設計。業務処理は delegation（responses／client）で別のモデル・処理へ渡す", "エンドポイントは /v1/live/sessions。Realtimeとは別のプロトコル（移行ガイドあり）", "$0.05/分、秒単位の課金。バックエンドのモデルとツールは別料金"],
-     "japanese": "言語指定の手順はあるが、日本語を明記した対応表は確認できず（最初に日本語の受付を確かめる）",
+     "japanese": "公式の言語の一覧がなく、追加の声の表は英語・ポルトガル語だけ。言語は指示文で指定する（最初の接続で日本語の受付を確かめる）",
      "browser": "WebRTC。こちらのサーバーが鍵を使って POST /v1/live/sessions でSDPを交換する（ブラウザーに鍵を渡さない）",
      "phone": "SIP、またはサーバーのWebSocketで中継",
      "unconfirmed": ["日本語の会話品質", "発話の開始・終了と割り込みのイベント", "バックエンドのモデルの費用（記号 L_live）"],
@@ -14,7 +14,7 @@
      "reason": "同時に聞いて話す会話モデルの代表。相づち・訂正への対応を最初に確かめる",
      "sources": ["https://developers.openai.com/api/docs/models/gpt-live-1", "https://developers.openai.com/api/docs/guides/voice-webrtc?api=live", "https://developers.openai.com/api/docs/guides/live-delegation", "https://developers.openai.com/api/docs/guides/live-migration", "https://developers.openai.com/api/docs/changelog"]},
 
-    {"id": "gemini-3.8-live", "name": "Google Gemini 3.8 Live", "type": "会話モデル（音声）", "wave": "初回",
+    {"id": "gemini-3.8-live", "name": "Google Gemini 3.8 Live", "type": "会話モデル（音声）", "wave": "初回（試験の対象）",
      "model": "gemini-3.8-live",
      "confirmed": ["Stable（2026年9月更新）", "Live APIに割り込みの通知（serverContent.interrupted）と、発話検出の設定がある", "3.8は非同期の関数実行が既定", "Extended Thinking版（gemini-3.8-live-extended-thinking）もある", "料金（1Mトークン）：音声入力$3（目安$0.005/分）、音声出力$12（目安$0.018/分）、テキスト入力$0.75・出力$4.50"],
      "japanese": "Live APIの対応言語の表に日本語（ja）がある",
@@ -26,7 +26,7 @@
      "reason": "日本語の明記があり、トークン単価が安い会話モデル。安い構成の代表として比べる",
      "sources": ["https://ai.google.dev/gemini-api/docs/models/gemini-3.8-live", "https://ai.google.dev/gemini-api/docs/live-api/capabilities", "https://ai.google.dev/gemini-api/docs/ephemeral-tokens", "https://ai.google.dev/gemini-api/docs/pricing", "https://ai.google.dev/gemini-api/docs/models/gemini-3.8-live-extended-thinking"]},
 
-    {"id": "elevenagents", "name": "ElevenLabs ElevenAgents（Expressive mode）", "type": "会話サービス", "wave": "初回",
+    {"id": "elevenagents", "name": "ElevenLabs ElevenAgents（Expressive mode）", "type": "会話サービス", "wave": "保留（費用が高い。性能に大差がなければ使わない）",
      "model": "音声認識＋選んだLLM＋Eleven v3 Conversational＋独自の発話区切り",
      "confirmed": ["音声認識・選んだLLM・音声合成・独自の発話区切りのモデルを統合", "割り込みの設定、ツール実行中の割り込みがある", "Expressive modeは声の調子も発話区切りに使う", "課金は接続時間。10秒を超える無音は95%引き。LLMは別料金", "「$0.08/分から」（プランで変わる）", "Eleven v4／v4 Turboは日本語に対応するが、Agentsで選べるかは別"],
      "japanese": "Expressive modeの資料が日本語を明記",
@@ -38,7 +38,7 @@
      "reason": "独自の発話区切りのモデルと、会話向けの日本語の声を持つ会話サービスの代表",
      "sources": ["https://elevenlabs.io/docs/eleven-agents/overview", "https://elevenlabs.io/docs/eleven-agents/customization/voice/expressive-mode", "https://elevenlabs.io/docs/eleven-agents/customization/conversation-flow", "https://elevenlabs.io/docs/eleven-agents/customization/authentication", "https://elevenlabs.io/docs/help-center/product/eleven-agents/how-much-does-eleven-agents-cost", "https://elevenlabs.io/docs/overview/models"]},
 
-    {"id": "cartesia-agents", "name": "Cartesia Managed Agents（Ink-2＋LLM＋Sonic-3.6）", "type": "会話サービス（部品統合）", "wave": "初回",
+    {"id": "cartesia-agents", "name": "Cartesia Managed Agents（Ink-2＋LLM＋Sonic-3.6）", "type": "会話サービス（部品統合）", "wave": "保留（費用が高い。性能に大差がなければ使わない）",
      "model": "ink-2 ／ sonic-3.6-2026-08-27",
      "confirmed": ["Ink-2（Stable、2026-09-17）とSonic-3.6（Stable、sonic-3.6-2026-08-27）が日本語に対応", "$0.06/分（有料プラン）", "月額：Free $0、Pro $5、Startup $49、Scale $299", "Cartesiaが用意する番号は米国のみ（$0.014/分の追加）。Twilio・SIPの番号も使える"],
      "japanese": "Ink-2・Sonic-3.6のモデル資料に日本語（ja）",
@@ -50,7 +50,7 @@
      "reason": "費用面で有力な部品統合型。日本語のSTT・TTSを公式資料で確認できた",
      "sources": ["https://www.cartesia.ai/pricing", "https://www.cartesia.ai/product/ai-phone-agent", "https://docs.cartesia.ai/build-with-cartesia/stt/latest", "https://docs.cartesia.ai/build-with-cartesia/tts-models/latest", "https://docs.cartesia.ai/api-reference/agents/websocket", "https://docs.cartesia.ai/get-started/authenticate-your-client-applications"]},
 
-    {"id": "gpt-realtime-2.1", "name": "OpenAI GPT-Realtime-2.1（比較の基準）", "type": "会話モデル（音声）", "wave": "基準",
+    {"id": "gpt-realtime-2.1", "name": "OpenAI GPT-Realtime-2.1（比較の基準）", "type": "会話モデル（音声）", "wave": "基準（保留）",
      "model": "gpt-realtime-2.1",
      "confirmed": ["既存の試作の基準。料金は旧費用表と同じ", "出力の上限 max_output_tokens（1〜4096）", "ブラウザーは一時キー（/v1/realtime/client_secrets）とWebRTC（/v1/realtime/calls）"],
      "japanese": "日本語の試験は既存の計画で行う。自然さは未実測",
@@ -62,7 +62,7 @@
      "reason": "比較の基準。GPT-Liveと同じ構成とはみなさない",
      "sources": ["https://developers.openai.com/api/docs/guides/voice-webrtc?api=realtime", "https://developers.openai.com/api/reference/resources/realtime/client-events", "https://developers.openai.com/api/docs/pricing"]},
 
-    {"id": "gpt-realtime-2.1-mini", "name": "OpenAI GPT-Realtime-2.1-mini（比較の基準）", "type": "会話モデル（音声）", "wave": "基準",
+    {"id": "gpt-realtime-2.1-mini", "name": "OpenAI GPT-Realtime-2.1-mini（比較の基準）", "type": "会話モデル（音声）", "wave": "基準（保留）",
      "model": "gpt-realtime-2.1-mini",
      "confirmed": ["料金は旧費用表と同じ"], "japanese": "未実測", "browser": "WebRTC（一時キー）", "phone": "Media Streams・SIP",
      "unconfirmed": ["日本語の会話品質"],
@@ -118,12 +118,12 @@
      "build": "自社の中継・業務処理が要る", "reason": "割り込みの挙動を比べる候補",
      "sources": ["https://docs.x.ai/developers/model-capabilities/audio/speech-to-speech", "https://docs.x.ai/developers/pricing"]},
 
-    {"id": "qwen-omni-realtime", "name": "Alibaba Qwen3.8-Omni-Flash-Realtime", "type": "会話モデル（同時に聞いて話す）", "wave": "2回目以降",
+    {"id": "qwen-omni-realtime", "name": "Alibaba Qwen3.8-Omni-Flash-Realtime", "type": "会話モデル（同時に聞いて話す）", "wave": "次の候補（GPT-Live・Geminiがよくなかった場合）",
      "model": "qwen3.8-omni-flash-realtime",
      "confirmed": ["full-duplex、semantic_vad（相づちや雑音による誤ったターン検出を減らす）", "音声の履歴は100ターン・600秒まで（確認済みの値はアプリ側にも保持する）", "料金はシンガポールと北京だけ。シンガポール：1Mトークンあたり音声入力$0.93・音声出力$1.87"],
      "japanese": "声の一覧に日本語",
      "browser": "Bearerの鍵だけで、一時トークンがない → 中継が要る", "phone": "中継",
-     "unconfirmed": ["音声のトークン換算（記号 Q_tok）", "処理の地域（シンガポール・北京）とデータの扱い"],
+     "unconfirmed": ["音声のトークン換算（記号 Q_tok）", "処理の地域（シンガポール・北京）とデータの扱い", "シンガポールでも、データの保存の地域と推論の場所が同じかが明記されていない", "学習への利用の記載が資料で異なる", "ブラウザー向けの短命の接続情報がなく、中継のサーバーが要る", "運営は中国の企業グループ（判断の材料として記録）"],
      "price": {"kind": "symbol_only", "status": "unconfirmed", "symbols": {"Q_tok": "音声トークンの費用／通話（単価は確認済み、換算が未確認）"}},
      "build": "自社の中継が要る", "reason": "仕様は優先条件に合うが、処理の地域とデータの扱いの判断が先",
      "sources": ["https://www.alibabacloud.com/help/en/model-studio/realtime", "https://www.alibabacloud.com/help/en/model-studio/omni-voice-list", "https://www.alibabacloud.com/help/en/model-studio/model-pricing"]}

@@ -40,6 +40,35 @@ class CandidateFrameTest(unittest.TestCase):
         self.assertIn("Hume EVI", lst)
         self.assertIn("接続の調査を優先", lst)
 
+    def test_plan2_is_measured_from_todays_mobile_forwarding(self):
+        live = next(c for c in cc.candidates() if c["id"] == "gpt-live-1")
+        low = cm.SCENARIOS["少"]
+        per_call = cc.plan2_ai_call(live)
+        self.assertNotIn("F", per_call.terms)                  # no new NTT leg: the existing forward is re-pointed
+        self.assertEqual(per_call.terms[cc.DELTA_F], 1)
+        self.assertAlmostEqual(per_call.usd, cc.common_ai_call().usd + cc.ai_part(live).usd)
+        existing = cc.existing_monthly(low)
+        self.assertEqual(existing.terms, {"F_mob": low["ai"] + low["human"], "B_fwd": 1})
+        self.assertEqual((existing.usd, existing.jpy), (0.0, 0.0))   # unknown contract prices stay symbols
+        p2, _ = cc.plan2_monthly(live, low)
+        p1, _ = cc.monthly_total(live, low)
+        self.assertLess(p2.jpy_total(), p1.jpy_total())         # no extra for human-answered calls
+        for sym in ("B_num", "U_ntt", "F"):
+            self.assertNotIn(sym, p2.terms)
+        number = cm.PRICES["twilio_number_050"]["value"]
+        _, _, line = cc.line_cost(low["ai"], low["recipients"])
+        self.assertAlmostEqual(p2.jpy_total(), per_call.scale(low["ai"]).jpy_total()
+                               + cm.Money(usd=number).jpy_total() + line.jpy)
+        msgs, lp, money = cc.line_cost(cm.SCENARIOS["中"]["ai"], 1)
+        self.assertEqual((round(msgs), money.jpy), (198, 0))    # one recipient stays in the free 200 messages
+        text = cc.render_frame()
+        for want in ("回線案2（検討中）", "採用は未確定", "今すでに払っている費用", "ΔF", "8-4"):
+            self.assertIn(want, text)
+        doc = (pathlib.Path(__file__).resolve().parents[2] / "docs" / "candidate-comparison-v1.md").read_text()
+        self.assertEqual(doc, text)                              # the document is generated from this code
+        lst = (pathlib.Path(__file__).resolve().parents[2] / "docs" / "candidates-v1.md").read_text()
+        self.assertEqual(lst, cc.render_list())
+
     def test_browser_budget_caps_cover_the_maximum_per_vendor(self):
         from prototype.browser_lab import config as lc
         est = mb.browser_stage_estimate()
