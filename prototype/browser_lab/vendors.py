@@ -24,7 +24,14 @@ ELEVENLABS_CLIENT_ESM = "https://cdn.jsdelivr.net/npm/@elevenlabs/client@1.26.0/
 
 
 class VendorError(RuntimeError):
-    pass
+    def __init__(self, message: str, status: int | None = None) -> None:
+        super().__init__(message)
+        self.status = status   # HTTP status when the vendor answered; None for network failures and bad replies
+
+    @property
+    def rejected(self) -> bool:
+        """The vendor answered 4xx: the request was refused and no session was created."""
+        return self.status is not None and 400 <= self.status < 500
 
 
 def http_json(method: str, url: str, headers: dict, body: dict | None = None, timeout: float = 20.0):
@@ -35,7 +42,7 @@ def http_json(method: str, url: str, headers: dict, body: dict | None = None, ti
             raw = resp.read().decode()
             status = resp.status
     except urllib.error.HTTPError as exc:
-        raise VendorError(f"{url}: HTTP {exc.code} {exc.read().decode()[:300]}") from None
+        raise VendorError(f"{url}: HTTP {exc.code} {exc.read().decode('utf-8', 'replace')[:600]}", exc.code) from None
     except (urllib.error.URLError, TimeoutError, OSError) as exc:   # network failure: no headers in the message
         raise VendorError(f"{url}: {type(exc).__name__}") from None
     try:
@@ -48,9 +55,15 @@ def _iso(delta: dt.timedelta) -> str:
     return (dt.datetime.now(dt.timezone.utc) + delta).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def _strict(schema: dict) -> dict:
+    """Responses function tools are strict by default: every property required, no extra properties."""
+    return {**schema, "required": list(schema.get("properties", {})), "additionalProperties": False}
+
+
 def _function_tools() -> list:
-    return [{"type": "function", "name": t["name"], "description": t["description"], "parameters": t["parameters"]}
-            for t in openai_tools()]
+    """Function tools in the Responses format (flat), with strict schemas (GPT-Live delegation)."""
+    return [{"type": "function", "name": t["name"], "description": t["description"],
+             "parameters": _strict(t["parameters"]), "strict": True} for t in openai_tools()]
 
 
 def mint(cfg: dict, env: dict, http: Http = http_json, instructions: str = LAB_INSTRUCTIONS,
@@ -142,7 +155,8 @@ def exchange_live_sdp(cfg: dict, env: dict, offer_sdp: str, http: Http = http_js
         "transport": {"type": "webrtc", "sdp": offer_sdp}}
     _, data = http("POST", "https://api.openai.com/v1/live/sessions",
                    {"Authorization": f"Bearer {env['OPENAI_API_KEY']}", "Content-Type": "application/json"}, body)
-    try:
-        return {"sdp": data["transport"]["sdp"], "vendor_session_id": data["session"]["id"]}
-    except (KeyError, TypeError):
-        raise VendorError("live/sessions: no transport.sdp in the response") from None
+    sdp = ((data.get("transport") or {}).get("sdp")) if isinstance(data, dict) else None
+    if not sdp:
+        raise VendorError("live/sessions: no transport.sdp in the response")
+    sid = (data.get("session") or {}).get("id") or data.get("id")
+    return {"sdp": sdp, "vendor_session_id": sid or "unknown"}   # a session exists even if its id is missing

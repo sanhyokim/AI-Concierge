@@ -10,6 +10,20 @@
 // Ending: session.close, then up to 5 s for session.closed (and its usage, if any) before the connection is closed.
 // Written from the public docs (2026-10-07); the connection has not been confirmed with a real account.
 const CLOSE_WAIT_MS = 5000;
+const ICE_WAIT_MS = 10000;   // the official WebRTC guide waits for ICE gathering (10 s timeout) before sending the offer
+
+function iceGathered(pc) {
+  if (pc.iceGatheringState === "complete") return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => { pc.removeEventListener("icegatheringstatechange", check);
+      reject(new Error("ネットワークの準備（ICE）が10秒で終わりませんでした。OpenAIへは何も送っていません")); }, ICE_WAIT_MS);
+    function check() {
+      if (pc.iceGatheringState !== "complete") return;
+      clearTimeout(timer); pc.removeEventListener("icegatheringstatechange", check); resolve();
+    }
+    pc.addEventListener("icegatheringstatechange", check);
+  });
+}
 
 export async function connect(ctx) {
   const pc = new RTCPeerConnection();
@@ -64,9 +78,10 @@ export async function connect(ctx) {
       ctx.log("vendor_error", ev.error || ev);
     }
   };
-  const offer = await pc.createOffer();
-  await pc.setLocalDescription(offer);
-  const answer = await ctx.post(ctx.credentials.sdp_exchange, { session_id: ctx.session.session_id, sdp: offer.sdp });
+  await pc.setLocalDescription(await pc.createOffer());
+  await iceGathered(pc);   // send the offer with its network candidates
+  const answer = await ctx.post(ctx.credentials.sdp_exchange, { session_id: ctx.session.session_id,
+    sdp: pc.localDescription.sdp });
   await pc.setRemoteDescription({ type: "answer", sdp: answer.sdp });
   return {
     mute() { audio.muted = true; },

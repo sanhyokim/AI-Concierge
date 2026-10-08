@@ -51,10 +51,23 @@ PATH_TAG = "browser_lab"
 
 
 COUNTED = ("starting", "active", "ended", "expired", "lost_on_restart", "connect_failed")
+# Not counted as a started session (nothing was created at the vendor), but limited as failures:
+FAILED = ("mint_failed", "vendor_rejected")
+# Not counted at all: nothing reached the vendor, or staff released it after checking the vendor's usage page.
+NOT_SENT, RELEASED = "not_sent", "released_by_staff"
 FAKE_SCRIPTS = {   # what the offline candidate "hears" at each end of caller speech (no speech recognition)
     "default": ["（模擬）焼肉ほのか博多店の田中です", "（模擬）点検は無料ですか"],
     "refusal": ["（模擬）点検は無料ですか", "人と話したいので、AIは使わないでください"],
     "recording": ["録音はしないでください", "（模擬）点検は無料ですか", "（模擬）ダクトの清掃をお願いします"],
+}
+
+
+STATUS_LABELS = {
+    "starting": "開始中（数える）", "active": "会話中（数える）", "ended": "終了（数える）",
+    "expired": "最大時間で期限切れ（数える）", "lost_on_restart": "再起動で失われた（数える）",
+    "connect_failed": "開始の失敗（数える）", "mint_failed": "接続情報の発行に失敗（失敗の回数）",
+    "vendor_rejected": "業者が接続を拒否（回数に数えない。失敗の回数）", "not_sent": "業者へ送る前に失敗（数えない）",
+    "released_by_staff": "回数から外した（数えない）", "not_started": "台帳の上限で開始せず（数えない）",
 }
 
 
@@ -100,13 +113,38 @@ class Lab:
     def counts(self, candidate: str) -> dict:
         q = "SELECT COUNT(*) AS c FROM lab_sessions WHERE candidate = ? AND stage = ? AND status "
         used = self.store.q1(q + f"IN ({','.join('?' * len(COUNTED))})", (candidate, self.stage, *COUNTED))["c"]
-        failed = self.store.q1(q + "= 'mint_failed'", (candidate, self.stage))["c"]
+        failed = self.store.q1(q + f"IN ({','.join('?' * len(FAILED))})", (candidate, self.stage, *FAILED))["c"]
         return {"sessions": used, "limit": SESSIONS[self.stage].get(candidate), "mint_failures": failed,
                 "mint_failure_limit": MAX_MINT_FAILURES}
 
     def reset_mint_failures(self, candidate: str) -> int:
-        return self.store.x("UPDATE lab_sessions SET status = 'mint_failed_reset' WHERE candidate = ? AND stage = ? "
-                            "AND status = 'mint_failed'", (candidate, self.stage)).rowcount
+        """A person clears the failure count (credential minting failed, or the vendor refused the connection)."""
+        return self.store.x("UPDATE lab_sessions SET status = status || '_reset' WHERE candidate = ? AND stage = ? "
+                            f"AND status IN ({','.join('?' * len(FAILED))})", (candidate, self.stage, *FAILED)).rowcount
+
+    def _release(self, row: dict, status: str, reason: str) -> None:
+        """Close a session that created nothing at the vendor: no count, the reservation is released at $0."""
+        with self.lock:
+            self.sessions.pop(row["id"], None)
+        self._set(row["id"], status=status, ended_at=iso(now_jst()), end_reason=reason)
+        if row["rid"]:   # neither a request nor a cost (any estimate already written for it is cancelled too)
+            self.ledger(CANDIDATES[row["candidate"]]["vendor"]).void(row["rid"], note=f"{status}: {reason}"[:300])
+        if row["call_id"]:
+            self.service.end_call(row["call_id"], reason[:200])
+
+    def release_session(self, sid: str, note: str, user: str = "") -> dict:
+        """Staff take a failed start out of the count after seeing no usage on the vendor's page.
+
+        Only for a session that never got a vendor session id (nothing was confirmed as created)."""
+        row = self._row(sid)
+        note = str(note or "").strip()
+        if not note:
+            raise ValueError("業者の利用画面で確かめた内容を、メモに入力してください")
+        if row["status"] not in ("connect_failed", "lost_on_restart") or row["vendor_session_id"]:
+            raise ValueError("回数から外せるのは、業者の会話が作られなかった開始の失敗だけです")
+        self._release(row, RELEASED, f"回数から外した（{user}：{note[:150]}）。元の記録：{row['end_reason'] or ''}")
+        self.store.audit(user or "system", "lab_session_release", sid, {"note": note[:200], "was": row["status"]})
+        return {"released": sid, "counts": self.counts(row["candidate"])}
 
     # --- sessions ------------------------------------------------------------------------
 
@@ -158,8 +196,8 @@ class Lab:
                     raise SessionLimit(f"{cfg['name']}：この段階（{LAB_STAGES[self.stage]}）の開始は{c['limit']}回までで、"
                                        f"すでに{c['sessions']}回です")
                 if c["mint_failures"] >= MAX_MINT_FAILURES:
-                    raise SessionLimit(f"{cfg['name']}：接続情報の発行に{c['mint_failures']}回失敗しました。鍵・設定を確かめ、"
-                                       f"python3 -m prototype.browser_lab --reset-mint-failures {candidate} で解除してから試す")
+                    raise SessionLimit(f"{cfg['name']}：接続情報の発行・接続が{c['mint_failures']}回失敗しました。"
+                                       "原因を確かめてから、管理画面の「費用の台帳」で失敗の回数を解除してください（--reset-mint-failures でも可）")
             self.store.x("INSERT INTO lab_sessions(id, candidate, stage, status, vendor, started_at, started_ts) "
                          "VALUES(?, ?, ?, 'starting', ?, ?, ?)", (sid, candidate, self.stage, cfg["vendor"],
                                                                   iso(now_jst()), now))
@@ -217,12 +255,22 @@ class Lab:
         row, s = self._active(sid)
         if s["cfg"]["adapter"] != "gpt-live":
             raise ValueError("SDP exchange is only for GPT-Live")
+        if not str(offer or "").strip():
+            raise ValueError("SDPのオファーが空です（業者には送っていません）")
         with self.lock:   # one vendor session per reservation
             if s["sdp_done"]:
                 raise ValueError("this session already has a connection")
             s["sdp_done"] = True
-        out = vendors.exchange_live_sdp(s["cfg"], self.env, offer, self.http, instructions=s["instructions"],
-                                        voice=s["voice"])
+        try:
+            out = vendors.exchange_live_sdp(s["cfg"], self.env, offer, self.http, instructions=s["instructions"],
+                                            voice=s["voice"])
+        except vendors.VendorError as exc:
+            print(f"[会話試験] {CANDIDATES[row['candidate']]['name']} の接続に失敗：{exc}", flush=True)
+            if exc.rejected:   # refused with 4xx: no session exists, nothing to bill
+                self._release(row, "vendor_rejected", f"業者が接続を拒否（会話は作られていない）：{exc}"[:900])
+            else:              # network failure or 5xx: a session may exist; keep it counted
+                self._set(sid, end_reason=f"接続の結果が不明（数える）：{exc}"[:900])
+            raise
         self._set(sid, vendor_session_id=out.get("vendor_session_id"))
         return out
 
@@ -249,7 +297,14 @@ class Lab:
             return {"already": row["status"], "reconcile": "照合待ち" if row["rid"] else None}
         with self.lock:
             rt = self.sessions.pop(sid, None)
+        if (reason.startswith("開始の失敗") and rt is not None and rt["cfg"]["adapter"] == "gpt-live"
+                and not rt["sdp_done"]):
+            # GPT-Live: the server is the only one that contacts OpenAI, and it never did for this session
+            self._release(row, NOT_SENT, "開始の失敗（OpenAIへは何も送っていない）")
+            return {"estimated_usd": 0.0, "not_sent": True}
         status = "connect_failed" if reason.startswith("開始の失敗") else "ended"
+        if status == "connect_failed" and row["end_reason"]:   # keep the vendor's error text recorded by sdp()
+            reason = f"{reason}：{row['end_reason']}"[:900]
         usage = json.loads(row["usage"])
         if final_usage:
             usage.append({"kind": "session_closed", "data": final_usage})
@@ -403,9 +458,15 @@ class Lab:
         return str(path)
 
     def sessions_view(self) -> list[dict]:
-        return self.store.q("SELECT id, candidate, stage, status, started_at, ended_at, end_reason, tool_calls, "
-                            "backend_responses, stop_reason, close_confirmed FROM lab_sessions ORDER BY started_ts DESC "
-                            "LIMIT 50")
+        rows = self.store.q("SELECT id, candidate, stage, status, started_at, ended_at, end_reason, tool_calls, "
+                            "backend_responses, stop_reason, close_confirmed, vendor_session_id FROM lab_sessions "
+                            "ORDER BY started_ts DESC LIMIT 50")
+        for r in rows:
+            r["counted"] = r["status"] in COUNTED
+            r["releasable"] = r["status"] in ("connect_failed", "lost_on_restart") and not r["vendor_session_id"]
+            r["vendor_session"] = bool(r.pop("vendor_session_id"))
+            r["status_label"] = STATUS_LABELS.get(r["status"].removesuffix("_reset"), r["status"])
+        return rows
 
     def ledger_summary(self) -> dict:
         out = {}

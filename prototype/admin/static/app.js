@@ -563,10 +563,20 @@ routes.ledger = async () => {
       <td data-label="利用画面の額"><input inputmode="decimal" data-amount="${esc(r.rid)}" aria-label="利用画面の額"></td><td data-label="メモ"><input data-note="${esc(r.rid)}" placeholder="例：10/09 利用画面" aria-label="メモ"></td>
       <td data-label=""><button class="small primary" data-reconcile="${esc(r.rid)}" data-vendor="${esc(v)}">照合する</button></td></tr>`)).join("")}</tbody></table>` : `<p class="muted">照合待ちの留保はありません。</p>`}</section>
     <section class="card" style="margin-top:12px"><h2>試験の会話（サーバーの記録）</h2>
+    <p class="sub">この段階の開始の回数：${Object.entries(l.counts || {}).map(([c, n]) => `${esc(c)} ${n.sessions}/${n.limit}回（失敗 ${n.mint_failures}/${n.mint_failure_limit}回${n.mint_failures ? ` <button class="small" data-resetfail="${esc(c)}">失敗の回数を解除</button>` : ""}）`).join("、")}</p>
     ${l.sessions.length ? `<table class="stack"><thead><tr><th>開始</th><th>候補</th><th>段階</th><th>状態</th><th>止めた理由</th><th>業者の終了</th><th>業務処理・裏方の応答</th></tr></thead><tbody>
-    ${l.sessions.map((x) => `<tr><td data-label="開始">${esc(fmt(x.started_at))}</td><td data-label="候補">${esc(x.candidate)}</td><td data-label="段階">${esc(x.stage)}</td><td data-label="状態">${esc(x.status)}<br><span class="sub">${esc(x.end_reason || "")}</span></td><td data-label="止めた理由">${esc(x.stop_reason || "—")}</td><td data-label="業者の終了">${x.close_confirmed ? "確認" : "未確認"}</td><td data-label="回数">${x.tool_calls}・${x.backend_responses}</td></tr>`).join("")}</tbody></table>` : `<p class="muted">まだ試験の会話はありません。</p>`}</section>`;
+    ${l.sessions.map((x) => `<tr><td data-label="開始">${esc(fmt(x.started_at))}</td><td data-label="候補">${esc(x.candidate)}</td><td data-label="段階">${esc(x.stage)}</td><td data-label="状態">${esc(x.status_label || x.status)}<br><span class="sub">${esc(x.end_reason || "")}</span>${x.releasable ? `<div class="row" style="margin-top:4px"><input data-relnote="${esc(x.id)}" placeholder="例：10/08 OpenAIの利用画面で0件・$0を確認" aria-label="確認した内容"><button class="small" data-release="${esc(x.id)}">回数から外す</button></div>` : ""}</td><td data-label="止めた理由">${esc(x.stop_reason || "—")}</td><td data-label="業者の終了">${x.close_confirmed ? "確認" : "未確認"}</td><td data-label="回数">${x.tool_calls}・${x.backend_responses}</td></tr>`).join("")}</tbody></table>
+    <p class="sub">「回数から外す」は、開始に失敗し、業者の会話が作られなかった記録だけに出ます。業者の利用画面で利用が0件であることを確かめてから、確かめた内容を入力して押してください（操作履歴に残ります）。</p>` : `<p class="muted">まだ試験の会話はありません。</p>`}</section>`;
   view.addEventListener("click", (e) => {
     const t = e.target;
+    if (t.dataset.release) guarded(async () => {
+      await api("/api/lab/release", { session_id: t.dataset.release, note: view.querySelector(`[data-relnote="${t.dataset.release}"]`).value });
+      toast("回数から外しました（留保も0円で閉じました）"); render();
+    });
+    if (t.dataset.resetfail) guarded(async () => {
+      const r = await api("/api/lab/reset_failures", { candidate: t.dataset.resetfail });
+      toast(`失敗の回数を解除しました（${r.cleared}件）`); render();
+    });
     if (!t.dataset.reconcile) return;
     guarded(async () => {
       const rid = t.dataset.reconcile;

@@ -6,6 +6,8 @@
     adjustment   reconciliation with the vendor console: the difference that makes the reservation's
                  total equal the console amount (counts in cost, not in requests; keeps an audit trail)
     close        the reservation is settled; from then on only its linked usage counts
+    void         the reserved request created nothing at the vendor (refused with 4xx, never sent, or released by
+                 staff after checking the vendor's usage page): its lines count neither as a request nor as cost
   A reservation that is never closed (no usage reported, timeout, abort, crash) keeps counting
   at max(reserved, linked usage), so a request that may have been billed never drops out.
   Lines without "kind" (older ledgers) are read as usage.
@@ -80,16 +82,19 @@ class UsageLedger:
 
     def open_reservations(self) -> list[dict]:
         lines = self._lines()
-        closed = {r["rid"] for r in lines if r.get("kind") == "close"}
+        closed = {r["rid"] for r in lines if r.get("kind") in ("close", "void")}
         return [r for r in lines if r.get("kind") == "reservation" and r["rid"] not in closed]
 
     def totals(self) -> dict:
         totals = {"requests": 0, "audio_seconds": 0.0, "est_cost_usd": 0.0, "open_reservations": 0,
                   "held_usd": 0.0, "tokens": {k: 0 for k in TOKEN_KEYS}, "transcription_usd": 0.0}
         lines = self._lines()
+        voided = {r["rid"] for r in lines if r.get("kind") == "void"}
         linked: dict[str, dict] = {}
         for rec in lines:
             kind = rec.get("kind", "usage")
+            if rec.get("reservation") in voided:
+                continue
             if kind == "adjustment":
                 totals["est_cost_usd"] += rec.get("est_cost_usd", 0.0)
                 rid = rec.get("reservation")
@@ -172,6 +177,10 @@ class UsageLedger:
 
     def close(self, rid: str, note: str = "") -> dict:
         return self._write({"ts": _now(), "vendor": self.vendor, "kind": "close", "rid": rid, "note": note})
+
+    def void(self, rid: str, note: str = "") -> dict:
+        """The reserved request created nothing at the vendor; the lines stay for the audit trail."""
+        return self._write({"ts": _now(), "vendor": self.vendor, "kind": "void", "rid": rid, "note": note})
 
 
 def is_retryable(exc: BaseException) -> bool:
@@ -290,6 +299,8 @@ def reconcile(ledger: UsageLedger, rid: str, actual_usd: float, note: str = "") 
     res = next((r for r in lines if r.get("kind") == "reservation" and r["rid"] == rid), None)
     if res is None:
         raise KeyError(f"no reservation {rid} for {ledger.vendor}")
+    if any(r.get("kind") == "void" and r["rid"] == rid for r in lines):
+        raise ValueError(f"{rid} was voided (nothing was created at the vendor); there is nothing to reconcile")
     linked = sum(r.get("est_cost_usd", 0.0) for r in lines
                  if r.get("reservation") == rid and r.get("kind", "usage") in ("usage", "adjustment"))
     already = [r for r in lines if r.get("kind") == "adjustment" and r.get("reservation") == rid]

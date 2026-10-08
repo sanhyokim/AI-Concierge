@@ -109,7 +109,10 @@ class AdminApp:
         if path == "/api/demo/script":
             return {"script": DEMO_SCRIPT}
         if path == "/api/ledger":
+            from ..browser_lab.config import SESSIONS
+            counts = {c: self.lab.counts(c) for c, n in SESSIONS[self.lab.stage].items() if n}
             return {"ledgers": app_ledgers(self), "sessions": self.lab.sessions_view(), "stage": self.lab.stage,
+                    "counts": counts,
                     "note": "台帳はこちら側の見積もりで、業者の課金の上限ではありません。留保は、業者の利用画面の額で照合するまで残ります。"}
         raise LookupError(path)
 
@@ -202,6 +205,14 @@ class AdminApp:
             cid = body.get("call_id", "")
             res = svc.ai_interrupted(cid, "demo（業者の割り込みの通知の模擬）")
             return {"invalidated": res["invalidated"], "call": svc.call_view(cid)}
+        if path == "/api/lab/release":
+            return {"ledgers": app_ledgers(self),
+                    **self.lab.release_session(str(body.get("session_id", "")), str(body.get("note", "")), who)}
+        if path == "/api/lab/reset_failures":
+            cand = str(body.get("candidate", ""))
+            n = self.lab.reset_mint_failures(cand)
+            self.store.audit(who, "lab_reset_failures", cand, {"cleared": n})
+            return {"cleared": n}
         if path == "/api/ledger/reconcile":
             vendor, rid = str(body.get("vendor", "")), str(body.get("rid", ""))
             if vendor not in self.lab.ledger_summary():

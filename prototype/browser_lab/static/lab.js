@@ -336,7 +336,7 @@ async function start() {
     log("エラー", String(e.message || e));
     $("status").textContent = "開始できませんでした";
     await stop("開始の失敗");
-    $("status").textContent = `開始できませんでした：${String(e.message || e).slice(0, 200)}`;
+    $("status").textContent = `開始できませんでした：${String(e.message || e).slice(0, 900)}`;
     loadCandidates();   // counts changed
   }
 }

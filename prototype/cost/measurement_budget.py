@@ -292,7 +292,8 @@ def browser_budget_markdown() -> str:
     w(f"| 業務処理（ツール）の呼び出し | 1会話{a['tool_calls']}回 | 超えたらサーバーが停止を指示する |")
     w(f"| GPT-Liveの裏方の応答 | 1会話{a['backend_responses']}回 | 画面が数えてサーバーへ送る。超えたら停止 |")
     w(f"| 画面から送る response.create | 1会話{a['response_creates']}回 | 同上 |")
-    w(f"| 接続情報の発行の失敗 | 候補×段階で{a['mint_failures']}回 | 超えたら人が `--reset-mint-failures` で解除する |")
+    w(f"| 接続情報の発行の失敗・業者が接続を拒否（4xx） | 候補×段階で{a['mint_failures']}回 | 開始の回数には数えない（業者の会話は作られていない）。"
+      "超えたら、原因を確かめてから人が管理画面の「費用の台帳」で解除する |")
     for stage in ("connection", "detailed"):
         st = e["stages"][stage]
         caps = "、".join(f"{v} ${c:g}（{st['requests_caps'][v]}回）" for v, c in st["runtime_caps_usd"].items() if c > 0)
