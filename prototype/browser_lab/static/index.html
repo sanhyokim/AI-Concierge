@@ -35,6 +35,8 @@
   .card { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
   .card input { margin-right: 6px; }
   .card p { margin: 4px 0 0; font-size: 13px; color: var(--muted); }
+  .card .lines { margin: 6px 0 0 18px; padding: 0; font-size: 15px; line-height: 1.7; }
+  .card .lines li { margin: 2px 0; }
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
   th, td { border-bottom: 1px solid var(--line); padding: 4px 6px; text-align: left; vertical-align: top; }
   #log { height: 220px; overflow: auto; font: 12px/1.5 ui-monospace, monospace; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 6px; }
@@ -80,7 +82,8 @@
     </section>
 
     <section>
-      <h2>2. 台本（いま行うものを選ぶ）</h2>
+      <h2>2. 台本（いま行うものを選び、番号の順に話す）</h2>
+      <p class="sub">「 」の中を、そのまま読み上げます（情報はすべて架空）。AIが別の順番で聞いてきたら、聞かれたことに合わせて答えます。</p>
       <div class="cards" id="cards"></div>
     </section>
   </div>

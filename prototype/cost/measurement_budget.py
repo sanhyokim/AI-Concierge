@@ -159,11 +159,13 @@ HELD_NOTE = {   # reference only: no sessions are planned until the user release
 }
 
 
-def browser_stage_estimate() -> dict:
-    """Connection check first, then the detailed comparison for the candidates that connected.
+EXAMPLE_SESSIONS = (10, 30)   # examples only: there is no count limit (user decision 2026-10-08)
 
-    Four things are kept apart: what is paid, the estimate of the known cost items (assumptions), costs that
-    are not confirmed (symbols, never 0), and the in-app limits (which stop sessions but cap no vendor bill)."""
+
+def browser_stage_estimate() -> dict:
+    """Cost of browser-lab conversations per session, kept apart from payments, unconfirmed costs and the in-app
+    limits. The user removed the count and cost caps for the tested candidates (2026-10-08); each session still
+    stops at the maximum length, and every session is recorded in the ledger for reconciliation."""
     from ..browser_lab import config as lc
     cand = {c["id"]: c for c in json.loads((pathlib.Path(__file__).resolve().parent / "candidates.json")
                                            .read_text(encoding="utf-8"))["candidates"]}
@@ -171,67 +173,44 @@ def browser_stage_estimate() -> dict:
     live = lc.CANDIDATES["gpt-live-1"]
     model = lc.delegation_model(live, {})
     backend = {"typical": lc.backend_usd(model, lc.BACKEND_TYPICAL), "strict": lc.backend_usd(model, lc.BACKEND_STRICT)}
-    stages = {}
-    for stage in ("connection", "detailed"):
-        rows = []
-        for cid in BROWSER_CONFIGS:
-            lab = lc.CANDIDATES[cid]
-            n = lc.SESSIONS[stage][cid]
-            exp_min, max_min = n * BROWSER_AVG_MIN, n * lc.MAX_SESSION_MIN
-            ref_per_min = cc.ai_part(cand[cid]).usd / 3.0
-            row = {"id": cid, "name": lab["name"], "held": cid in HELD, "sessions": n, "expected_min": exp_min,
-                   "max_min": max_min, "ref_usd_per_min": round(ref_per_min, 4),
-                   "upper_usd_per_min": lab["upper_usd_per_min"], "ledger_vendor": lab["vendor"],
-                   "voice_expected_usd": round(exp_min * ref_per_min, 2),
-                   "voice_max_usd": round(max_min * lab["upper_usd_per_min"], 2),
-                   "backend_typical_usd": 0.0, "backend_strict_usd": 0.0,
-                   "symbols": sorted(cc.ai_part(cand[cid]).terms)}
-            if cid == "gpt-live-1":
-                row["backend_typical_usd"] = round(n * backend["typical"], 3)
-                row["backend_strict_usd"] = round(n * backend["strict"], 3)
-            row["expected_usd"] = round(row["voice_expected_usd"] + row["backend_typical_usd"], 2)
-            row["max_usd"] = round(n * lc.session_reserve_usd(lab, {}), 2)   # what the ledger reserves
-            rows.append(row)
-        limits = lc.LAB_LIMITS_BY_STAGE[stage]
-        caps = {v: limits[v].max_cost_usd for v in limits}
-        stages[stage] = {"rows": rows, "expected_usd": round(sum(r["expected_usd"] for r in rows), 2),
-                         "max_usd": round(sum(r["max_usd"] for r in rows), 2), "runtime_caps_usd": caps,
-                         "runtime_caps_total_usd": round(sum(caps.values()), 2),
-                         "requests_caps": {v: limits[v].max_requests for v in limits}}
-    cum = {v: sum(r["max_usd"] for st in stages.values() for r in st["rows"] if r["ledger_vendor"] == v)
-           for v in ("openai_lab", "google_lab")}
-    conn = {v: sum(r["max_usd"] for r in stages["connection"]["rows"] if r["ledger_vendor"] == v)
-            for v in ("openai_lab", "google_lab")}
-    payments = {
-        "connection": [("OpenAI 前払い（残高がなければ。最低額）", 5.0),
-                       ("Google 無料枠（架空のデータだけ）。有料枠を選ぶ場合は前払い$5", 0.0)],
-        "detailed": [("OpenAI 追加の前払い（累計の最大が最初の$5を超えるため。残高しだい）", 5.0 if cum["openai_lab"] > 5 else 0.0),
-                     ("Google 有料枠の前払い（無料枠を使わない場合）", 5.0)],
-    }
+    rows = []
+    for cid in BROWSER_CONFIGS:
+        lab = lc.CANDIDATES[cid]
+        ref_per_min = cc.ai_part(cand[cid]).usd / 3.0
+        typical = backend["typical"] if cid == "gpt-live-1" else 0.0
+        expected = BROWSER_AVG_MIN * ref_per_min + typical
+        rows.append({"id": cid, "name": lab["name"], "held": cid in HELD, "ledger_vendor": lab["vendor"],
+                     "sessions_limit": lc.SESSIONS["connection"][cid],
+                     "ref_usd_per_min": round(ref_per_min, 4), "upper_usd_per_min": lab["upper_usd_per_min"],
+                     "voice_expected_usd": round(BROWSER_AVG_MIN * ref_per_min, 3),
+                     "backend_typical_usd": round(typical, 3),
+                     "backend_strict_usd": round(backend["strict"], 3) if cid == "gpt-live-1" else 0.0,
+                     "expected_usd": round(expected, 3),
+                     "max_usd": round(lc.session_reserve_usd(lab, {}), 3),   # what the ledger reserves per session
+                     "examples": {n: {"expected_usd": round(n * expected, 2),
+                                      "max_usd": round(n * lc.session_reserve_usd(lab, {}), 2)}
+                                  for n in EXAMPLE_SESSIONS},
+                     "symbols": sorted(cc.ai_part(cand[cid]).terms)})
+    caps = {v: lim.max_cost_usd for v, lim in lc.LAB_LIMITS_BY_STAGE["connection"].items()}
+    payments = [("OpenAI 前払い（残高がなければ。最低額）", 5.0),
+                ("Google 無料枠（架空のデータだけ）。有料枠を選ぶ場合は前払い$5から", 0.0)]
     unconfirmed = [
         ("L_live", "GPT-Liveの裏方のモデルに渡る量", "入力は指示文（最大16,384トークン）と会話の履歴。渡る量が公式に書かれていないため、"
          "典型と厳しめの仮定を並べるだけで、上限は確定しない"),
-        ("—", "GPT-Liveの日本語", "公式の言語の一覧がない。声の追加の表は英語・ポルトガル語だけ。最初の接続で聞いて確かめる"),
+        ("—", "GPT-Liveの日本語", "公式の言語の一覧がない。声の追加の表は英語・ポルトガル語だけ。実際に話して確かめる"),
         ("Ctx_gem", "Gemini Liveの履歴の再計算", "会話が長いほど増える。接続の設定で履歴を短く保つ（contextWindowCompression）"),
         ("—", "Geminiの無料枠の上限", "回数・量の上限はAI Studioの画面だけに表示される"),
         ("—", "課金の集計の遅れ", "OpenAI：" + BILLING_DELAY["openai_lab"][0] + "。Google：" + BILLING_DELAY["google_lab"][0]),
         ("FX", "為替", f"1ドル＝{FX_ASSUMED:.0f}円の仮置き（140〜160円で変わる）"),
     ]
-    in_app = {
-        "sessions": {st: {cid: lc.SESSIONS[st][cid] for cid in BROWSER_CONFIGS} for st in lc.SESSIONS},
-        "max_session_min": lc.MAX_SESSION_MIN, "grace_s": lc.SESSION_GRACE_S,
-        "tool_calls": lc.MAX_TOOL_CALLS, "backend_responses": lc.MAX_BACKEND_RESPONSES,
-        "response_creates": lc.MAX_RESPONSE_CREATES, "mint_failures": lc.MAX_MINT_FAILURES,
-    }
-    return {"stages": stages, "plans": PLANS, "held_note": HELD_NOTE, "payments": payments,
-            "unconfirmed": unconfirmed, "in_app": in_app, "backend_per_session": backend, "backend_model": model,
+    in_app = {"max_session_min": lc.MAX_SESSION_MIN, "grace_s": lc.SESSION_GRACE_S,
+              "tool_calls": lc.MAX_TOOL_CALLS, "backend_responses": lc.MAX_BACKEND_RESPONSES,
+              "response_creates": lc.MAX_RESPONSE_CREATES, "mint_failures": lc.MAX_MINT_FAILURES}
+    return {"rows": rows, "plans": PLANS, "held_note": HELD_NOTE, "payments": payments, "unconfirmed": unconfirmed,
+            "in_app": in_app, "backend_per_session": backend, "backend_model": model,
             "backend_assumptions": {"typical": lc.BACKEND_TYPICAL, "strict": lc.BACKEND_STRICT},
-            "cumulative_max_usd": {k: round(v, 2) for k, v in cum.items()},
-            "connection_max_usd": {k: round(v, 2) for k, v in conn.items()},
-            "max_session_min": lc.MAX_SESSION_MIN, "avg_session_min": BROWSER_AVG_MIN, "checked": CHECKED,
-            "fx_jpy_per_usd": FX_ASSUMED, "tax": 0.10,
-            "runtime_caps_usd": stages["detailed"]["runtime_caps_usd"],
-            "runtime_caps_total_usd": stages["detailed"]["runtime_caps_total_usd"]}
+            "ledger_caps_usd": caps, "max_session_min": lc.MAX_SESSION_MIN, "avg_session_min": BROWSER_AVG_MIN,
+            "checked": CHECKED, "fx_jpy_per_usd": FX_ASSUMED, "tax": 0.10}
 
 
 def browser_budget_markdown() -> str:
@@ -239,41 +218,38 @@ def browser_budget_markdown() -> str:
     e = browser_stage_estimate()
     out = []
     w = out.append
-    title = {"connection": "接続の予備試験", "detailed": "詳しい会話比較（接続できた候補だけ）"}
-    w("**① 支払い額（税抜。前払い・プラン）**\n")
-    w("| 段階 | 支払うもの | 額 |")
-    w("| --- | --- | --- |")
-    for stage in ("connection", "detailed"):
-        for label, usd in e["payments"][stage]:
-            w(f"| {title[stage]} | {label} | ${usd:g} |")
+    w("**① 支払い額（税抜。前払い）**\n")
+    w("| 支払うもの | 額 |")
+    w("| --- | --- |")
+    for label, usd in e["payments"]:
+        w(f"| {label} | ${usd:g} |")
     w("")
     w("- 前払いの残高は、**費用の上限ではありません**。停止と集計の遅れで、残高を超えて使われることがあります"
       "（OpenAI：残高がマイナスになり、次の購入から引かれる。Google：集計に約10分の遅れ）。出典は下の固定費の表。")
+    w("- **業者側の予算（OpenAIのプロジェクトの月の予算と通知など）は設定したままにします。** "
+      "このアプリの回数と費用の上限は、利用者の決定で外しました（2026-10-08）。")
     w(f"- 税：OpenAI・Googleは消費税10%。例：$5は税込で約{5 * 1.1 * e['fx_jpy_per_usd']:.0f}円（1ドル＝{e['fx_jpy_per_usd']:.0f}円の仮置き）。")
     w("- 無料枠は試験の条件（架空のデータだけ）でだけ使います。本番の料金には流用しません。\n")
-    w(f"**② 既知の費目の試算（仮定。1回最大{e['max_session_min']:.0f}分、平均{e['avg_session_min']:.0f}分と仮定）**\n")
+    w(f"**② 既知の費目の試算（仮定。1回の会話は最大{e['max_session_min']:.0f}分で止まり、平均{e['avg_session_min']:.0f}分と仮定）**\n")
     b = e["backend_assumptions"]
     w(f"GPT-Liveの裏方のモデル（{e['backend_model']}）は、典型（{b['typical']['responses']}応答×入力{b['typical']['input_tokens']:,}"
       f"・出力{b['typical']['output_tokens']:,}トークン、1会話 ${e['backend_per_session']['typical']:.3f}）と、"
       f"厳しめ（{b['strict']['responses']}応答×入力{b['strict']['input_tokens']:,}・出力{b['strict']['output_tokens']:,}トークン、"
       f"1会話 ${e['backend_per_session']['strict']:.3f}）の2つの仮定で示します。どちらも保証ではありません。\n")
-    for stage in ("connection", "detailed"):
-        st = e["stages"][stage]
-        w(f"*{title[stage]}*\n")
-        w("| 候補 | 回数 | 最大時間 | 声の見込み（参考の分単価） | 裏方の見込み（典型） | 留保する最大額（声は上限の分単価、裏方は厳しめ） | 記号で残す費用 |")
-        w("| --- | --- | --- | --- | --- | --- | --- |")
-        for r in st["rows"]:
-            if r["held"]:
-                continue
-            back = f"${r['backend_typical_usd']:.2f}" if r["id"] == "gpt-live-1" else "—"
-            w(f"| {r['name']} | {r['sessions']} | {r['max_min']:.0f}分 | 約${r['voice_expected_usd']:.2f}（${r['ref_usd_per_min']}/分） | "
-              f"{back} | ${r['max_usd']:.2f}（${r['upper_usd_per_min']}/分"
-              f"{'＋裏方 $' + format(r['backend_strict_usd'], '.2f') if r['id'] == 'gpt-live-1' else ''}） | {'、'.join(r['symbols']) or '—'} |")
-        tested = [r for r in st["rows"] if not r["held"]]
-        w(f"| **合計** | {sum(r['sessions'] for r in tested)} | {sum(r['max_min'] for r in tested):.0f}分 | "
-          f"約${sum(r['voice_expected_usd'] for r in tested):.2f} | ${sum(r['backend_typical_usd'] for r in tested):.2f} | "
-          f"${sum(r['max_usd'] for r in tested):.2f} | ＋記号 |\n")
-    w("保留の候補（回数0。参考）：" + "／".join(f"{next(r['name'] for r in e['stages']['connection']['rows'] if r['id'] == k)}：{v}"
+    ex = EXAMPLE_SESSIONS
+    w("| 候補 | 1回の見込み（声＋裏方の典型） | 1回の最大（声は上限の分単価×最大時間、裏方は厳しめ） | "
+      + " | ".join(f"{n}回の例（見込み／最大）" for n in ex) + " | 記号で残す費用 |")
+    w("| --- | --- | --- | " + " | ".join("---" for _ in ex) + " | --- |")
+    for r in e["rows"]:
+        if r["held"]:
+            continue
+        back = f"＋裏方 ${r['backend_typical_usd']:.3f}" if r["id"] == "gpt-live-1" else ""
+        w(f"| {r['name']} | 約${r['expected_usd']:.3f}（声 ${r['voice_expected_usd']:.3f}{back}） | ${r['max_usd']:.3f} | "
+          + " | ".join(f"約${r['examples'][n]['expected_usd']:.2f}／${r['examples'][n]['max_usd']:.2f}" for n in ex)
+          + f" | {'、'.join(r['symbols']) or '—'} |")
+    w("")
+    w("回数の例は目安です。回数の上限はありません。")
+    w("保留の候補（開始できない。参考）：" + "／".join(f"{next(r['name'] for r in e['rows'] if r['id'] == k)}：{v}"
                                        for k, v in e["held_note"].items()) + "。\n")
     w("**③ 未確認の費用（0円にしない。上限を確定できない理由）**\n")
     w("| 記号 | 項目 | 確定できない理由・抑え方 |")
@@ -285,25 +261,17 @@ def browser_budget_markdown() -> str:
     a = e["in_app"]
     w("| 制限 | 値 | 守り方 |")
     w("| --- | --- | --- |")
-    for stage in ("connection", "detailed"):
-        cnt = "、".join(f"{r['name'].split('（')[0]} {r['sessions']}回" for r in e["stages"][stage]["rows"])
-        w(f"| 開始の回数（{title[stage]}） | {cnt} | サーバーのデータベースで数える（再起動・同時の開始を含む）。送る前に拒否する |")
-    w(f"| 1回の長さ | 最大{a['max_session_min']:.0f}分 | 画面が止め、サーバーの見張りも{a['max_session_min']:.0f}分＋{a['grace_s']}秒で期限切れにする |")
+    w("| 開始の回数（GPT-Live・Gemini） | 上限なし（利用者の決定、2026-10-08） | 回数はサーバーのデータベースに記録する。保留の候補は0回（開始できない） |")
+    w(f"| 1回の長さ（試験） | 最大{a['max_session_min']:.0f}分 | 画面が止め、画面を閉じた場合や押し忘れた場合もサーバーの見張りが"
+      f"{a['max_session_min']:.0f}分＋{a['grace_s']}秒で期限切れにする。本番の通話を何分で止めるかは未決定 |")
     w(f"| 業務処理（ツール）の呼び出し | 1会話{a['tool_calls']}回 | 超えたらサーバーが停止を指示する |")
     w(f"| GPT-Liveの裏方の応答 | 1会話{a['backend_responses']}回 | 画面が数えてサーバーへ送る。超えたら停止 |")
     w(f"| 画面から送る response.create | 1会話{a['response_creates']}回 | 同上 |")
-    w(f"| 接続情報の発行の失敗・業者が接続を拒否（4xx） | 候補×段階で{a['mint_failures']}回 | 開始の回数には数えない（業者の会話は作られていない）。"
+    w(f"| 接続情報の発行の失敗・業者が接続を拒否（4xx） | 候補ごとに{a['mint_failures']}回 | 開始の回数には数えない（業者の会話は作られていない）。"
       "超えたら、原因を確かめてから人が管理画面の「費用の台帳」で解除する |")
-    for stage in ("connection", "detailed"):
-        st = e["stages"][stage]
-        caps = "、".join(f"{v} ${c:g}（{st['requests_caps'][v]}回）" for v, c in st["runtime_caps_usd"].items() if c > 0)
-        w(f"| 台帳の上限（{title[stage]}、{'累計' if stage == 'detailed' else 'この段階'}） | {caps} | "
-          f"開始の前に留保し、超えるなら始めない。{'`LAB_STAGE=detailed` で起動したときだけ' if stage == 'detailed' else '既定の段階'} |")
+    w("| 台帳の費用の上限 | なし（利用者の決定、2026-10-08） | 会話ごとの見込みの記録と、業者の利用画面の額での照合は続ける |")
     w("")
-    w("- 留保は、終了の後も**照合待ち**として残ります。業者の利用画面の額で照合したときに閉じます（推定では閉じない）。")
-    w(f"- 留保の最大：接続の予備試験 OpenAI ${e['connection_max_usd']['openai_lab']:.2f}・Google ${e['connection_max_usd']['google_lab']:.2f}、"
-      f"詳しい比較まで累計 OpenAI ${e['cumulative_max_usd']['openai_lab']:.2f}・Google ${e['cumulative_max_usd']['google_lab']:.2f}。"
-      "裏方のモデルを高いもの（GPT_LIVE_DELEGATION_MODEL）に変えると、台帳の上限で開始できません（上限の見直しは判断が要ります）。\n")
+    w("- 留保（見込み）は、終了の後も**照合待ち**として残ります。業者の利用画面の額で照合したときに閉じます（推定では閉じない）。\n")
     w("**固定費・利用枠（出典つき）**\n")
     w("| 業者 | 契約するプラン | 含まれる分数・クレジット | 無料枠の適用条件 | 超過料金 | 期限・集計の遅れ・税 | 出典 |")
     w("| --- | --- | --- | --- | --- | --- | --- |")

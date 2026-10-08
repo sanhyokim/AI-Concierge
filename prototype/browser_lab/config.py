@@ -15,7 +15,7 @@ from __future__ import annotations
 from ..reception.tooldefs import RECEPTION_TOOLS as TOOLS
 from ..engines.budget import Limits
 
-MAX_SESSION_MIN = 4.0        # the page hangs up automatically at this length
+MAX_SESSION_MIN = 5.0        # test calls stop at this length (user, 2026-10-08); for real calls it is undecided
 TOOL_DELAY_MS_C5 = 4000      # C5: business processing deliberately slowed down
 
 HOLD_BY_USER = "利用者の判断で保留（費用と性能のバランス。2026-10-07）。採用の候補からは外していない"
@@ -97,28 +97,19 @@ def delegation_model(cfg: dict, env: dict) -> str:
     return env.get(cfg["delegation_model_env"]) or cfg["delegation_model_default"]
 
 
-# Sessions allowed per candidate and stage. Held candidates get none until the user releases them.
-SESSIONS = {"connection": {"gpt-live-1": 2, "gemini-3.8-live": 2, "elevenagents": 0, "cartesia-agents": 0,
+# Sessions allowed per candidate and stage. None = no count limit: the user removed the limits for the two tested
+# candidates (2026-10-08); sessions are still counted for the record. Held candidates get none until released.
+SESSIONS = {"connection": {"gpt-live-1": None, "gemini-3.8-live": None, "elevenagents": 0, "cartesia-agents": 0,
                            "gpt-realtime-2.1": 0},
-            "detailed": {"gpt-live-1": 12, "gemini-3.8-live": 12, "elevenagents": 0, "cartesia-agents": 0,
+            "detailed": {"gpt-live-1": None, "gemini-3.8-live": None, "elevenagents": 0, "cartesia-agents": 0,
                          "gpt-realtime-2.1": 0}}
-# Proposed (not approved) run-side caps per vendor ledger, by stage (measurement plan v2.2, 5章).
-# The ledger is cumulative, so the 'detailed' caps include what the connection check may have used.
-LAB_LIMITS_BY_STAGE = {
-    "connection": {
-        "openai_lab": Limits(max_requests=2, max_audio_seconds=8 * 60, max_cost_usd=1.0),
-        "google_lab": Limits(max_requests=2, max_audio_seconds=8 * 60, max_cost_usd=0.5),
-        "elevenlabs_lab": Limits(max_requests=0, max_audio_seconds=0, max_cost_usd=0.0),
-        "cartesia_lab": Limits(max_requests=0, max_audio_seconds=0, max_cost_usd=0.0),
-    },
-    "detailed": {
-        "openai_lab": Limits(max_requests=14, max_audio_seconds=56 * 60, max_cost_usd=7.0),
-        "google_lab": Limits(max_requests=14, max_audio_seconds=56 * 60, max_cost_usd=3.5),
-        "elevenlabs_lab": Limits(max_requests=0, max_audio_seconds=0, max_cost_usd=0.0),
-        "cartesia_lab": Limits(max_requests=0, max_audio_seconds=0, max_cost_usd=0.0),
-    },
+_NO_CAP = Limits(max_requests=None, max_audio_seconds=None, max_cost_usd=None)   # user decision 2026-10-08
+_HELD = Limits(max_requests=0, max_audio_seconds=0, max_cost_usd=0.0)
+LAB_LIMITS_BY_STAGE = {   # the ledger still records every session and its reservation; it no longer refuses
+    stage: {"openai_lab": _NO_CAP, "google_lab": _NO_CAP, "elevenlabs_lab": _HELD, "cartesia_lab": _HELD}
+    for stage in ("connection", "detailed")
 }
-LAB_STAGES = {"connection": "接続の予備試験（各候補1〜2回）", "detailed": "詳しい会話比較（接続できた候補だけ）"}
+LAB_STAGES = {"connection": "接続の予備試験", "detailed": "詳しい会話比較"}
 LAB_LIMITS = LAB_LIMITS_BY_STAGE["detailed"]   # overall caps (kept for the budget table and older callers)
 
 ENV_SETUP = {   # shown on the lab page: how to set a variable on the tester's PC (never paste a key into chat)

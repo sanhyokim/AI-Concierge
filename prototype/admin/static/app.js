@@ -550,11 +550,11 @@ async function showResult(c) {
 const usd = (v) => `$${Number(v || 0).toFixed(4)}`;
 routes.ledger = async () => {
   const l = await api("/api/ledger");
-  const rows = Object.entries(l.ledgers).filter(([, x]) => x.cap_usd > 0 || x.requests || x.open_reservations);
+  const rows = Object.entries(l.ledgers).filter(([, x]) => x.cap_usd !== 0 || x.requests || x.open_reservations);
   view.innerHTML = `<section class="card"><h1>費用の台帳（ブラウザー会話試験）</h1>
     <p class="sub">${esc(l.note)} 段階：${esc(l.stage)}。</p>
-    <table class="stack"><thead><tr><th>台帳</th><th>会話の数</th><th>合計（推定・照合済み）</th><th>うち照合待ちの留保</th><th>照合待ち</th><th>上限（この段階）</th></tr></thead><tbody>
-    ${rows.map(([v, x]) => `<tr><td data-label="台帳">${esc(v)}</td><td data-label="会話の数">${x.requests}</td><td data-label="合計">${usd(x.est_cost_usd)}</td><td data-label="留保">${usd(x.held_usd)}</td><td data-label="照合待ち">${x.open_reservations}件</td><td data-label="上限">$${x.cap_usd}</td></tr>`).join("")}
+    <table class="stack"><thead><tr><th>台帳</th><th>会話の数</th><th>合計（推定・照合済み）</th><th>うち照合待ちの留保</th><th>照合待ち</th><th>上限</th></tr></thead><tbody>
+    ${rows.map(([v, x]) => `<tr><td data-label="台帳">${esc(v)}</td><td data-label="会話の数">${x.requests}</td><td data-label="合計">${usd(x.est_cost_usd)}</td><td data-label="留保">${usd(x.held_usd)}</td><td data-label="照合待ち">${x.open_reservations}件</td><td data-label="上限">${x.cap_usd == null ? "なし" : `$${x.cap_usd}`}</td></tr>`).join("")}
     </tbody></table></section>
     <section class="card" style="margin-top:12px"><h2>照合待ちの留保</h2>
     <p class="sub">業者の利用画面で、その会話の実際の額を確かめてから入力します。照合すると、台帳の合計がその額になり、留保が閉じます。同じ留保を別の額で照合し直すことはできません。</p>
@@ -563,9 +563,9 @@ routes.ledger = async () => {
       <td data-label="利用画面の額"><input inputmode="decimal" data-amount="${esc(r.rid)}" aria-label="利用画面の額"></td><td data-label="メモ"><input data-note="${esc(r.rid)}" placeholder="例：10/09 利用画面" aria-label="メモ"></td>
       <td data-label=""><button class="small primary" data-reconcile="${esc(r.rid)}" data-vendor="${esc(v)}">照合する</button></td></tr>`)).join("")}</tbody></table>` : `<p class="muted">照合待ちの留保はありません。</p>`}</section>
     <section class="card" style="margin-top:12px"><h2>試験の会話（サーバーの記録）</h2>
-    <p class="sub">この段階の開始の回数：${Object.entries(l.counts || {}).map(([c, n]) => `${esc(c)} ${n.sessions}/${n.limit}回（失敗 ${n.mint_failures}/${n.mint_failure_limit}回${n.mint_failures ? ` <button class="small" data-resetfail="${esc(c)}">失敗の回数を解除</button>` : ""}）`).join("、")}</p>
+    <p class="sub">これまでの開始の回数：${Object.entries(l.counts || {}).map(([c, n]) => `${esc(c)} ${n.sessions}回${n.limit != null ? `／上限${n.limit}回` : "（上限なし）"}（接続の失敗 ${n.mint_failures}/${n.mint_failure_limit}回${n.mint_failures ? ` <button class="small" data-resetfail="${esc(c)}">失敗の回数を解除</button>` : ""}）`).join("、")}</p>
     ${l.sessions.length ? `<table class="stack"><thead><tr><th>開始</th><th>候補</th><th>段階</th><th>状態</th><th>止めた理由</th><th>業者の終了</th><th>業務処理・裏方の応答</th></tr></thead><tbody>
-    ${l.sessions.map((x) => `<tr><td data-label="開始">${esc(fmt(x.started_at))}</td><td data-label="候補">${esc(x.candidate)}</td><td data-label="段階">${esc(x.stage)}</td><td data-label="状態">${esc(x.status_label || x.status)}<br><span class="sub">${esc(x.end_reason || "")}</span>${x.releasable ? `<div class="row" style="margin-top:4px"><input data-relnote="${esc(x.id)}" placeholder="例：10/08 OpenAIの利用画面で0件・$0を確認" aria-label="確認した内容"><button class="small" data-release="${esc(x.id)}">回数から外す</button></div>` : ""}</td><td data-label="止めた理由">${esc(x.stop_reason || "—")}</td><td data-label="業者の終了">${x.close_confirmed ? "確認" : "未確認"}</td><td data-label="回数">${x.tool_calls}・${x.backend_responses}</td></tr>`).join("")}</tbody></table>
+    ${l.sessions.map((x) => `<tr><td data-label="開始">${esc(fmt(x.started_at))}</td><td data-label="候補">${esc(x.candidate)}</td><td data-label="段階">${esc(x.stage)}</td><td data-label="状態">${esc(x.status_label || x.status)}<br><span class="sub">${esc(x.end_reason || "")}</span>${x.why_counted ? `<br><span class="sub">${esc(x.why_counted)}</span>` : ""}${x.releasable ? `<div class="row" style="margin-top:4px"><input data-relnote="${esc(x.id)}" placeholder="例：10/08 OpenAIの利用画面で0件・$0を確認" aria-label="確認した内容"><button class="small" data-release="${esc(x.id)}">回数から外す</button></div>` : ""}</td><td data-label="止めた理由">${esc(x.stop_reason || "—")}</td><td data-label="業者の終了">${x.close_confirmed ? "確認" : "未確認"}</td><td data-label="回数">${x.tool_calls}・${x.backend_responses}</td></tr>`).join("")}</tbody></table>
     <p class="sub">「回数から外す」は、開始に失敗し、業者の会話が作られなかった記録だけに出ます。業者の利用画面で利用が0件であることを確かめてから、確かめた内容を入力して押してください（操作履歴に残ります）。</p>` : `<p class="muted">まだ試験の会話はありません。</p>`}</section>`;
   view.addEventListener("click", (e) => {
     const t = e.target;

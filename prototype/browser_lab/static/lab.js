@@ -7,19 +7,52 @@
 // The server can tell the page to stop (spoken AI refusal, in-app limits, maximum length) through the replies
 // and a heartbeat every 10 s.
 
+// Each card says exactly what to say, in order (fictitious data only). The AI may ask in another order:
+// answer what it asks, using these lines.
 const SCENARIOS = [
   { id: "C1", title: "相づち", how: "AIが話している途中で「はい」「うん」と短く相づちする",
-    check: "不必要に止まらない。次の必要な内容を自然に話す" },
+    check: "不必要に止まらない。次の必要な内容を自然に話す",
+    lines: ["AIのあいさつを最後まで聞く",
+            "「焼肉ほのか博多店の田中です。無煙ロースターの清掃をお願いしたいのですが。」",
+            "AIが話している途中で、短く「はい」「うん」と言う（2〜3回）",
+            "AIが止まらずに、そのまま話し続けるかを聞く",
+            "「以上です。ありがとうございました。」と言い、「終える」を押す"] },
   { id: "C2", title: "「はい、違います」からの訂正", how: "AIの復唱の途中で「はい、違います。電話番号は…」と訂正する",
-    check: "冒頭の「はい」を肯定にしない。訂正を聞き、正しい番号を復唱し、肯定まで確認済みにしない" },
+    check: "冒頭の「はい」を肯定にしない。訂正を聞き、正しい番号を復唱し、肯定まで確認済みにしない",
+    lines: ["AIのあいさつを最後まで聞く",
+            "「焼肉ほのか博多店の田中です。無煙ロースター8台の清掃をお願いしたいです。」",
+            "電話番号を聞かれたら「折り返しは、090-1234-5678です。」",
+            "AIが番号を読み上げ始めたら、途中で「はい、違います。末尾は5679です。」",
+            "AIが正しい番号（…5679）を読み直したら「はい、合っています。」",
+            "ほかに聞かれたら答え、最後に「以上です。」と言って「終える」を押す"] },
   { id: "C3", title: "停止の求め", how: "AIの発話の最初・途中・終わり際で「ちょっと待って」と言う",
-    check: "止まって待つ。言い終えていない部分を伝えた扱いにしない" },
+    check: "止まって待つ。言い終えていない部分を伝えた扱いにしない",
+    lines: ["AIのあいさつを聞いてから「点検は無料ですか？」",
+            "AIが答え始めたら、すぐに「ちょっと待って」",
+            "2〜3秒黙ってから「すみません、続けてください」",
+            "AIの返事の途中と、終わり際でも「ちょっと待って」と言ってみる",
+            "「以上です。」と言い、「終える」を押す"] },
   { id: "C4", title: "間と言い直し", how: "考えて一度間を空け、同じ内容を言い直す",
-    check: "発話の終わりを早まって決めない。言い直した後の意味で受け付ける" },
+    check: "発話の終わりを早まって決めない。言い直した後の意味で受け付ける",
+    lines: ["AIのあいさつを聞く",
+            "「えーと……（2秒黙る）……焼肉ほのか博多店です。」",
+            "「用件は、清掃の……いや、点検をお願いしたいです。」",
+            "AIが「点検」として受け付けたか（清掃と取り違えていないか）を聞く",
+            "「以上です。」と言い、「終える」を押す"] },
   { id: "C5", title: "処理中の追加・訂正", how: "（業務処理を4秒遅らせる）その間に用件を追加・訂正する",
-    check: "処理中も聞ける。結果を先に約束しない。保存・要約と会話が食い違わない" },
+    check: "処理中も聞ける。結果を先に約束しない。保存・要約と会話が食い違わない",
+    lines: ["「焼肉ほのか博多店の田中です。無煙ロースター8台の清掃をお願いします。」",
+            "AIが確認や処理をしている間（約4秒）に「あと、ダクトの点検もお願いします。」",
+            "「希望日は10月8日の午後3時です。……すみません、9日の金曜日に変更してください。」",
+            "最後にAIがまとめた内容（清掃＋ダクトの点検、9日の金曜日）が合っているかを聞く",
+            "「以上です。」と言い、「終える」を押す"] },
   { id: "C6", title: "専門用語・番号・日時", how: "株式会社野田、ダクト、無煙ロースター、電話番号、日付・時間を伝える",
-    check: "発音・受付の正確さ。電話番号・日時を区切って明瞭に復唱し、確認する（部分減速は必須ではない）" },
+    check: "発音・受付の正確さ。電話番号・日時を区切って明瞭に復唱し、確認する（部分減速は必須ではない）",
+    lines: ["「株式会社野田さんですよね。無煙ロースターとダクトの清掃をお願いしたいです。」",
+            "電話番号を聞かれたら「090-1234-5678です。」",
+            "日時を聞かれたら「10月9日、金曜日の午後3時でお願いします。」",
+            "AIの読み方（会社名・ダクト・番号・日時）が正しく、聞き取りやすいかを聞く",
+            "「以上です。」と言い、「終える」を押す"] },
 ];
 // Audio-only judgments (any candidate) and business-logic judgments (only where tool calls reached the server).
 const JUDGE_AUDIO = [
@@ -316,7 +349,7 @@ async function start() {
     if (!st.session.verified) log("注意", "この構成は公式資料に沿って書いたが、接続はまだ確かめていない");
     const c = st.session.counts || {};
     $("callInfo").innerHTML = `業務処理：${esc(st.session.logic_path)}。受付の記録 <code>${esc(st.session.call_id)}</code>（設定 v${esc(st.session.config_version)}、FAQ ${esc(st.session.faq_codes.join(", "))}）` +
-      (c.limit != null ? `。この段階の開始 ${c.sessions}/${c.limit}回` : "") +
+      `。開始 ${c.sessions}回目${c.limit != null ? `（上限${c.limit}回）` : "（回数の上限なし）"}` +
       (location.pathname.startsWith("/lab/") ? ` <a href="../#/call/${encodeURIComponent(st.session.call_id)}" target="_blank" rel="noopener">管理画面で開く</a>` : "") +
       appliedText(st.session.applied);
     const mod = await import(`./adapters/${st.session.adapter}.js`);
@@ -416,7 +449,8 @@ async function save() {
 
 function renderStatic() {
   $("cards").innerHTML = SCENARIOS.map((s, i) => `<label class="card"><input type="radio" name="sc" value="${s.id}" ${i === 0 ? "checked" : ""}>` +
-    `<b>${s.id} ${s.title}</b><p>${s.how}</p><p>見ること：${s.check}</p></label>`).join("");
+    `<b>${s.id} ${s.title}</b><ol class="lines">${s.lines.map((l) => `<li>${l}</li>`).join("")}</ol>` +
+    `<p>見ること：${s.check}</p></label>`).join("");
   document.querySelectorAll("input[name=sc]").forEach((el) => el.addEventListener("change", () => { st.scenario = el.value; log("台本を切り替え", el.value); }));
   const opts = (key) => key === "natural"
     ? `<option value="">—</option>${[1, 2, 3, 4, 5].map((n) => `<option>${n}</option>`).join("")}`
@@ -458,11 +492,11 @@ async function loadCandidates() {
     $("candNote").innerHTML = (c.hold ? `<p><b>保留中：</b>${esc(c.hold)}</p>` : "") +
       `<p>${c.verified ? "" : "接続未確認の構成です。"}業務処理の経路：${esc(c.logic_path)}。${esc(c.note || "")}</p>` +
       `<p>管理画面の設定の反映：指示 ${esc(c.applies.instructions)}／声 ${esc(c.applies.voice)}</p>` +
-      (n.limit != null ? `<p>この段階の開始：${n.sessions}/${n.limit}回。接続情報の発行の失敗：${n.mint_failures}/${n.mint_failure_limit}回</p>` : "") +
+      (c.hold ? "" : `<p>これまでの開始：${n.sessions}回${n.limit != null ? `（上限${n.limit}回）` : "（回数の上限なし）"}。接続の失敗：${n.mint_failures}/${n.mint_failure_limit}回（超えたら「費用の台帳」で解除）</p>`) +
       envHelp(c);
-    $("limit").textContent = `いまの段階：${st.stage}。1回の会話は最大${c.max_session_min}分で、画面とサーバーの両方が止める。` +
-      `開始の前に、最大時間×上限の分単価（$${c.upper_usd_per_min}/分。GPT-Liveは裏方のモデルの厳しめの仮定を足す）を台帳に留保し、` +
-      "業者の利用画面と照合するまで残す。台帳とアプリ内の制限は、業者の課金の上限を保証しない。";
+    $("limit").textContent = `1回の会話は${c.max_session_min}分で自動的に止まります（画面を閉じても、サーバーが止めます）。終わったら「終える」を押してください。` +
+      `費用は、会話ごとに台帳へ見込みを記録します（最大時間×$${c.upper_usd_per_min}/分。GPT-Liveは裏方のモデルの分を足す）。` +
+      "回数と費用の上限はありません。業者側の予算の設定（OpenAIの月の予算など）は残しておいてください。";
   };
   $("candidate").onchange = showNote;
   showNote();

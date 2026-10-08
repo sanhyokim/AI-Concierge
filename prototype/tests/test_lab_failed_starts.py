@@ -110,8 +110,9 @@ class FailedStartTest(unittest.TestCase):
                 lab.sessions[sid]["sdp_done"] = True    # the earlier version had sent the offer
             lab.end(sid, 3, "開始の失敗")
             ids.append(sid)
-        with self.assertRaises(SessionLimit):
-            lab.start("gpt-live-1")
+        from unittest import mock
+        with mock.patch.dict(config.SESSIONS["connection"], {"gpt-live-1": 2}), self.assertRaises(SessionLimit):
+            lab.start("gpt-live-1")                                  # under the limit of that time
         with self.assertRaises(ValueError):                         # a note on what was checked is required
             lab.release_session(ids[0], "")
         for sid in ids:
@@ -168,3 +169,4 @@ class AdminReleaseTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

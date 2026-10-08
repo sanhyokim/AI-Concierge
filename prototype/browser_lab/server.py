@@ -86,8 +86,7 @@ class Lab:
         self.service = service or ReceptionService(Store(":memory:"), env=self.env)
         self.store = self.service.store
         self.live_close, self.clock = live_close, clock
-        self.stage = self.env.get("LAB_STAGE", "connection")
-        if self.stage not in LAB_LIMITS_BY_STAGE:
+        if self.env.get("LAB_STAGE") and self.env["LAB_STAGE"] not in LAB_LIMITS_BY_STAGE:
             raise ValueError(f"LAB_STAGE must be one of {', '.join(LAB_LIMITS_BY_STAGE)}")
         self.sessions: dict[str, dict] = {}   # runtime data of sessions started by this process
         self.lock = threading.Lock()
@@ -96,6 +95,10 @@ class Lab:
             self.store.x("UPDATE lab_sessions SET status = 'lost_on_restart', ended_at = ?, end_reason = "
                          "'サーバーの再起動で失われた（留保は照合まで残す）' WHERE status IN ('starting', 'active')",
                          (iso(now_jst()),))
+
+    @property
+    def stage(self) -> str:
+        return self.env.get("LAB_STAGE") or "connection"
 
     def ledger(self, vendor: str) -> UsageLedger:
         return UsageLedger(vendor, LAB_LIMITS_BY_STAGE[self.stage][vendor], self.ledger_path)
@@ -465,6 +468,8 @@ class Lab:
             r["counted"] = r["status"] in COUNTED
             r["releasable"] = r["status"] in ("connect_failed", "lost_on_restart") and not r["vendor_session_id"]
             r["vendor_session"] = bool(r.pop("vendor_session_id"))
+            r["why_counted"] = ("業者の会話が作られたため、回数から外せません（料金が発生している可能性があります）"
+                                if r["counted"] and r["vendor_session"] else "")
             r["status_label"] = STATUS_LABELS.get(r["status"].removesuffix("_reset"), r["status"])
         return rows
 

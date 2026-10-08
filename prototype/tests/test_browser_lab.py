@@ -27,6 +27,12 @@ class FakeHttp:
         raise AssertionError(f"unexpected url {url}")
 
 
+def limit(n=2, candidates=("gpt-live-1", "gemini-3.8-live")):
+    """Put a count limit back for a test: the mechanism stays (held candidates use 0) though the user removed the
+    limits for the tested candidates (2026-10-08)."""
+    return mock.patch.dict(config.SESSIONS["connection"], {c: n for c in candidates})
+
+
 class LabTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -207,24 +213,18 @@ class LabBusinessLogicTest(unittest.TestCase):
         saved = json.loads(saved_path.read_text(encoding="utf-8"))
         self.assertTrue(saved["comparison"]["business_logic_status"].startswith("未評価"))
 
-    def test_connection_stage_allows_only_the_first_short_sessions(self):
+    def test_tested_candidates_have_no_count_limit_but_every_start_is_recorded(self):
         from prototype.browser_lab.server import SessionLimit
-        from prototype.reception.service import ReceptionService
-        from prototype.reception.store import Store
-        svc = ReceptionService(Store(self.dir / "lab.db"))
-        resp = {"auth_tokens": {"name": "auth_tokens/abc"}}
-        lab = self.lab({"GEMINI_API_KEY": "k"}, resp, service=svc)
-        self.assertEqual(lab.stage, "connection")
-        for _ in range(2):
+        lab = self.lab({"GEMINI_API_KEY": "k", "OPENAI_API_KEY": "k"}, {"auth_tokens": {"name": "auth_tokens/abc"}})
+        for _ in range(5):                                  # user decision 2026-10-08: no count or cost cap
             lab.end(lab.start("gemini-3.8-live")["session_id"], 60)
-        calls = len(lab.http.calls)
-        with self.assertRaises(SessionLimit) as cm:      # the plan's count, before anything is sent
-            lab.start("gemini-3.8-live")
-        self.assertIn("2回まで", str(cm.exception))
-        self.assertEqual(len(lab.http.calls), calls)
-        self.assertEqual(lab.counts("gemini-3.8-live")["sessions"], 2)
-        detailed = self.lab({"GEMINI_API_KEY": "k", "LAB_STAGE": "detailed"}, resp, service=svc)
-        self.assertIn("session_id", detailed.start("gemini-3.8-live"))   # the next stage counts separately
+        c = lab.counts("gemini-3.8-live")
+        self.assertEqual((c["sessions"], c["limit"]), (5, None))
+        t = lab.ledger("google_lab").totals()
+        self.assertEqual((t["requests"], t["open_reservations"]), (5, 5))   # still recorded for reconciliation
+        with self.assertRaises(SessionLimit):               # held candidates still cannot start
+            lab.start("gpt-realtime-2.1")
+        self.assertEqual(config.MAX_SESSION_MIN, 5.0)       # test calls stop at 5 minutes
 
     def test_billing_never_below_the_time_the_server_saw(self):
         lab = self.lab({"GEMINI_API_KEY": "k"}, {"auth_tokens": {"name": "auth_tokens/abc"}})
@@ -269,14 +269,16 @@ class LabSessionControlTest(unittest.TestCase):
 
     LIVE = {"live/sessions": {"transport": {"sdp": "answer"}, "session": {"id": "ls_1"}}}
 
-    def test_review_item3_third_gpt_live_start_is_refused(self):
+    def test_review_item3_a_count_limit_is_enforced_before_anything_is_sent(self):
         from prototype.browser_lab.server import SessionLimit
         lab = self.lab({"OPENAI_API_KEY": "k"}, self.LIVE)
-        started = [lab.start("gpt-live-1")["session_id"] for _ in range(2)]
-        with self.assertRaises(SessionLimit):
-            lab.start("gpt-live-1")
+        with limit(2):
+            started = [lab.start("gpt-live-1")["session_id"] for _ in range(2)]
+            with self.assertRaises(SessionLimit):
+                lab.start("gpt-live-1")
         self.assertEqual(len(started), 2)
         self.assertEqual(lab.ledger("openai_lab").totals()["requests"], 2)   # no third reservation
+        self.assertIn("session_id", lab.start("gpt-live-1"))    # without a limit (the user's decision) it starts
 
     def test_concurrent_starts_never_exceed_the_count(self):
         from prototype.browser_lab.server import SessionLimit
@@ -289,11 +291,12 @@ class LabSessionControlTest(unittest.TestCase):
                 ok.append(lab.start("gemini-3.8-live")["session_id"])
             except SessionLimit:
                 refused.append(1)
-        threads = [threading.Thread(target=go) for _ in range(6)]
-        for t in threads:
-            t.start()
-        for t in threads:
-            t.join()
+        with limit(2):
+            threads = [threading.Thread(target=go) for _ in range(6)]
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join()
         self.assertEqual((len(ok), len(refused)), (2, 4))
         self.assertEqual(lab.counts("gemini-3.8-live")["sessions"], 2)
 
@@ -310,9 +313,10 @@ class LabSessionControlTest(unittest.TestCase):
         self.assertEqual(again.counts("gemini-3.8-live")["sessions"], 1)   # counted
         self.assertEqual(again.ledger("google_lab").totals()["open_reservations"], 1)   # not released
         self.assertTrue(again.heartbeat(sid)["stop"])
-        again.start("gemini-3.8-live")
-        with self.assertRaises(SessionLimit):
+        with limit(2):
             again.start("gemini-3.8-live")
+            with self.assertRaises(SessionLimit):
+                again.start("gemini-3.8-live")
 
     def test_mint_failures_stop_after_two_until_a_person_resets(self):
         from prototype.browser_lab.server import SessionLimit

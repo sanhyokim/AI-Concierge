@@ -70,29 +70,23 @@ class CandidateFrameTest(unittest.TestCase):
         lst = (docs / "candidates-v1.md").read_text(encoding="utf-8")
         self.assertEqual(lst, cc.render_list())
 
-    def test_browser_budget_caps_cover_the_maximum_per_vendor(self):
+    def test_browser_budget_is_per_session_without_caps(self):
         from prototype.browser_lab import config as lc
         est = mb.browser_stage_estimate()
-        cumulative = {}
-        for stage in ("connection", "detailed"):
-            st = est["stages"][stage]
-            per_vendor = {}
-            for r in st["rows"]:
-                per_vendor[r["ledger_vendor"]] = per_vendor.get(r["ledger_vendor"], 0) + r["max_usd"]
-                cumulative[r["ledger_vendor"]] = cumulative.get(r["ledger_vendor"], 0) + r["max_usd"]
-                # the table's maximum is what the lab reserves before each session
-                self.assertAlmostEqual(r["max_usd"], round(r["sessions"] * lc.session_reserve_usd(
-                    lc.CANDIDATES[r["id"]], {}), 2))
-            caps = st["runtime_caps_usd"]
-            for vendor, mx in (per_vendor if stage == "connection" else cumulative).items():
-                self.assertGreaterEqual(caps[vendor] + 1e-9, mx, (stage, vendor))
-            self.assertGreater(st["max_usd"], st["expected_usd"])
-        conn = {r["id"]: r["sessions"] for r in est["stages"]["connection"]["rows"]}
-        self.assertEqual(conn, {"gpt-live-1": 2, "gemini-3.8-live": 2, "gpt-realtime-2.1": 0, "elevenagents": 0,
-                                "cartesia-agents": 0})                # user decision 2026-10-07
-        self.assertEqual(est["runtime_caps_total_usd"], 10.5)
-        live = next(r for r in est["stages"]["connection"]["rows"] if r["id"] == "gpt-live-1")
+        for r in est["rows"]:
+            # the table's maximum is what the lab reserves before each session
+            self.assertAlmostEqual(r["max_usd"], round(lc.session_reserve_usd(lc.CANDIDATES[r["id"]], {}), 3))
+            self.assertGreater(r["max_usd"], r["expected_usd"])
+            self.assertAlmostEqual(r["examples"][10]["max_usd"], round(10 * lc.session_reserve_usd(
+                lc.CANDIDATES[r["id"]], {}), 2))
+        limits = {r["id"]: r["sessions_limit"] for r in est["rows"]}
+        self.assertEqual(limits, {"gpt-live-1": None, "gemini-3.8-live": None, "gpt-realtime-2.1": 0,
+                                  "elevenagents": 0, "cartesia-agents": 0})   # user decision 2026-10-08
+        self.assertEqual({v: c for v, c in est["ledger_caps_usd"].items() if c != 0},
+                         {"openai_lab": None, "google_lab": None})
+        live = next(r for r in est["rows"] if r["id"] == "gpt-live-1")
         self.assertGreater(live["backend_strict_usd"], live["backend_typical_usd"])   # two assumptions, both shown
+        self.assertEqual(est["max_session_min"], 5.0)
 
     def test_budget_keeps_payments_estimates_unconfirmed_and_limits_apart(self):
         md = mb.browser_budget_markdown()
@@ -102,6 +96,8 @@ class CandidateFrameTest(unittest.TestCase):
         self.assertIn("費用の上限ではありません", md)
         self.assertIn("約10分", md)
         self.assertIn("L_live", md)
+        self.assertIn("上限なし（利用者の決定、2026-10-08）", md)
+        self.assertIn("本番の通話を何分で止めるかは未決定", md)
         self.assertIn("消費税10%", md)
         docs = pathlib.Path(__file__).resolve().parents[2] / "docs"
         doc = (docs / "measurement-plan-v2.md").read_text(encoding="utf-8")

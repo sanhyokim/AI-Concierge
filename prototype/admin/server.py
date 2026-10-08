@@ -110,7 +110,7 @@ class AdminApp:
             return {"script": DEMO_SCRIPT}
         if path == "/api/ledger":
             from ..browser_lab.config import SESSIONS
-            counts = {c: self.lab.counts(c) for c, n in SESSIONS[self.lab.stage].items() if n}
+            counts = {c: self.lab.counts(c) for c, n in SESSIONS[self.lab.stage].items() if n != 0}
             return {"ledgers": app_ledgers(self), "sessions": self.lab.sessions_view(), "stage": self.lab.stage,
                     "counts": counts,
                     "note": "台帳はこちら側の見積もりで、業者の課金の上限ではありません。留保は、業者の利用画面の額で照合するまで残ります。"}

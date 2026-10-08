@@ -47,9 +47,10 @@ class BudgetExceeded(RuntimeError):
 
 @dataclass
 class Limits:
-    max_requests: int
-    max_audio_seconds: float
-    max_cost_usd: float
+    """None means no limit for that item (the ledger still records everything)."""
+    max_requests: int | None
+    max_audio_seconds: float | None
+    max_cost_usd: float | None
     request_timeout_s: float = 60.0
     dialog_timeout_s: float = 180.0
     max_retries: int = 1
@@ -137,11 +138,11 @@ class UsageLedger:
 
     def check(self, est_cost_usd: float, audio_seconds: float = 0.0) -> None:
         t, lim = self.totals(), self.limits
-        if t["requests"] + 1 > lim.max_requests:
+        if lim.max_requests is not None and t["requests"] + 1 > lim.max_requests:
             raise BudgetExceeded(f"{self.vendor}: request limit {lim.max_requests} reached")
-        if t["audio_seconds"] + audio_seconds > lim.max_audio_seconds:
+        if lim.max_audio_seconds is not None and t["audio_seconds"] + audio_seconds > lim.max_audio_seconds:
             raise BudgetExceeded(f"{self.vendor}: audio limit {lim.max_audio_seconds}s would be exceeded")
-        if t["est_cost_usd"] + est_cost_usd > lim.max_cost_usd:
+        if lim.max_cost_usd is not None and t["est_cost_usd"] + est_cost_usd > lim.max_cost_usd:
             raise BudgetExceeded(f"{self.vendor}: cost limit ${lim.max_cost_usd} would be exceeded "
                                  f"(spent or held ${t['est_cost_usd']:.4f}, next ${est_cost_usd:.4f})")
 
