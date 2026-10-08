@@ -189,6 +189,8 @@ class RuleAgent:
                     self.awaiting = None
                     out.append("ありがとうございます。")
                     return out + self._after_save(found, exclude=field)
+                if "interrupted" in str(res.get("reason", "")):   # the vendor said the read-back was cut off
+                    return ["途中で切れてしまいましたので、もう一度復唱します。"] + self._readback(field)
             if field in found:
                 self.awaiting = None
                 return self._save_all(found, out)

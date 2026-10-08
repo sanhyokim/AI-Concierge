@@ -28,7 +28,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
 
 from ..browser_lab import server as labsrv
-from ..engines.budget import DEFAULT_LEDGER
+from ..engines.budget import DEFAULT_LEDGER, reconcile
 from ..reception import settings as S
 from ..reception.fake_agent import RuleAgent
 from ..reception.notify import CHANNELS, SIMULATE, STATUS_LABELS
@@ -106,6 +106,9 @@ class AdminApp:
             return {"audit": self.store.q("SELECT * FROM audit_log ORDER BY id DESC LIMIT 200")}
         if path == "/api/demo/script":
             return {"script": DEMO_SCRIPT}
+        if path == "/api/ledger":
+            return {"ledgers": app_ledgers(self), "sessions": self.lab.sessions_view(), "stage": self.lab.stage,
+                    "note": "台帳はこちら側の見積もりで、業者の課金の上限ではありません。留保は、業者の利用画面の額で照合するまで残ります。"}
         raise LookupError(path)
 
     def preview(self, call_id: str) -> dict:
@@ -192,12 +195,43 @@ class AdminApp:
             if res["call"]["ended_at"]:
                 svc.outbox.process()
             return {"actions": res["actions"], "call": svc.call_view(body.get("call_id", ""))}
+        if path == "/api/demo/interrupted":
+            # what an adapter does when the vendor reports that the AI's speech was cut off
+            cid = body.get("call_id", "")
+            res = svc.ai_interrupted(cid, "demo（業者の割り込みの通知の模擬）")
+            return {"invalidated": res["invalidated"], "call": svc.call_view(cid)}
+        if path == "/api/ledger/reconcile":
+            vendor, rid = str(body.get("vendor", "")), str(body.get("rid", ""))
+            if vendor not in self.lab.ledger_summary():
+                raise ValueError("台帳の業者が正しくありません")
+            try:
+                actual = float(body.get("actual_usd"))
+            except (TypeError, ValueError):
+                raise ValueError("利用画面の額（USD）を数字で入力してください") from None
+            if actual < 0:
+                raise ValueError("額は0以上にしてください")
+            note = str(body.get("note", "")).strip()[:200]
+            if not note:
+                raise ValueError("照合のメモ（利用画面を見た日など）を入力してください")
+            try:
+                result = reconcile(self.lab.ledger(vendor), rid, actual, f"{note}（{who}）")
+            except KeyError:
+                raise ValueError("その留保は見つかりません") from None
+            self.store.audit(who, "ledger_reconcile", rid, {"vendor": vendor, "actual_usd": actual, "result": result})
+            return {"result": result, "ledgers": app_ledgers(self)}
         if path == "/api/demo/end":
             cid = body.get("call_id", "")
             svc.end_call(cid, "テストで終了")
             processed = svc.outbox.process()
             return {"call": svc.call_view(cid), "processed": processed}
         raise LookupError(path)
+
+
+def app_ledgers(app: AdminApp) -> dict:
+    out = app.lab.ledger_summary()
+    for led in out.values():
+        led["open"] = [{k: r.get(k) for k in ("rid", "operation", "run_id", "est_cost_usd", "ts")} for r in led["open"]]
+    return out
 
 
 def lan_addresses() -> set[str]:

@@ -304,22 +304,31 @@ def reconcile(ledger: UsageLedger, rid: str, actual_usd: float, note: str = "") 
     return "adjusted"
 
 
+def all_limits() -> dict[str, Limits]:
+    """Ledger vendors: the API probes (LIMITS) and the browser lab (overall caps, detailed stage)."""
+    from ..browser_lab.config import LAB_LIMITS   # imported here: the lab config imports this module
+    return {**LIMITS, **LAB_LIMITS}
+
+
 def main() -> int:
+    limits = all_limits()
     ap = argparse.ArgumentParser(description="Show ledger totals, or close a reservation after checking the vendor console.")
-    ap.add_argument("--vendor", choices=sorted(LIMITS))
+    ap.add_argument("--vendor", choices=sorted(limits))
     ap.add_argument("--close", metavar="RID")
     ap.add_argument("--actual-usd", type=float, help="actual cost from the vendor console for the reservation")
     ap.add_argument("--note", default="")
+    ap.add_argument("--ledger", default=str(DEFAULT_LEDGER))
     args = ap.parse_args()
+    path = pathlib.Path(args.ledger)
     if args.close:
         if not args.vendor or args.actual_usd is None:
             ap.error("--close needs --vendor and --actual-usd")
         try:
-            print(reconcile(UsageLedger(args.vendor), args.close, args.actual_usd, args.note))
+            print(reconcile(UsageLedger(args.vendor, limits[args.vendor], path), args.close, args.actual_usd, args.note))
         except (KeyError, ValueError) as exc:
             ap.error(str(exc))
-    for vendor in ([args.vendor] if args.vendor else sorted(LIMITS)):
-        ledger = UsageLedger(vendor)
+    for vendor in ([args.vendor] if args.vendor else sorted(limits)):
+        ledger = UsageLedger(vendor, limits[vendor], path)
         print(json.dumps({"vendor": vendor, "totals": ledger.totals(),
                           "open": [{k: r[k] for k in ("rid", "operation", "run_id", "est_cost_usd")}
                                    for r in ledger.open_reservations()]}, ensure_ascii=False))

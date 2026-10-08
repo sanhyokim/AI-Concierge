@@ -167,13 +167,16 @@ class ReceptionService:
 
     # --- voices ----------------------------------------------------------------------------------------
     def voice_catalog(self) -> list[dict]:
-        from ..browser_lab.config import CANDIDATES
+        from ..browser_lab.config import APPLY_LABELS, CANDIDATES, apply_modes, released, voice_applies
         out = []
         for cid, cand in CANDIDATES.items():
             status, label = S.voice_status(cid, self.env, CANDIDATES)
             cat = S.VOICE_CATALOG.get(cid, {"voices": [], "how": ""})
             out.append({"candidate": cid, "name": cand["name"], "voices": cat["voices"], "how": cat["how"],
-                        "status": status, "status_label": label, "keys_present": status != "no_key"})
+                        "status": status, "status_label": label, "keys_present": status != "no_key",
+                        "voice_applies": voice_applies(cid, self.env),
+                        "apply_label": APPLY_LABELS[apply_modes(cid, self.env)["voice"]],
+                        "hold": cand.get("hold") if cid not in released(self.env) else None})
         return out
 
     # --- calls -----------------------------------------------------------------------------------------

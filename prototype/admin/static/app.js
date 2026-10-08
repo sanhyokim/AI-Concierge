@@ -237,11 +237,12 @@ routes.voice = async () => {
   const draw = () => {
     document.getElementById("voiceRows").innerHTML = voices.map((x, i) => {
       const k = cat[x.candidate] || { status: "unknown", status_label: "候補にない", voices: [] };
-      return `<tr><td data-label="使う"><input type="radio" name="active" value="${esc(x.id)}" ${active === x.id ? "checked" : ""} aria-label="使う声"></td>
+      const fixed = k.voice_applies === false;   // the vendor's agent settings decide the voice
+      return `<tr><td data-label="使う"><input type="radio" name="active" value="${esc(x.id)}" ${active === x.id ? "checked" : ""} ${fixed ? "disabled" : ""} aria-label="使う声"></td>
         <td data-label="表示名"><input data-i="${i}" data-k="label" value="${esc(x.label)}"></td>
         <td data-label="接続候補"><select data-i="${i}" data-k="candidate">${v.catalog.map((o) => `<option value="${o.candidate}" ${o.candidate === x.candidate ? "selected" : ""}>${esc(o.name)}</option>`).join("")}</select></td>
         <td data-label="声"><input data-i="${i}" data-k="voice" value="${esc(x.voice)}" list="vl-${i}"><datalist id="vl-${i}">${k.voices.map((n) => `<option value="${esc(n)}">`).join("")}</datalist></td>
-        <td data-label="状態">${statusBadge(k.status, k.status_label)}</td>
+        <td data-label="状態">${statusBadge(k.status, k.status_label)}${k.hold ? ' <span class="badge">保留</span>' : ""}${fixed ? '<br><span class="sub">記録だけ（反映されない：業者のエージェント設定で固定）</span>' : ""}</td>
         <td data-label=""><button class="small danger" data-del="${i}">削除</button></td></tr>`;
     }).join("");
   };
@@ -249,8 +250,8 @@ routes.voice = async () => {
     <p class="sub">複数の声を登録し、使う声を1つ選びます。<b>次の会話から</b>使われます。実際の声は、どれも業者に接続して確かめていません（「接続未確認」）。</p>
     <table class="stack"><thead><tr><th>使う</th><th>表示名</th><th>接続候補</th><th>声（名前・ID）</th><th>状態</th><th></th></tr></thead><tbody id="voiceRows"></tbody></table>
     <div class="row" style="margin-top:8px"><button class="small" id="addVoice">＋声を追加</button><button class="primary" id="saveVoices">保存</button></div></section>
-    <section class="card" style="margin-top:12px"><h2>接続候補と声の状態</h2><table class="stack"><thead><tr><th>候補</th><th>状態</th><th>声の候補</th><th>声の指定の方法</th></tr></thead><tbody>
-    ${v.catalog.map((x) => `<tr><td data-label="候補">${esc(x.name)}</td><td data-label="状態">${statusBadge(x.status, x.status_label)}</td><td data-label="声の候補">${esc(x.voices.join("、") || "（業者の画面で選ぶ）")}</td><td data-label="指定の方法">${esc(x.how)}</td></tr>`).join("")}
+    <section class="card" style="margin-top:12px"><h2>接続候補と声の状態</h2><table class="stack"><thead><tr><th>候補</th><th>状態</th><th>声の候補</th><th>声の指定の方法</th><th>この画面の声の反映</th></tr></thead><tbody>
+    ${v.catalog.map((x) => `<tr><td data-label="候補">${esc(x.name)}${x.hold ? ' <span class="badge">保留</span>' : ""}</td><td data-label="状態">${statusBadge(x.status, x.status_label)}</td><td data-label="声の候補">${esc(x.voices.join("、") || "（業者の画面で選ぶ）")}</td><td data-label="指定の方法">${esc(x.how)}</td><td data-label="反映">${esc(x.apply_label)}</td></tr>`).join("")}
     </tbody></table><p class="sub">「利用可能」はオフラインの模擬だけです（音声の評価には使えません）。鍵の値は表示しません（設定の有無だけ）。</p></section>`;
   draw();
   view.addEventListener("input", (e) => { const t = e.target; if (t.dataset.i !== undefined && t.dataset.k) voices[Number(t.dataset.i)][t.dataset.k] = t.value; });
@@ -262,7 +263,7 @@ routes.voice = async () => {
   view.addEventListener("click", (e) => { const t = e.target; if (t.dataset.del !== undefined) { voices.splice(Number(t.dataset.del), 1); draw(); } });
   document.getElementById("addVoice").addEventListener("click", () => {
     const n = voices.length + 1; let id = `v${n}`; while (voices.some((x) => x.id === id)) id += "x";
-    voices.push({ id, candidate: "gpt-realtime-2.1", voice: "", label: "" }); draw();
+    voices.push({ id, candidate: "gpt-live-1", voice: "", label: "" }); draw();
   });
   document.getElementById("saveVoices").addEventListener("click", () => guarded(async () => {
     const r = await api("/api/config", { config: { ...c.config, voices, active_voice: active }, note: "声の変更" });
@@ -305,6 +306,10 @@ function eventText(e) {
     case "transcript_deleted": return `拒否より前の文字起こしを削除（${d.count}件）`;
     case "ai_send_blocked": return `AIへ送らなかった（${d.reason}）`;
     case "ai_blocked": return `AIの業務処理を受け付けなかった（${d.tool}：${d.reason}）`;
+    case "consent": return `同意の変更：${({ ai_refused: "AIの拒否", recording_refused: "録音の拒否", human_request: "人との会話の希望", human_request_answer: "短い受付への回答", ai_failure: "AIの障害" })[d.kind] || d.kind}（${({ speech: "発話から判定", operator: "操作", tester: "試験者" })[d.source] || d.source || ""}）`;
+    case "recording_stopped": return "録音を停止（以降は録音しない）";
+    case "recording_deleted": return d.why || "拒否より前の録音を削除";
+    case "vendor_interrupted": return `業者の割り込みの通知（${d.source}）：${(d.invalidated || []).length ? `返事の前に遮られた復唱 ${d.invalidated.join("・")} を確認済みにしない` : "無効にした復唱はない"}`;
     default: return `${e.kind} ${d && Object.keys(d).length ? JSON.stringify(d) : ""}`;
   }
 }
@@ -419,7 +424,8 @@ routes.notify = async () => {
 };
 
 // --- demo call --------------------------------------------------------------------------------------------
-const QUICK = ["点検は無料ですか？", "駐車場はありますか？", "人と話したいです", "はい、お願いします", "AIとは話したくないです", "録音はしないでください", "焦げ臭いです", "火が出ています"];
+const QUICK = ["点検は無料ですか？", "駐車場はありますか？", "人と話したいです", "はい、お願いします", "AIとは話したくないです",
+  "人と話したいので、AIは使わないでください", "AIは嫌ではありません", "録音はしないでください", "焦げ臭いです", "火が出ています"];
 const demo = { call: null };
 routes.demo = async () => {
   const now = new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 16);
@@ -439,7 +445,7 @@ routes.demo = async () => {
       <div class="chat" id="chat"></div>
       <div class="row" style="margin-top:8px"><input id="say" placeholder="お客様の発話を入力" aria-label="お客様の発話"><button class="primary" id="sayBtn">送る</button></div>
       <div class="quick" id="quick">${QUICK.map((q) => `<button data-q="${esc(q)}">${esc(q)}</button>`).join("")}</div>
-      <div class="row"><button id="runScript">例の会話を流す（番号・日時の訂正あり）</button><button class="danger" id="endCall">通話を終える</button></div>
+      <div class="row"><button id="runScript">例の会話を流す（番号・日時の訂正あり）</button><button id="interruptBtn" title="AIの発話（復唱など）がお客様に遮られた、と業者が知らせた想定。端末の音量ではなく、業者の通知だけを根拠にする">業者の割り込みの通知（模擬）</button><button class="danger" id="endCall">通話を終える</button></div>
       <div id="dtmfArea" class="hidden"><h3>プッシュボタン（AIなしの経路）</h3><div class="row"><input id="digits" inputmode="numeric" placeholder="番号（#まで）"><button id="dtmfSend">#で確定</button></div>
         <div class="row" style="margin-top:6px"><button data-key="1">1（はい）</button><button data-key="2">2（入力し直す）</button><button id="dtmfTimeout">入力なし</button></div></div>
     </section>
@@ -455,6 +461,13 @@ routes.demo = async () => {
     for (const line of script) { await sendSay(line); await new Promise((r) => setTimeout(r, 250)); }
   }));
   document.getElementById("endCall").addEventListener("click", () => guarded(endDemo));
+  document.getElementById("interruptBtn").addEventListener("click", () => guarded(async () => {
+    if (!demo.call) return;
+    const r = await api("/api/demo/interrupted", { call_id: demo.call.id });
+    chat("sys", r.invalidated.length ? `業者の割り込みの通知（模擬）：返事の前に遮られた復唱（${r.invalidated.join("・")}）は、「はい」と言われても確認済みにしません。AIが復唱し直します`
+      : "業者の割り込みの通知（模擬）：返事を待っている復唱はないため、無効にしたものはありません");
+    drawCall(r.call);
+  }));
   document.getElementById("dtmfSend").addEventListener("click", () => guarded(() => sendDtmf(document.getElementById("digits").value)));
   document.getElementById("dtmfTimeout").addEventListener("click", () => guarded(() => sendDtmf(null)));
   document.getElementById("dtmfArea").addEventListener("click", (e) => { if (e.target.dataset.key) guarded(() => sendDtmf(e.target.dataset.key)); });
@@ -506,7 +519,7 @@ async function sendSay(text) {
   const newEvents = r.call.events.filter((e) => e.id > Math.max(0, ...prev.events.map((x) => x.id)));
   for (const e of newEvents) {
     if (e.kind === "tool" && e.data.name === "confirm_field" && !e.data.result.ok) chat("sys", `サーバーが確認を拒否：${e.data.result.reason}`);
-    if (["ai_send_stopped", "transcript_deleted", "recording_stopped", "play", "gather_dtmf"].includes(e.kind)) chat("sys", eventText(e));
+    if (["consent", "ai_send_stopped", "transcript_deleted", "recording_stopped", "recording_deleted", "play", "gather_dtmf"].includes(e.kind)) chat("sys", eventText(e));
   }
   drawCall(r.call);
 }
@@ -532,6 +545,37 @@ async function showResult(c) {
     <h3>宛先ごとのプレビュー</h3>${p.previews.map((x) => `<p class="sub">${esc(x.target)}（${esc(x.channel_label)}）</p><pre class="body">${esc(x.body)}</pre>`).join("")}
     <p><a href="#/call/${encodeURIComponent(c.id)}">受付の詳細（補正・再送・再投入）を開く</a></p>`;
 }
+
+// --- ledger -----------------------------------------------------------------------------------------------
+const usd = (v) => `$${Number(v || 0).toFixed(4)}`;
+routes.ledger = async () => {
+  const l = await api("/api/ledger");
+  const rows = Object.entries(l.ledgers).filter(([, x]) => x.cap_usd > 0 || x.requests || x.open_reservations);
+  view.innerHTML = `<section class="card"><h1>費用の台帳（ブラウザー会話試験）</h1>
+    <p class="sub">${esc(l.note)} 段階：${esc(l.stage)}。</p>
+    <table class="stack"><thead><tr><th>台帳</th><th>会話の数</th><th>合計（推定・照合済み）</th><th>うち照合待ちの留保</th><th>照合待ち</th><th>上限（この段階）</th></tr></thead><tbody>
+    ${rows.map(([v, x]) => `<tr><td data-label="台帳">${esc(v)}</td><td data-label="会話の数">${x.requests}</td><td data-label="合計">${usd(x.est_cost_usd)}</td><td data-label="留保">${usd(x.held_usd)}</td><td data-label="照合待ち">${x.open_reservations}件</td><td data-label="上限">$${x.cap_usd}</td></tr>`).join("")}
+    </tbody></table></section>
+    <section class="card" style="margin-top:12px"><h2>照合待ちの留保</h2>
+    <p class="sub">業者の利用画面で、その会話の実際の額を確かめてから入力します。照合すると、台帳の合計がその額になり、留保が閉じます。同じ留保を別の額で照合し直すことはできません。</p>
+    ${rows.some(([, x]) => x.open.length) ? `<table class="stack"><thead><tr><th>台帳</th><th>留保</th><th>会話</th><th>留保した額</th><th>利用画面の額（USD）</th><th>メモ</th><th></th></tr></thead><tbody>
+    ${rows.flatMap(([v, x]) => x.open.map((r) => `<tr><td data-label="台帳">${esc(v)}</td><td data-label="留保"><code>${esc(r.rid)}</code><br><span class="sub">${esc(fmt(r.ts))}</span></td><td data-label="会話">${esc(r.operation)} ${esc(r.run_id)}</td><td data-label="留保した額">${usd(r.est_cost_usd)}</td>
+      <td data-label="利用画面の額"><input inputmode="decimal" data-amount="${esc(r.rid)}" aria-label="利用画面の額"></td><td data-label="メモ"><input data-note="${esc(r.rid)}" placeholder="例：10/09 利用画面" aria-label="メモ"></td>
+      <td data-label=""><button class="small primary" data-reconcile="${esc(r.rid)}" data-vendor="${esc(v)}">照合する</button></td></tr>`)).join("")}</tbody></table>` : `<p class="muted">照合待ちの留保はありません。</p>`}</section>
+    <section class="card" style="margin-top:12px"><h2>試験の会話（サーバーの記録）</h2>
+    ${l.sessions.length ? `<table class="stack"><thead><tr><th>開始</th><th>候補</th><th>段階</th><th>状態</th><th>止めた理由</th><th>業者の終了</th><th>業務処理・裏方の応答</th></tr></thead><tbody>
+    ${l.sessions.map((x) => `<tr><td data-label="開始">${esc(fmt(x.started_at))}</td><td data-label="候補">${esc(x.candidate)}</td><td data-label="段階">${esc(x.stage)}</td><td data-label="状態">${esc(x.status)}<br><span class="sub">${esc(x.end_reason || "")}</span></td><td data-label="止めた理由">${esc(x.stop_reason || "—")}</td><td data-label="業者の終了">${x.close_confirmed ? "確認" : "未確認"}</td><td data-label="回数">${x.tool_calls}・${x.backend_responses}</td></tr>`).join("")}</tbody></table>` : `<p class="muted">まだ試験の会話はありません。</p>`}</section>`;
+  view.addEventListener("click", (e) => {
+    const t = e.target;
+    if (!t.dataset.reconcile) return;
+    guarded(async () => {
+      const rid = t.dataset.reconcile;
+      const r = await api("/api/ledger/reconcile", { vendor: t.dataset.vendor, rid,
+        actual_usd: view.querySelector(`[data-amount="${rid}"]`).value, note: view.querySelector(`[data-note="${rid}"]`).value });
+      toast(r.result === "adjusted" ? "照合しました（留保を閉じました）" : "同じ額で照合済みでした"); render();
+    });
+  });
+};
 
 // --- audit ------------------------------------------------------------------------------------------------
 routes.audit = async () => {

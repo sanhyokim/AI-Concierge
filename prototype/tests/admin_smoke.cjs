@@ -247,6 +247,19 @@ const lastAi = (page) => page.$$eval("#chat .msg.ai", (els) => (els.at(-1) || {}
     await toastSays(admin2, "有効");
     await admin2.close();
 
+    // --- a vendor's interruption notice invalidates an unanswered read-back (demo button) -------------------------
+    check("call D is AI", (await demoCall(page, url, "2026-10-05T18:00")) === "AI受電");
+    await say(page, "折り返しは090-1234-5678です。");
+    await page.click("#interruptBtn");
+    await page.waitForFunction(() => document.getElementById("chat").textContent.includes("確認済みにしません"));
+    await say(page, "はい、合っています。");
+    const aiLines = await page.$$eval("#chat .msg.ai", (els) => els.slice(-2).map((x) => x.textContent).join(" "));
+    check("interrupted read-back is read again, not confirmed", aiLines.includes("もう一度復唱") && aiLines.includes("を復唱します"), aiLines);
+    await say(page, "はい、合っています。");
+    const numberRow = await page.textContent("#fieldTable tr[data-name=callback_number]");
+    check("the second read-back can be confirmed", numberRow.includes("本人確認済み"), numberRow);
+    await shot(page, "pc-demo-interrupt");
+
     // --- browser lab behind the same login, using the same reception service ----------------------------------------
     await page.goto(url + "/lab/");
     await page.waitForFunction(() => document.querySelectorAll("#candidate option").length > 1);
@@ -262,6 +275,22 @@ const lastAi = (page) => page.$$eval("#chat .msg.ai", (els) => (els.at(-1) || {}
     await shot(page, "pc-lab");
     const labView = await (await page.request.get(url + "/api/calls/" + labCall)).json();
     check("lab session is a call in the common service", labView.source === "browser_lab" && labView.events.some((e) => e.kind === "tool"));
+
+    // --- cost ledger: an open reservation is reconciled with the vendor console amount ---------------------------
+    fs.appendFileSync(path.join(tmp, "ledger.jsonl"), JSON.stringify({ ts: "2026-10-08T00:00:00+00:00", vendor: "google_lab",
+      kind: "reservation", rid: "smoke1", operation: "browser_session:gemini-3.8-live", path: "browser_lab", run_id: "s-smoke",
+      audio_seconds: 240, est_cost_usd: 0.24 }) + "\n");
+    await page.goto(url + "/#/ledger");
+    await page.waitForSelector("[data-reconcile=smoke1]");
+    const ledgerText = await page.textContent("main");
+    check("ledger says it is not a vendor cap", ledgerText.includes("上限ではありません"));
+    check("lab sessions listed with their stop reason", ledgerText.includes("試験の会話") && ledgerText.includes("fake"));
+    await shot(page, "pc-ledger");
+    await page.fill("[data-amount=smoke1]", "0.05");
+    await page.fill("[data-note=smoke1]", "10/09 利用画面（試験）");
+    await page.click("[data-reconcile=smoke1]");
+    await toastSays(page, "照合しました");
+    check("reconciled reservation leaves the open list", !(await page.$("[data-reconcile=smoke1]")));
 
     // --- history and notification screens ----------------------------------------------------------------------
     await page.goto(url + "/#/calls");
