@@ -45,7 +45,7 @@ async def main_async(args) -> int:
     except ImportError:
         print("Install vendor dependencies first: pip install -r prototype/requirements-vendor.txt", file=sys.stderr)
         return 2
-    scenario = next(s for s in json.loads(SCENARIOS.read_text())["dialog"] if s["id"] == args.scenario)
+    scenario = next(s for s in json.loads(SCENARIOS.read_text(encoding="utf-8"))["dialog"] if s["id"] == args.scenario)
     audio_dir = pathlib.Path(args.caller_audio_dir)
     missing = [t["audio"] for t in scenario["turns"] if not (audio_dir / t["audio"]).exists()]
     if missing:
@@ -84,7 +84,7 @@ async def main_async(args) -> int:
     result.update({"scenario": scenario["id"], "checks_for_reviewer": scenario["checks"], "model": args.model,
                    "path": "openai_api_direct", "timed_out": timed_out, "stopped_by_budget": budget_stop,
                    "ledger_totals": ledger.totals()})
-    (out / "result.json").write_text(json.dumps(result, ensure_ascii=False, indent=2))
+    (out / "result.json").write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"wrote {out}/result.json")
     return 3 if budget_stop else 0
 

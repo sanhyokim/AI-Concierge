@@ -16,7 +16,7 @@ import sys
 
 from . import cost_model as cm
 
-DATA = json.loads((pathlib.Path(__file__).resolve().parent / "candidates.json").read_text())
+DATA = json.loads((pathlib.Path(__file__).resolve().parent / "candidates.json").read_text(encoding="utf-8"))
 FX, TAX = cm.FX, cm.TAX
 
 

@@ -27,7 +27,7 @@ from dataclasses import dataclass, field
 
 from . import measurement_budget
 
-PRICES = json.loads((pathlib.Path(__file__).parent / "prices.json").read_text())["items"]
+PRICES = json.loads((pathlib.Path(__file__).parent / "prices.json").read_text(encoding="utf-8"))["items"]
 FX = 150.0            # JPY per USD, assumption (not verified)
 FX_ALT = (140.0, 160.0)
 TAX = 0.10            # applied to every tax-exclusive item (conservative where vendor tax treatment is unknown)

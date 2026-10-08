@@ -40,7 +40,7 @@ class LedgerTest(unittest.TestCase):
     def test_ledger_lines_have_required_fields(self):
         UsageLedger("openai", Limits(10, 10, 10), self.path).record("op", "openai_api_direct", 0.01, "run9",
                                                                     audio_seconds=2.5, usage={"x": 1})
-        rec = json.loads(self.path.read_text().splitlines()[0])
+        rec = json.loads(self.path.read_text(encoding="utf-8").splitlines()[0])
         for key in ("ts", "vendor", "operation", "path", "run_id", "audio_seconds", "est_cost_usd", "units"):
             self.assertIn(key, rec)
 
@@ -240,7 +240,7 @@ class FakePolly:
 class PollyProbeOfflineTest(unittest.TestCase):
     def test_render_records_both_requests_and_marks_path(self):
         from prototype.engines import polly_probe
-        script = json.loads(polly_probe.SCENARIOS.read_text())["slowdown"][0]
+        script = json.loads(polly_probe.SCENARIOS.read_text(encoding="utf-8"))["slowdown"][0]
         with tempfile.TemporaryDirectory() as tmp:
             ledger = UsageLedger("aws_polly", Limits(10, 100, 1.0), pathlib.Path(tmp) / "l.jsonl")
             fake = FakePolly()
@@ -256,7 +256,7 @@ class PollyProbeOfflineTest(unittest.TestCase):
 class CallerAudioOfflineTest(unittest.TestCase):
     def test_caller_turns_use_non_candidate_voice_and_skip_existing_files(self):
         from prototype.engines import make_caller_audio
-        scenarios = json.loads(make_caller_audio.SCENARIOS.read_text())["dialog"][:2]
+        scenarios = json.loads(make_caller_audio.SCENARIOS.read_text(encoding="utf-8"))["dialog"][:2]
         turns = sum(len(s["turns"]) for s in scenarios)
         with tempfile.TemporaryDirectory() as tmp:
             ledger = UsageLedger("aws_polly", Limits(50, 100, 1.0), pathlib.Path(tmp) / "l.jsonl")

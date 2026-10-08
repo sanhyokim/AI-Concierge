@@ -399,7 +399,7 @@ class Lab:
             comp["business_logic_status"] = ("評価対象（サーバーが業務処理を受け取った）" if tool_events else
                                              "未評価（この会話では業務処理がサーバーに届かなかった）")
         payload["path"] = PATH_TAG
-        path.write_text(json.dumps(payload, ensure_ascii=False, indent=2))
+        path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
         return str(path)
 
     def sessions_view(self) -> list[dict]:

@@ -133,7 +133,7 @@ class LabTest(unittest.TestCase):
         r = lab.tool(sid, "confirm_field", {"field": "callback_number", "value": "09012345678"}, delay_ms=10)
         self.assertFalse(r["ok"])                        # 「はい、違います」 is not a confirmation
         path = lab.save_results({"candidate": "fake", "session_id": sid, "judgments": {}})
-        saved = json.loads(pathlib.Path(path).read_text())
+        saved = json.loads(pathlib.Path(path).read_text(encoding="utf-8"))
         self.assertEqual(saved["path"], "browser_lab")
         self.assertEqual(len(saved["server_tool_calls"]), 3)
 
@@ -192,7 +192,8 @@ class LabBusinessLogicTest(unittest.TestCase):
         self.assertEqual(lab.tool(sid, "save_field", {"field": "request", "value": "x"})["reason"], "ai_refused")
         self.assertTrue(lab.heartbeat(sid)["stop"])           # the page is told to close the connection
         lab.end(sid, 30)
-        saved = json.loads(pathlib.Path(lab.save_results({"candidate": "fake", "session_id": sid})).read_text())
+        saved_path = pathlib.Path(lab.save_results({"candidate": "fake", "session_id": sid}))
+        saved = json.loads(saved_path.read_text(encoding="utf-8"))
         self.assertTrue(saved["comparison"]["business_logic_status"].startswith("評価対象"))
         self.assertEqual(saved["server_fields"]["callback_number"]["status"], "awaiting_confirmation")
         view = lab.service.call_view(s["call_id"])
@@ -202,7 +203,8 @@ class LabBusinessLogicTest(unittest.TestCase):
         lab = self.lab({})
         sid = lab.start("fake")["session_id"]
         lab.end(sid, 5)
-        saved = json.loads(pathlib.Path(lab.save_results({"candidate": "fake", "session_id": sid})).read_text())
+        saved_path = pathlib.Path(lab.save_results({"candidate": "fake", "session_id": sid}))
+        saved = json.loads(saved_path.read_text(encoding="utf-8"))
         self.assertTrue(saved["comparison"]["business_logic_status"].startswith("未評価"))
 
     def test_connection_stage_allows_only_the_first_short_sessions(self):
@@ -523,7 +525,7 @@ class BrowserSmokeTest(unittest.TestCase):
     def test_page_with_fake_mic_and_offline_adapter(self):
         script = pathlib.Path(__file__).with_name("browser_lab_smoke.cjs")
         proc = subprocess.run(["node", str(script)], cwd=pathlib.Path(__file__).resolve().parents[2],
-                              capture_output=True, text=True, timeout=120)
+                              capture_output=True, text=True, encoding="utf-8", timeout=120)
         if "Cannot find module 'playwright'" in proc.stderr:
             self.skipTest("playwright not installed for node")
         self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)

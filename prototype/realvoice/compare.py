@@ -26,7 +26,7 @@ WINDOW_S = 2.5  # spectrogram window used for labelling (fetch_clips.WINDOW_S)
 
 def read_labels(path: pathlib.Path) -> list[dict]:
     rows = []
-    for line in path.read_text().splitlines():
+    for line in path.read_text(encoding="utf-8").splitlines():
         if not line.strip() or line.startswith("#"):
             continue
         start, end, label = line.split("\t")[:3]
@@ -270,7 +270,7 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--labels", choices=sorted(LABEL_KINDS), default="ai-provisional")
     kind = ap.parse_args().labels
-    cfg = json.loads((HERE / "clips.json").read_text())
+    cfg = json.loads((HERE / "clips.json").read_text(encoding="utf-8"))
     missing = [c["id"] for c in cfg["clips"] if not (WORK / f"{c['id']}-phone8k.wav").exists()]
     if missing:
         print(f"run `python3 -m prototype.realvoice.fetch_clips` first (missing: {missing})", file=sys.stderr)
@@ -291,7 +291,7 @@ def main() -> int:
               "clips": clips}
     RESULTS.mkdir(exist_ok=True)
     out = RESULTS / f"realvoice-{now:%Y%m%dT%H%M%SZ}.json"
-    out.write_text(json.dumps(result, ensure_ascii=False, indent=2))
+    out.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
     for c in clips:
         p, s, te, lo = c["pauses"], c["speaking_time_s"], c["sweep_tool_edges"], c["label_offset"]
         print(f"{c['clip']}: pauses ref {p['ref_count']} / tool {p['tool_count']} / matched {p['matched']}; "

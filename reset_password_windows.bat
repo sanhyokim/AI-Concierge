@@ -1,6 +1,8 @@
 @echo off
 chcp 65001 >nul
 cd /d "%~dp0"
+rem Read and write files as UTF-8 (Japanese Windows would use cp932 otherwise)
+set "PYTHONUTF8=1"
 title AI受電 管理画面のパスワードの再設定
 
 set "PY="

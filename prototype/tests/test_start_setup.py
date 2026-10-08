@@ -86,7 +86,7 @@ class WindowsStartFileTest(unittest.TestCase):
             for target in re.findall(r"goto (\w+)", raw.decode("utf-8")):
                 self.assertIn(target, labels, f"{name}: goto {target}")
             self.assertIn("-m prototype.admin", raw.decode("utf-8"))
-        self.assertIn("*.bat -text", (ROOT / ".gitattributes").read_text())
+        self.assertIn("*.bat -text", (ROOT / ".gitattributes").read_text(encoding="utf-8"))
         self.assertTrue((ROOT / "prototype" / "admin" / "__main__.py").exists())
 
 

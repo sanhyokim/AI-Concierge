@@ -52,7 +52,7 @@ class ProbesWithoutCredentialsTest(unittest.TestCase):
         env = {k: v for k, v in os.environ.items()
                if k not in ("OPENAI_API_KEY", "CONCIERGE_POLLY_ACCESS_KEY_ID", "CONCIERGE_POLLY_SECRET_ACCESS_KEY")}
         return subprocess.run([sys.executable, "-m", module, "--out", "/nonexistent-should-not-be-created"],
-                              cwd=ROOT, env=env, capture_output=True, text=True, timeout=60)
+                              cwd=ROOT, env=env, capture_output=True, text=True, encoding="utf-8", timeout=60)
 
     def test_openai_probe_exits(self):
         r = self._run("prototype.engines.realtime_probe")
@@ -68,7 +68,7 @@ class ProbesWithoutCredentialsTest(unittest.TestCase):
     def test_dialog_runner_exits(self):
         env = {k: v for k, v in os.environ.items() if k != "OPENAI_API_KEY"}
         r = subprocess.run([sys.executable, "-m", "prototype.engines.run_dialog", "--scenario", "R-03"],
-                           cwd=ROOT, env=env, capture_output=True, text=True, timeout=60)
+                           cwd=ROOT, env=env, capture_output=True, text=True, encoding="utf-8", timeout=60)
         self.assertEqual(r.returncode, 2, r.stderr)
         self.assertIn("nothing was sent", r.stderr)
 

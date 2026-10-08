@@ -64,9 +64,10 @@ class CandidateFrameTest(unittest.TestCase):
         text = cc.render_frame()
         for want in ("回線案2（検討中）", "採用は未確定", "今すでに払っている費用", "ΔF", "8-4"):
             self.assertIn(want, text)
-        doc = (pathlib.Path(__file__).resolve().parents[2] / "docs" / "candidate-comparison-v1.md").read_text()
+        docs = pathlib.Path(__file__).resolve().parents[2] / "docs"
+        doc = (docs / "candidate-comparison-v1.md").read_text(encoding="utf-8")
         self.assertEqual(doc, text)                              # the document is generated from this code
-        lst = (pathlib.Path(__file__).resolve().parents[2] / "docs" / "candidates-v1.md").read_text()
+        lst = (docs / "candidates-v1.md").read_text(encoding="utf-8")
         self.assertEqual(lst, cc.render_list())
 
     def test_browser_budget_caps_cover_the_maximum_per_vendor(self):
@@ -102,7 +103,8 @@ class CandidateFrameTest(unittest.TestCase):
         self.assertIn("約10分", md)
         self.assertIn("L_live", md)
         self.assertIn("消費税10%", md)
-        doc = (pathlib.Path(__file__).resolve().parents[2] / "docs" / "measurement-plan-v2.md").read_text()
+        docs = pathlib.Path(__file__).resolve().parents[2] / "docs"
+        doc = (docs / "measurement-plan-v2.md").read_text(encoding="utf-8")
         self.assertIn(md, doc)   # the plan shows exactly what the code computes
         self.assertNotIn("残高が上限", doc)
 

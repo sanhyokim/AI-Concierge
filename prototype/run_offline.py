@@ -160,7 +160,7 @@ def check_ssml(scripts: list[dict]) -> list[dict]:
 
 
 def main() -> int:
-    data = json.loads((HERE / "scenarios" / "first_round.json").read_text())
+    data = json.loads((HERE / "scenarios" / "first_round.json").read_text(encoding="utf-8"))
     scenario_results = []
     for case in data["offline"]:
         runner = run_confirmation if case["kind"] == "confirmation" else run_call_flow
@@ -181,7 +181,7 @@ def main() -> int:
     out_dir = HERE / "results"
     out_dir.mkdir(exist_ok=True)
     stem = out_dir / f"offline-{now:%Y%m%dT%H%M%SZ}"
-    stem.with_suffix(".json").write_text(json.dumps(result, ensure_ascii=False, indent=2))
+    stem.with_suffix(".json").write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
 
     n_checks = sum(len(s["checks"]) for s in scenario_results)
     n_ok = sum(c["ok"] for s in scenario_results for c in s["checks"])
@@ -200,7 +200,7 @@ def main() -> int:
               f"- Pause count mismatches: {v['pause_count_mismatches']}",
               f"- Verdict cases correct: {v['verdicts_ok']}/{v['verdicts_total']}",
               "", f"## SSML checks: {sum(c['ok'] for c in ssml)}/{len(ssml)} passed"]
-    stem.with_suffix(".md").write_text("\n".join(lines) + "\n")
+    stem.with_suffix(".md").write_text("\n".join(lines) + "\n", encoding="utf-8")
     print("\n".join(lines))
     all_ok = n_ok == n_checks and v["within_tolerance"] and v["verdicts_ok"] == v["verdicts_total"] \
         and all(c["ok"] for c in ssml)

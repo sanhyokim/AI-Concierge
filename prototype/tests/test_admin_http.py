@@ -130,7 +130,7 @@ class AdminBrowserTest(unittest.TestCase):
         import subprocess
         script = pathlib.Path(__file__).with_name("admin_smoke.cjs")
         proc = subprocess.run(["node", str(script)], cwd=pathlib.Path(__file__).resolve().parents[2],
-                              capture_output=True, text=True, timeout=400)
+                              capture_output=True, text=True, encoding="utf-8", timeout=400)
         if "Cannot find module 'playwright'" in proc.stderr:
             self.skipTest("playwright not installed for node")
         self.assertEqual(proc.returncode, 0, proc.stdout[-4000:] + proc.stderr[-4000:])

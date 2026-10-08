@@ -115,7 +115,7 @@ async def render_instr(ctx: Ctx, voice, script, version, out: pathlib.Path, rep:
     labels = {"wav": f"{stem.name}.wav", "fill_in": "start_s/end_s by listening (e.g. Audacity labels)",
               "segments": [{"name": n, "start_s": None, "end_s": None, "morae": morae[n]}
                            for n in ("pre", "target", "post")]}
-    pathlib.Path(f"{stem}.labels.json").write_text(json.dumps(labels, ensure_ascii=False, indent=2))
+    pathlib.Path(f"{stem}.labels.json").write_text(json.dumps(labels, ensure_ascii=False, indent=2), encoding="utf-8")
     return {"wav": f"{stem}.wav", "path": PATH, "transcript": transcript, "needs_manual_labels": True}
 
 
@@ -175,7 +175,7 @@ async def main_async(args) -> int:
     except ImportError:
         print("Install vendor dependencies first: pip install -r prototype/requirements-vendor.txt", file=sys.stderr)
         return 2
-    data = json.loads(SCENARIOS.read_text())
+    data = json.loads(SCENARIOS.read_text(encoding="utf-8"))
     scripts = [s for s in data["slowdown"] if s["id"] in args.scripts]
     target_speed = data["slow_settings"]["openai_split_target_speed"]
     run_id = f"probe-a-{dt.datetime.utcnow():%Y%m%dT%H%M%SZ}"
@@ -203,7 +203,7 @@ async def main_async(args) -> int:
     finally:
         report["n_repeat_spread"] = repeat_spread(report["runs"])
         report["ledger_totals"] = ctx.ledger.totals()
-        (out / "report.json").write_text(json.dumps(report, ensure_ascii=False, indent=2))
+        (out / "report.json").write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
         print(f"wrote {out}/report.json; ledger totals: {report['ledger_totals']}")
     return 0
 

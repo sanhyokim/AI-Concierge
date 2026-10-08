@@ -47,7 +47,7 @@ def main() -> int:
     client = _client()
     if client is None:
         return 2
-    data = json.loads(SCENARIOS.read_text())["dialog"]
+    data = json.loads(SCENARIOS.read_text(encoding="utf-8"))["dialog"]
     chosen = [s for s in data if not args.scenarios or s["id"] in args.scenarios]
     run_id = "caller-" + dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     ledger = UsageLedger("aws_polly", LIMITS["aws_polly"])

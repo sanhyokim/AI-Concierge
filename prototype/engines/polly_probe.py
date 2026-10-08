@@ -102,7 +102,7 @@ def main() -> int:
     client = _client()
     if client is None:
         return 2
-    data = json.loads(SCENARIOS.read_text())
+    data = json.loads(SCENARIOS.read_text(encoding="utf-8"))
     run_id = f"probe-b-{dt.datetime.utcnow():%Y%m%dT%H%M%SZ}"
     out = pathlib.Path(args.out or f"prototype/results/{run_id}")
     out.mkdir(parents=True, exist_ok=True)
@@ -118,7 +118,7 @@ def main() -> int:
                                            "compare": compare_versions(n["measure"], d["measure"])})
     finally:
         report["ledger_totals"] = ledger.totals()
-        (out / "report.json").write_text(json.dumps(report, ensure_ascii=False, indent=2))
+        (out / "report.json").write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
         print(f"wrote {out}/report.json; ledger totals: {report['ledger_totals']}")
     return 0
 

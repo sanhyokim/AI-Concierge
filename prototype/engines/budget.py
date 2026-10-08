@@ -31,7 +31,8 @@ import uuid
 from dataclasses import dataclass
 from typing import Awaitable, Callable, TypeVar
 
-PRICES = json.loads((pathlib.Path(__file__).resolve().parents[1] / "cost" / "prices.json").read_text())["items"]
+PRICES = json.loads((pathlib.Path(__file__).resolve().parents[1] / "cost" / "prices.json")
+                    .read_text(encoding="utf-8"))["items"]
 DEFAULT_LEDGER = pathlib.Path(__file__).resolve().parents[1] / "results" / "usage-ledger.jsonl"
 TOKEN_KEYS = ("text_in_uncached", "text_in_cached", "audio_in_uncached", "audio_in_cached", "text_out", "audio_out")
 
@@ -73,7 +74,8 @@ class UsageLedger:
     def _lines(self) -> list[dict]:
         if not self.path.exists():
             return []
-        return [rec for rec in (json.loads(line) for line in self.path.read_text().splitlines() if line.strip())
+        text = self.path.read_text(encoding="utf-8")
+        return [rec for rec in (json.loads(line) for line in text.splitlines() if line.strip())
                 if rec.get("vendor") == self.vendor]
 
     def open_reservations(self) -> list[dict]:
@@ -142,7 +144,7 @@ class UsageLedger:
 
     def _write(self, rec: dict) -> dict:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        with self.path.open("a") as f:
+        with self.path.open("a", encoding="utf-8") as f:
             f.write(json.dumps(rec, ensure_ascii=False) + "\n")
         return rec
 

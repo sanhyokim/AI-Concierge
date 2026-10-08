@@ -14,7 +14,7 @@ from .rate import compare_versions, measure_version
 
 
 def _measure(label_path: str) -> dict:
-    label = json.loads(pathlib.Path(label_path).read_text())
+    label = json.loads(pathlib.Path(label_path).read_text(encoding="utf-8"))
     if any(s["start_s"] is None or s["end_s"] is None for s in label["segments"]):
         raise SystemExit(f"{label_path}: fill start_s/end_s for every segment first")
     wav = pathlib.Path(label_path).parent / label["wav"]

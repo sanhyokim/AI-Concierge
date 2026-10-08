@@ -33,7 +33,7 @@ def fetch(clip: dict) -> pathlib.Path:
 
 def main() -> int:
     WORK.mkdir(exist_ok=True)
-    cfg = json.loads((HERE / "clips.json").read_text())
+    cfg = json.loads((HERE / "clips.json").read_text(encoding="utf-8"))
     lock = {}
     for clip in cfg["clips"]:
         mp3 = fetch(clip)
@@ -50,7 +50,7 @@ def main() -> int:
             png = WORK / f"{clip['id']}-w{k:02d}-{t0:05.2f}s.png"
             _run(["ffmpeg", "-y", "-ss", str(t0), "-t", str(WINDOW_S), "-i", str(wav16), "-lavfi",
                   "showspectrumpic=s=1500x300:legend=1:scale=log:fscale=lin:stop=5000", str(png)])
-    (HERE / "clips.lock.json").write_text(json.dumps(lock, ensure_ascii=False, indent=2))
+    (HERE / "clips.lock.json").write_text(json.dumps(lock, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"wrote clips and windows to {WORK}")
     return 0
 

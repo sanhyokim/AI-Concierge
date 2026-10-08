@@ -65,7 +65,7 @@ class ReservationTest(unittest.TestCase):
         self.ledger.record("op", "openai_api_direct", 0.03, "r1", reservation=rid)
         reconcile(self.ledger, rid, 0.05, "console total")
         self.assertAlmostEqual(self.ledger.totals()["est_cost_usd"], 0.05)  # was 0.08 before the fix
-        adj = [json.loads(line) for line in self.ledger.path.read_text().splitlines()
+        adj = [json.loads(line) for line in self.ledger.path.read_text(encoding="utf-8").splitlines()
                if json.loads(line).get("kind") == "adjustment"][0]
         self.assertEqual((adj["previous_linked_usd"], adj["console_total_usd"]), (0.03, 0.05))
 
@@ -87,7 +87,7 @@ class ReservationTest(unittest.TestCase):
 
     def test_old_lines_without_kind_are_read_as_usage(self):
         self.ledger.path.write_text(json.dumps({"vendor": "openai", "operation": "x", "est_cost_usd": 0.1,
-                                                "audio_seconds": 1.0}) + "\n")
+                                                "audio_seconds": 1.0}) + "\n", encoding="utf-8")
         self.assertEqual(self.ledger.totals()["requests"], 1)
 
 
@@ -135,7 +135,7 @@ class RunnerReservationTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             ledger = UsageLedger("openai", Limits(100, 1000, 5.0), pathlib.Path(tmp) / "l.jsonl")
             _run_dialog(FakeRealtime(response_ms=500), ledger)
-            res = [json.loads(line) for line in ledger.path.read_text().splitlines()
+            res = [json.loads(line) for line in ledger.path.read_text(encoding="utf-8").splitlines()
                    if json.loads(line).get("kind") == "reservation"][0]
             self.assertGreater(res["est_cost_usd"], 3 * budget.openai_response_bound())
 

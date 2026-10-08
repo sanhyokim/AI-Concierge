@@ -15,8 +15,9 @@ import pathlib
 
 from ..engines.budget import transcription_upper_bound
 
-PRICES = json.loads((pathlib.Path(__file__).resolve().parent / "prices.json").read_text())["items"]
-SCENARIOS = json.loads((pathlib.Path(__file__).resolve().parents[1] / "scenarios" / "first_round.json").read_text())
+PRICES = json.loads((pathlib.Path(__file__).resolve().parent / "prices.json").read_text(encoding="utf-8"))["items"]
+SCENARIOS = json.loads((pathlib.Path(__file__).resolve().parents[1] / "scenarios" / "first_round.json")
+                       .read_text(encoding="utf-8"))
 
 VOICES_A, VOICES_B, SCRIPTS = 2, 2, len(SCENARIOS["slowdown"])
 REPEAT_T1, REPEAT_T3, D_RATES_T2 = 2, 3, 2
@@ -165,7 +166,7 @@ def browser_stage_estimate() -> dict:
     are not confirmed (symbols, never 0), and the in-app limits (which stop sessions but cap no vendor bill)."""
     from ..browser_lab import config as lc
     cand = {c["id"]: c for c in json.loads((pathlib.Path(__file__).resolve().parent / "candidates.json")
-                                           .read_text())["candidates"]}
+                                           .read_text(encoding="utf-8"))["candidates"]}
     from . import candidate_costs as cc
     live = lc.CANDIDATES["gpt-live-1"]
     model = lc.delegation_model(live, {})

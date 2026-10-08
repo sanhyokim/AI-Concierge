@@ -55,7 +55,7 @@ class TurnAccountingTest(unittest.TestCase):
         out = self.acct.settle(clean=True)
         self.assertEqual(out["closed"], [r1, r2])
         linked = {}
-        for line in self.ledger.path.read_text().splitlines():
+        for line in self.ledger.path.read_text(encoding="utf-8").splitlines():
             rec = json.loads(line)
             if rec.get("kind") == "usage":
                 linked.setdefault(rec["reservation"], 0.0)
@@ -95,7 +95,7 @@ class TurnAccountingTest(unittest.TestCase):
         self.acct.response_created("resp1")
         self.acct.response_done("resp1", USAGE, 0.02)
         self.assertEqual(self.acct.response_done("ghost", USAGE, 0.05), "unmatched")
-        lines = [json.loads(line) for line in self.ledger.path.read_text().splitlines()]
+        lines = [json.loads(line) for line in self.ledger.path.read_text(encoding="utf-8").splitlines()]
         ghost = [r for r in lines if r.get("units", {}).get("unmatched")]
         self.assertEqual(len(ghost), 1)
         self.assertNotIn("reservation", ghost[0])  # kept in the totals, not linked to any turn
