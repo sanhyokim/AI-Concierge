@@ -14,7 +14,7 @@ import re
 import unicodedata
 
 from ..concierge.confirmation import Reply, classify_reply
-from ..concierge.readings import digits_only, is_valid_jp_number
+from ..concierge.readings import digits_only, is_valid_jp_number, resolve_relative_day
 
 ORDER = ("request", "shop_name", "caller_name", "callback_number", "preferred_datetime")
 LABEL = {"request": "ご用件", "shop_name": "店舗名", "caller_name": "お名前", "callback_number": "折り返し先のお電話番号",
@@ -25,6 +25,7 @@ ASK = {"request": "ご用件を伺えますか。", "shop_name": "店舗名を�
 CONFIRM = ("callback_number", "preferred_datetime")
 GREETING = "お電話ありがとうございます。株式会社野田のAI受付です。ご用件をお伺いします。"
 CLOSING = "ありがとうございました。内容を担当者に伝え、担当者から折り返しご連絡します。失礼いたします。"
+_RELATIVE = re.compile(r"明明後日|しあさって|明後日|あさって|明日|あした|(?:来週|今週)の?[月火水木金土日]")
 _PHONE = re.compile(r"0\d{1,4}-\d{1,4}-\d{3,4}|0\d{9,10}")
 _REQUEST_WORDS = ("清掃", "点検", "修理", "見積", "交換", "取り付け", "相談")
 _POLITE_TAIL = re.compile(r"(をお願いしたいのですが|をお願いしたいです|をお願いします|をお願いできますか|お願いしたいです|"
@@ -43,6 +44,7 @@ class RuleAgent:
         self.emergency_asked = False
         self.skip: set[str] = set()            # fields the settings say not to store
         self.done = False
+        self.unclear_day: list = []          # candidate dates of an ambiguous 「来週の火曜」 or late-night 「明日」
 
     # --- entry points ----------------------------------------------------------------------------------
     def greeting(self) -> list[str]:
@@ -91,14 +93,24 @@ class RuleAgent:
         md = re.search(r"(\d{1,2})月(\d{1,2})日", text)
         d_only = re.search(r"(\d{1,2})日", text)
         tm = re.search(r"(午前|午後)?(\d{1,2})時(半|(\d{1,2})分)?", text)
-        if not md and not (d_only and current):
-            return None
         base = self.svc.snapshot(self.call_id)["decision"]["at_jst"]
         start = dt.datetime.fromisoformat(base)
+        rel = None if md else _RELATIVE.search(text)
+        if rel:   # 明日・明後日・来週の火曜 … resolved against the call time, as the instructions tell the model
+            days, ambiguous = resolve_relative_day(rel.group(0), start)
+            if ambiguous or not days:
+                self.unclear_day = days   # asked back with the candidate dates, never picked
+                return None
+            md_day = days[0]
+        elif not md and not (d_only and current):
+            return None
         cur = dt.datetime.fromisoformat(current) if current and len(current) > 10 else None
-        month = int(md.group(1)) if md else (int(current[5:7]) if current else start.month)
-        day = int(md.group(2)) if md else int(d_only.group(1))
-        year = start.year + (1 if month < start.month - 1 else 0)
+        if rel:
+            year, month, day = md_day.year, md_day.month, md_day.day
+        else:
+            month = int(md.group(1)) if md else (int(current[5:7]) if current else start.month)
+            day = int(md.group(2)) if md else int(d_only.group(1))
+            year = start.year + (1 if month < start.month - 1 else 0)
         if tm:
             hour = int(tm.group(2)) + (12 if tm.group(1) == "午後" and int(tm.group(2)) < 12 else 0)
             minute = 30 if tm.group(3) == "半" else int(tm.group(4) or 0)
@@ -204,6 +216,10 @@ class RuleAgent:
         if any(m in text for m in ("ですか", "ますか", "?", "？", "いくら", "何時")):
             res = self._tool("lookup_faq", question=text)
             return [res.get("answer", "")] + self._next_question()
+        if self.unclear_day:
+            days, self.unclear_day = self.unclear_day, []
+            return ["恐れ入ります。" + "と、".join(f"{d.month}月{d.day}日（{'月火水木金土日'[d.weekday()]}）" for d in days)
+                    + "の、どちらでしょうか。"]
         return ["恐れ入ります。もう一度伺えますか。"]
 
     def _save_all(self, found: dict, out: list[str]) -> list[str]:

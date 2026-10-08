@@ -48,7 +48,8 @@ class ReadingsTest(unittest.TestCase):
         self.assertEqual(cands, [dt.date(2026, 10, 6), dt.date(2026, 10, 7)])
         self.assertEqual(resolve_relative_day("来週の月曜", mon10), ([dt.date(2026, 10, 12)], False))  # R-09
         sun = dt.datetime(2026, 10, 4, 10, 0, tzinfo=JST)
-        self.assertTrue(resolve_relative_day("来週の月曜", sun)[1])
+        self.assertEqual(resolve_relative_day("来週の月曜", sun),                                    # never a past day
+                         ([dt.date(2026, 10, 5), dt.date(2026, 10, 12)], True))
 
 
 class ConfirmationTest(unittest.TestCase):

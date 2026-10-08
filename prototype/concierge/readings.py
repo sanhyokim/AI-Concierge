@@ -139,6 +139,10 @@ def resolve_relative_day(expression: str, call_time: dt.datetime) -> tuple[list[
     """
     today = call_time.date()
     expr = expression.replace(" ", "")
+    if expr.startswith(("今日", "本日", "きょう")):
+        return [today], False
+    if expr.startswith(("明明後日", "しあさって")):
+        return [today + dt.timedelta(days=3)], False
     if expr.startswith("明後日") or expr.startswith("あさって"):
         return [today + dt.timedelta(days=2)], False
     if expr.startswith("明日") or expr.startswith("あした"):
@@ -153,8 +157,9 @@ def resolve_relative_day(expression: str, call_time: dt.datetime) -> tuple[list[
         if m.group(1) == "来週":
             monday += dt.timedelta(days=7)
         day = monday + dt.timedelta(days=target)
-        # On a weekend "来週の月曜" is commonly used for the very next Monday too.
+        # On a weekend "来週の月曜" may mean the coming Monday or the one a week later (weeks counted from
+        # Sunday or from Monday). Both candidates are in the future; the earlier one is the calendar meaning.
         ambiguous = m.group(1) == "来週" and today.weekday() >= 5
-        candidates = [day] if not ambiguous else [day - dt.timedelta(days=7), day]
+        candidates = [day] if not ambiguous else [day, day + dt.timedelta(days=7)]
         return candidates, ambiguous
     return [], True

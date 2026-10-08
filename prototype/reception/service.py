@@ -23,7 +23,7 @@ from ..concierge.prompts import BASE_INSTRUCTIONS
 from ..concierge.readings import digits_only
 from ..engines.tools import ToolHandler
 from . import settings as S
-from .faq import TOOL_RULES, faq_block, faq_lookup
+from .faq import TOOL_RULES, date_block, faq_block, faq_lookup
 from .speech_consent import detect as detect_spoken_consent
 from .notify import Outbox
 from .routing import Decision, decide
@@ -276,7 +276,8 @@ class ReceptionService:
 
     def instructions(self, call_id: str, preamble: str = BASE_INSTRUCTIONS) -> str:
         snap = json.loads(self._call(call_id)["snapshot"])
-        return preamble.rstrip() + "\n" + TOOL_RULES + "\n" + faq_block(snap["faqs"])
+        at = parse_at(snap["decision"]["at_jst"])
+        return (preamble.rstrip() + "\n" + TOOL_RULES + "\n" + date_block(at) + "\n" + faq_block(snap["faqs"]))
 
     def snapshot(self, call_id: str) -> dict:
         return json.loads(self._call(call_id)["snapshot"])
