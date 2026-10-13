@@ -109,6 +109,19 @@ class AdminHttpTest(unittest.TestCase):
         self.assertEqual(next(f for f in view["fields"] if f["name"] == "callback_number")["value"], "09012345678")
         self.assertEqual(len(view["notifications"]), 2)
 
+    def test_a_stale_screen_gets_409_for_the_handling_state(self):
+        _, cookie, csrf = self.login()
+        call = json.loads(self.req("POST", "/api/demo/start", {"at": "2026-10-05T10:00"}, cookie=cookie, csrf=csrf)[1])["call"]
+        path = f"/api/calls/{call['id']}/status"
+        status, data, _ = self.req("POST", path, {"status": "対応中", "version": 0}, cookie=cookie, csrf=csrf)
+        self.assertEqual((status, json.loads(data)["handled_by"]), (200, "admin"))
+        status, data, _ = self.req("POST", path, {"status": "対応済み", "version": 0}, cookie=cookie, csrf=csrf)
+        self.assertEqual(status, 409)
+        self.assertIn("画面を読み直しました", json.loads(data)["error"])
+        self.assertEqual(self.req("POST", path, {"status": "対応済み"}, cookie=cookie, csrf=csrf)[0], 400)
+        view = json.loads(self.req("GET", f"/api/calls/{call['id']}", cookie=cookie)[1])
+        self.assertEqual((view["handled_status"], view["handled_version"]), ("対応中", 1))
+
     def test_key_never_appears(self):
         _, cookie, csrf = self.login()
         for path in ("/api/voices", "/api/status", "/lab/api/candidates", "/api/config", "/api/targets"):

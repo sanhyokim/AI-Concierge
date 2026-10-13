@@ -42,6 +42,10 @@ ACTION_LABELS = {"stop_ai_stream": "AIへの音声送信を停止", "stop_record
 SOURCES = {"demo": "架空の着信テスト", "browser_lab": "ブラウザー会話試験", "relay": "電話経路（未接続）"}
 
 
+class HandledConflict(Exception):
+    """The handling state changed after the screen read it (someone else took or changed the call first)."""
+
+
 CONFIRM_WAIT_S = 1.5   # a reply transcript may arrive slightly after the model's confirm_field call
 
 
@@ -555,13 +559,34 @@ class ReceptionService:
             self._live.pop(call_id, None)
         return self.call_view(call_id)
 
-    def set_handled(self, call_id: str, status: str, user: str | None) -> None:
+    def set_handled(self, call_id: str, status: str, user: str | None, version: int | None) -> dict:
+        """Change the handling state, only if nobody changed it since the screen read it (version).
+
+        The person who sets 対応中 becomes the one in charge (担当). 未対応 clears it; 対応済み and 対応不要
+        keep whoever was in charge (or record the person, if nobody was). Choosing 対応中 again on a call
+        someone else has takes it over: the screen shows who has it before anyone can choose that.
+        """
         if status not in ("未対応", "対応中", "対応済み", "対応不要"):
             raise ValueError("対応状態が正しくありません")
-        self._call(call_id)
+        if isinstance(version, bool) or not isinstance(version, int):
+            raise ValueError("画面の版がありません。画面を読み直してください")
         with self.store.tx():
-            self.store.x("UPDATE calls SET handled_status = ? WHERE id = ?", (status, call_id))
-            self.store.audit(user, "handled_status", call_id, {"status": status})
+            call = self._call(call_id)
+            if call["handled_version"] != version:
+                who = f"（{call['handled_by']}）" if call["handled_by"] else ""
+                raise HandledConflict(f"ほかの画面{who}が先に対応状態を「{call['handled_status']}」に変えました。"
+                                      "画面を読み直しました。もう一度選んでください")
+            by = None if status == "未対応" else user if status == "対応中" else (call["handled_by"] or user)
+            now = iso(self.clock())
+            cur = self.store.x("UPDATE calls SET handled_status = ?, handled_by = ?, handled_at = ?, "
+                               "handled_version = handled_version + 1 WHERE id = ? AND handled_version = ?",
+                               (status, by, now, call_id, version))
+            if cur.rowcount != 1:   # cannot happen inside the lock; kept so a future change cannot skip the check
+                raise HandledConflict("対応状態が先に変わりました。画面を読み直してください")
+            self.store.audit(user, "handled_status", call_id,
+                             {"status": status, "by": by, "from": call["handled_status"],
+                              "from_by": call["handled_by"]})
+        return {"handled_status": status, "handled_by": by, "handled_at": now, "handled_version": version + 1}
 
     # --- views -----------------------------------------------------------------------------------------
     def call_view(self, call_id: str) -> dict:
@@ -597,6 +622,8 @@ class ReceptionService:
             "ai_allowed": self._ai_block_reason(call, self._session(call_id)) is None if not call["ended_at"] else False,
             "emergency": call["emergency"], "open_questions": json.loads(call["open_questions"]),
             "notify_kinds": json.loads(call["notify_kinds"]), "handled_status": call["handled_status"],
+            "handled_by": call["handled_by"], "handled_at": call["handled_at"],
+            "handled_version": call["handled_version"],
             "fields": flist, "events": events, "summaries": summaries,
             "corrections": self.store.q("SELECT * FROM corrections WHERE call_id = ? ORDER BY id", (call_id,)),
             "notifications": self.outbox.for_call(call_id),
@@ -621,6 +648,7 @@ class ReceptionService:
                         "started_at": c["started_at"], "ended_at": c["ended_at"], "dialed": c["dialed"],
                         "route": c["route"], "route_label": snap["decision"]["route_label"],
                         "emergency": c["emergency"], "handled_status": c["handled_status"],
+                        "handled_by": c["handled_by"],
                         "name": fv("caller_name"), "shop": fv("shop_name"), "number": fv("callback_number"),
                         "request": fv("request"), "datetime": fv("preferred_datetime"),
                         "summary": summ["text"] if summ else "", "summary_version": summ["version"] if summ else None,

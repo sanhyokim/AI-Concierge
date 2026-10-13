@@ -186,6 +186,19 @@ const lastAi = (page) => page.$$eval("#chat .msg.ai", (els) => (els.at(-1) || {}
     check("correction keeps before and after", detail.includes("09012345679") && detail.includes("09012345670"));
     check("staff correction is not shown as caller-confirmed", detail.includes("担当者が補正"));
     check("correction notification marked as correction", detail.includes("先ほどの通知を訂正します"));
+    // taking the call: a second screen opened earlier must not overwrite it without seeing it
+    const stale = await page.context().newPage();
+    stale.on("pageerror", (e) => errors.push(String(e)));
+    await stale.goto(url + "/" + callHref);
+    await stale.waitForSelector("#handled");
+    await page.selectOption("#handled", "対応中");
+    await toastSays(page, "対応状態を保存しました");
+    check("taking the call shows who is in charge", (await page.textContent("#handledBy")).includes("admin（自分）"));
+    await stale.selectOption("#handled", "対応済み");
+    await toastSays(stale, "画面を読み直しました");
+    check("a stale screen is refused and redrawn with the current state",
+      (await stale.inputValue("#handled")) === "対応中" && (await stale.textContent("#handledBy")).includes("admin"));
+    await stale.close();
     await shot(page, "pc-call-detail");
 
     // --- 3 and 4: change settings during a call --------------------------------------------------------------

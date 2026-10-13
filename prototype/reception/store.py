@@ -38,7 +38,8 @@ CREATE TABLE IF NOT EXISTS calls(
   id TEXT PRIMARY KEY, source TEXT NOT NULL, started_at TEXT NOT NULL, ended_at TEXT, end_reason TEXT,
   dialed TEXT, caller_id TEXT, route TEXT NOT NULL, route_rule TEXT, route_reason TEXT, config_version INTEGER,
   snapshot TEXT NOT NULL, flow TEXT, state TEXT NOT NULL, notify_kinds TEXT NOT NULL DEFAULT '[]',
-  open_questions TEXT NOT NULL DEFAULT '[]', emergency TEXT, handled_status TEXT NOT NULL DEFAULT '未対応');
+  open_questions TEXT NOT NULL DEFAULT '[]', emergency TEXT, handled_status TEXT NOT NULL DEFAULT '未対応',
+  handled_by TEXT, handled_at TEXT, handled_version INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE IF NOT EXISTS call_fields(
   call_id TEXT NOT NULL, name TEXT NOT NULL, value TEXT, status TEXT NOT NULL, source TEXT, read_back_value TEXT,
   history TEXT NOT NULL DEFAULT '[]', updated_at TEXT, PRIMARY KEY(call_id, name));
@@ -106,6 +107,15 @@ class Store:
         if self.path != ":memory:":
             self.db.execute("PRAGMA journal_mode=WAL")
         self.db.executescript(SCHEMA)
+        self._add_missing_columns()
+
+    def _add_missing_columns(self) -> None:
+        """A database made by an older version keeps working: columns added later are added here."""
+        have = {r["name"] for r in self.db.execute("PRAGMA table_info(calls)")}
+        for col, decl in (("handled_by", "TEXT"), ("handled_at", "TEXT"),
+                          ("handled_version", "INTEGER NOT NULL DEFAULT 0")):
+            if col not in have:
+                self.db.execute(f"ALTER TABLE calls ADD COLUMN {col} {decl}")
 
     @contextmanager
     def tx(self):

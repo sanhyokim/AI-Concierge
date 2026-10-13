@@ -1,4 +1,5 @@
 """The start for people who do not use a terminal: password and keys asked in the window, Windows start file."""
+import locale
 import os
 import pathlib
 import re
@@ -109,12 +110,13 @@ class InteractiveStartTest(unittest.TestCase):
         self.addCleanup(os.close, master)
         self.addCleanup(lambda: (proc.kill(), proc.wait(5)))
         out = b""
+        enc = locale.getpreferredencoding(False)   # the terminal's encoding (Shift_JIS on a Japanese Windows)
 
         def until(pattern, timeout=20):
             nonlocal out
             end = time.time() + timeout
             while time.time() < end:
-                if re.search(pattern.encode(), out):
+                if pattern.encode(enc) in out:
                     return
                 r, _, _ = select.select([master], [], [], 0.2)
                 if r:
@@ -122,15 +124,15 @@ class InteractiveStartTest(unittest.TestCase):
                         out += os.read(master, 4096)
                     except OSError:
                         break
-            self.fail(f"did not see {pattern!r} in:\n{out.decode(errors='replace')}")
+            self.fail(f"did not see {pattern!r} in:\n{out.decode(enc, errors='replace')}")
 
         for prompt, answer in (("パスワードを決めて入力", "pass-for-test-1"), ("同じパスワード", "pass-for-test-1"),
                                ("GPT-Live 1", OPENAI), ("Gemini 3.8 Live", "")):
             until(prompt)
-            os.write(master, answer.encode() + b"\r")
+            os.write(master, answer.encode(enc) + b"\r")
         until("準備ができました")
         port = int(re.search(rb"http://127\.0\.0\.1:(\d+)", out).group(1))
-        text = out.decode(errors="replace")
+        text = out.decode(enc, errors="replace")
         self.assertNotIn("pass-for-test-1", text)                # typed secrets are not echoed
         self.assertNotIn(OPENAI, text)
         self.assertIn("受け付けました", text)

@@ -5,13 +5,14 @@ let view = document.getElementById("view");
 function resetView() { const fresh = view.cloneNode(false); view.replaceWith(fresh); view = fresh; }
 const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 let CSRF = "";
+let ME = "";
 
 async function api(path, body) {
   const opt = body === undefined ? {} : { method: "POST", headers: { "Content-Type": "application/json", "X-CSRF-Token": CSRF }, body: JSON.stringify(body) };
   const r = await fetch(path, opt);
   if (r.status === 401) { location.href = "/login"; throw new Error("ログインが必要です"); }
   const j = await r.json();
-  if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
+  if (!r.ok) { const err = new Error(j.error || `HTTP ${r.status}`); err.status = r.status; throw err; }
   return j;
 }
 function toast(msg) {
@@ -204,7 +205,7 @@ function callsTable(calls) {
     <td data-label="店舗・お名前">${esc(c.shop.display)} ${esc(c.name.display)}</td>
     <td data-label="折り返し先">${esc(c.number.display)} ${c.number.display ? `<span class="sub">（${esc(c.number.status_label)}）</span>` : ""}</td>
     <td data-label="用件">${esc(c.request.display)}</td><td data-label="通知">${esc(notifySummary(c.notifications))}</td>
-    <td data-label="対応">${esc(c.handled_status)}</td></tr>`).join("")}</tbody></table>`;
+    <td data-label="対応">${esc(c.handled_status)}${c.handled_by ? `<br><span class="sub">担当 ${esc(c.handled_by)}</span>` : ""}</td></tr>`).join("")}</tbody></table>`;
 }
 routes.calls = async () => {
   const { calls } = await api("/api/calls");
@@ -245,7 +246,9 @@ routes.call = async (id) => {
     <dt>同意</dt><dd>録音 ${c.consent.recording === "allowed" ? "許可" : "拒否"}・AIでの処理 ${c.consent.ai_processing === "allowed" ? "許可" : "拒否"}</dd>
     ${c.emergency ? `<dt>緊急</dt><dd><span class="badge bad">${esc(c.emergency)}</span></dd>` : ""}
     ${c.open_questions.length ? `<dt>確認事項</dt><dd>${c.open_questions.map(esc).join("／")}</dd>` : ""}
-    <dt>対応状態</dt><dd><select id="handled" class="inline">${["未対応", "対応中", "対応済み", "対応不要"].map((s) => `<option ${c.handled_status === s ? "selected" : ""}>${s}</option>`).join("")}</select></dd></dl></section>
+    <dt>対応状態</dt><dd><select id="handled" class="inline" aria-label="対応状態">${["未対応", "対応中", "対応済み", "対応不要"].map((s) => `<option ${c.handled_status === s ? "selected" : ""}>${s}</option>`).join("")}</select>
+      ${c.handled_status === "対応中" && c.handled_by && c.handled_by !== ME ? `<button class="small" id="takeover">担当を引き継ぐ</button>` : ""}</dd>
+    <dt>担当</dt><dd id="handledBy">${c.handled_by ? `${esc(c.handled_by)}${c.handled_by === ME ? "（自分）" : ""}<span class="sub">（${esc(fmt(c.handled_at))}）</span>` : '<span class="muted">なし（「対応中」にした人が担当になります）</span>'}</dd></dl></section>
   ${NO_INTAKE(c.route) ? `<section class="card" style="margin-top:12px"><h2>担当者へ回した通話</h2><p>AIの会話は始めていません。受付項目・要約・通知はありません（デモでは電話はかけません）。</p></section>` : `
   <section class="card" style="margin-top:12px"><h2>受付項目</h2>
     <p class="sub">「本人確認済み」は、復唱の後にお客様が明確に肯定した値だけです。担当者の補正は「担当者が補正」と表示し、本人確認済みにはしません。${canCorrect ? "" : "補正は通話の終了後にできます。"}</p>
@@ -268,7 +271,21 @@ routes.call = async (id) => {
     ${notificationsTable(c.notifications)}</section>`}
   <section class="card" style="margin-top:12px"><details><summary>出来事の記録（${c.events.length}件）</summary>
     <table class="stack"><tbody>${c.events.map((e) => `<tr><td data-label="時刻">${esc(fmt(e.at).slice(11))}</td><td data-label="内容">${esc(eventText(e))}</td></tr>`).join("")}</tbody></table></details></section>`;
-  document.getElementById("handled").addEventListener("change", (e) => guarded(async () => { await api(`/api/calls/${encodeURIComponent(id)}/status`, { status: e.target.value }); toast("対応状態を保存しました"); }));
+  // the screen sends the version it read; if someone else changed the state meanwhile, the server refuses (409)
+  const setHandled = async (status, done) => {
+    try {
+      await api(`/api/calls/${encodeURIComponent(id)}/status`, { status, version: c.handled_version });
+      toast(done);
+    } catch (e) {
+      if (e.status !== 409) { toast(`エラー：${e.message}`); return; }
+      await render();
+      toast(e.message);
+      return;
+    }
+    await render();
+  };
+  document.getElementById("handled").addEventListener("change", (e) => setHandled(e.target.value, "対応状態を保存しました"));
+  document.getElementById("takeover")?.addEventListener("click", () => setHandled("対応中", "担当を引き継ぎました"));
   if (NO_INTAKE(c.route)) return;
   view.addEventListener("click", (e) => {
     const t = e.target;
@@ -514,7 +531,7 @@ routes.audit = async () => {
 document.getElementById("logoutBtn").addEventListener("click", () => guarded(async () => { await api("/api/logout", {}); location.href = "/login"; }));
 (async () => {
   const me = await api("/api/me");
-  CSRF = me.csrf;
+  CSRF = me.csrf; ME = me.user;
   document.getElementById("who").textContent = me.user;
   render();
 })();

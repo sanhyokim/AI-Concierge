@@ -33,7 +33,7 @@ from ..engines.budget import DEFAULT_LEDGER, reconcile
 from ..reception import settings as S
 from ..reception.fake_agent import RuleAgent
 from ..reception.notify import CHANNELS, SIMULATE, STATUS_LABELS
-from ..reception.service import ReceptionService
+from ..reception.service import HandledConflict, ReceptionService
 from ..reception.store import DEFAULT_DB, Store, now_jst
 from ..reception.summary import build_summary, notification_body
 from . import setup
@@ -151,8 +151,7 @@ class AdminApp:
                                      body.get("reason", ""))
         m = re.fullmatch(r"/api/calls/([\w-]+)/status", path)
         if m:
-            svc.set_handled(m.group(1), body.get("status", ""), who)
-            return {"ok": True}
+            return svc.set_handled(m.group(1), body.get("status", ""), who, body.get("version"))
         m = re.fullmatch(r"/api/calls/([\w-]+)/renotify", path)
         if m:
             return svc.renotify(m.group(1), who)
@@ -333,6 +332,8 @@ def make_handler(app: AdminApp, allowed_hosts: set[str], log_requests: bool = Tr
         def _guard(self, fn):
             try:
                 return fn()
+            except HandledConflict as exc:
+                return self._json(HTTPStatus.CONFLICT, {"error": str(exc), "conflict": True})
             except LookupError:
                 return self._json(HTTPStatus.NOT_FOUND, {"error": "見つかりません"})
             except PermissionError as exc:

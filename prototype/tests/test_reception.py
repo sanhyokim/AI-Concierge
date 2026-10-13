@@ -226,6 +226,54 @@ class ServiceTest(unittest.TestCase):
         self.assertEqual({n["kind"] for n in svc.call_view(cid)["notifications"]}, {"emergency_obvious"})
 
 
+    def test_taking_a_call_records_who_and_a_stale_screen_cannot_overwrite(self):
+        from prototype.reception.service import HandledConflict
+        svc = service()
+        cid = svc.start_call(at="2026-10-05T18:00")["id"]
+        svc.end_call(cid)
+        view = svc.call_view(cid)
+        self.assertEqual((view["handled_status"], view["handled_by"], view["handled_version"]), ("未対応", None, 0))
+        svc.set_handled(cid, "対応中", "tanaka", 0)                    # Tanaka's phone takes the call first
+        with self.assertRaises(HandledConflict) as cm:                  # the office PC still shows version 0
+            svc.set_handled(cid, "対応中", "suzuki", 0)
+        self.assertIn("tanaka", str(cm.exception))
+        view = svc.call_view(cid)
+        self.assertEqual((view["handled_status"], view["handled_by"], view["handled_version"]), ("対応中", "tanaka", 1))
+        svc.set_handled(cid, "対応済み", "suzuki", 1)                  # finishing keeps who was in charge
+        self.assertEqual(svc.call_view(cid)["handled_by"], "tanaka")
+        svc.set_handled(cid, "対応中", "suzuki", 2)                    # reopening takes it over, knowingly
+        self.assertEqual(svc.call_view(cid)["handled_by"], "suzuki")
+        svc.set_handled(cid, "未対応", "suzuki", 3)
+        self.assertIsNone(svc.call_view(cid)["handled_by"])
+        for bad in (None, "3", True):
+            with self.assertRaises(ValueError):
+                svc.set_handled(cid, "対応中", "suzuki", bad)
+        with self.assertRaises(ValueError):
+            svc.set_handled(cid, "保留", "suzuki", 4)
+        logged = [json.loads(r["detail"]) for r in svc.store.q(
+            "SELECT detail FROM audit_log WHERE action = 'handled_status' ORDER BY id")]
+        self.assertEqual([(d["from"], d["status"]) for d in logged],
+                         [("未対応", "対応中"), ("対応中", "対応済み"), ("対応済み", "対応中"), ("対応中", "未対応")])
+        self.assertEqual(svc.list_calls()[0]["handled_by"], None)
+
+    def test_a_database_from_before_the_handling_columns_still_opens(self):
+        import sqlite3, tempfile, pathlib
+        with tempfile.TemporaryDirectory() as d:
+            path = pathlib.Path(d) / "old.db"
+            db = sqlite3.connect(path)
+            db.execute("CREATE TABLE calls(id TEXT PRIMARY KEY, source TEXT NOT NULL, started_at TEXT NOT NULL, "
+                       "ended_at TEXT, end_reason TEXT, dialed TEXT, caller_id TEXT, route TEXT NOT NULL, route_rule TEXT, "
+                       "route_reason TEXT, config_version INTEGER, snapshot TEXT NOT NULL, flow TEXT, state TEXT NOT NULL, "
+                       "notify_kinds TEXT NOT NULL DEFAULT '[]', open_questions TEXT NOT NULL DEFAULT '[]', emergency TEXT, "
+                       "handled_status TEXT NOT NULL DEFAULT '未対応')")
+            db.commit()
+            db.close()
+            store = Store(path)
+            cols = {r["name"] for r in store.q("PRAGMA table_info(calls)")}
+            store.close()
+        self.assertLessEqual({"handled_by", "handled_at", "handled_version"}, cols)
+
+
 class OutboxTest(unittest.TestCase):
     def setUp(self):
         self.clock = Clock()
