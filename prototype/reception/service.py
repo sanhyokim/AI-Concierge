@@ -19,9 +19,9 @@ from dataclasses import asdict
 
 from ..concierge.call_flow import CallFlow, Consent
 from ..concierge.confirmation import FieldState, Status
-from ..concierge.prompts import BASE_INSTRUCTIONS
+from ..concierge.prompts import BASE_INSTRUCTIONS, SPEECH_MANNERS
 from ..concierge.readings import digits_only
-from ..engines.tools import ToolHandler
+from ..engines.tools import READBACK_FIELDS, ToolHandler
 from . import settings as S
 from .faq import TOOL_RULES, date_block, faq_block, faq_lookup
 from .speech_consent import detect as detect_spoken_consent
@@ -273,7 +273,8 @@ class ReceptionService:
     def instructions(self, call_id: str, preamble: str = BASE_INSTRUCTIONS) -> str:
         snap = json.loads(self._call(call_id)["snapshot"])
         at = parse_at(snap["decision"]["at_jst"])
-        return (preamble.rstrip() + "\n" + TOOL_RULES + "\n" + date_block(at) + "\n" + faq_block(snap["faqs"]))
+        return (preamble.rstrip() + "\n" + SPEECH_MANNERS + "\n" + TOOL_RULES + "\n" + date_block(at) + "\n"
+                + faq_block(snap["faqs"]))
 
     def snapshot(self, call_id: str) -> dict:
         return json.loads(self._call(call_id)["snapshot"])
@@ -365,6 +366,10 @@ class ReceptionService:
                 res = self._emergency(call, args)
             elif name == "save_fields":
                 res, logged_args = self._save_fields(sess, snap, args)
+            elif name == "end_call":
+                # the AI said its last words; the page (or the phone side) hangs up after the caller had the chance
+                res = {"ok": True, "hangup": True, "hangup_wait_ms": int(S.HANGUP_WAIT_S * 1000),
+                       "note": "これ以上は話さないでください。お客様が先に切るのを待ってから、こちらで切ります。"}
             elif name in ("save_field", "request_readback", "confirm_field"):
                 field = args.get("field", "")
                 if field not in S.FIELD_KEYS:
@@ -393,11 +398,19 @@ class ReceptionService:
                 skipped.append(field)
                 logged[field] = "（保存しない設定のため記録しない）"
                 continue
-            saved[field] = sess.tools.handle("save_field", {"field": field, "value": value})["status"]
+            saved[field] = sess.tools.save(field, value)
             logged[field] = value
         res = {"ok": True, "saved": saved}
         if skipped:
             res["not_stored_by_setting"] = skipped
+        # the number or the date is read back at once, in the same tool call; one item per reply, so a second
+        # one waits for request_readback (2026-10-13: the AI read the number back before saving it, with 〇)
+        pending = [f for f in READBACK_FIELDS if f in saved and sess.tools.needs_readback(f)]
+        if pending:
+            res["read_back_now"] = sess.tools.start_readback(pending[0])
+        if pending[1:]:
+            res["read_back_later"] = {"fields": pending[1:],
+                                      "how": "お客様が「はい」と答えた後で、request_readback を呼んで復唱する"}
         return res, logged
 
     def _add_open_question(self, call: dict, question: str, snap: dict) -> None:

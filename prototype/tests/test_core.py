@@ -14,9 +14,9 @@ JST = dt.timezone(dt.timedelta(hours=9))
 
 class ReadingsTest(unittest.TestCase):
     def test_phone_readings(self):
-        self.assertEqual(phone_reading("090-1234-5678"), "ゼロキュウゼロ、イチニーサンヨン、ゴーロクナナハチ")
-        self.assertEqual(phone_reading("092-123-4567"), "ゼロキュウニー、イチニーサン、ヨンゴーロクナナ")
-        self.assertEqual(phone_reading("0120773408"), "ゼロイチニーゼロ、ナナナナ、サンヨンゼロハチ")
+        self.assertEqual(phone_reading("090-1234-5678"), "ゼロキュウゼロの、イチニーサンヨンの、ゴーロクナナハチ")
+        self.assertEqual(phone_reading("092-123-4567"), "ゼロキュウニーの、イチニーサンの、ヨンゴーロクナナ")
+        self.assertEqual(phone_reading("0120773408"), "ゼロイチニーゼロの、ナナナナの、サンヨンゼロハチ")
         self.assertEqual(phone_reading("09012345678"), phone_reading("090-1234-5678"))
 
     def test_validity(self):
@@ -116,7 +116,7 @@ class ToolHandlerTest(unittest.TestCase):
         h = ToolHandler()
         h.handle("save_field", {"field": "callback_number", "value": "090-1234-5678"})
         r = h.handle("request_readback", {"field": "callback_number"})
-        self.assertEqual(r["read_this_clearly"], "ゼロキュウゼロ、イチニーサンヨン、ゴーロクナナハチ")
+        self.assertEqual(r["read_this_clearly"], "ゼロキュウゼロの、イチニーサンヨンの、ゴーロクナナハチ")
         h.caller_said("はい、違います。")
         self.assertFalse(h.handle("confirm_field", {"field": "callback_number", "value": "09012345678"})["ok"])
         h.handle("save_field", {"field": "callback_number", "value": "09012345687"})

@@ -13,7 +13,7 @@ export async function connect(ctx) {
   ctx.attachOutputNode(gain);
   osc.start();
   const script = (ctx.credentials && ctx.credentials.script) || [];
-  let speaking = false, timer = null, closed = false, turn = 0;
+  let speaking = false, timer = null, closed = false, turn = 0, ended = false;
 
   function say(ms, text) {
     speaking = true;
@@ -26,7 +26,7 @@ export async function connect(ctx) {
     speaking = false;
     gain.gain.setTargetAtTime(0, ac.currentTime, 0.01);
   }
-  say(2500, "お電話ありがとうございます。株式会社野田のAI受付です。（模擬）");
+  say(2500, "お電話ありがとうございます。株式会社野田でございます。（模擬）");
 
   // react to the caller through the page's own voice-activity detection
   const off = ctx.onUserSpeech(async (ev) => {
@@ -45,6 +45,13 @@ export async function connect(ctx) {
       if (heard) {
         const r = await ctx.onTranscript("user", heard);
         if (closed || (r && r.stop_ai)) return;   // AI refused: nothing more is processed or said
+      }
+      if (ended) return;   // after end_call the AI says nothing more
+      if (heard && heard.includes("以上です")) {   // the closing: last words, then end_call (the page hangs up)
+        ended = true;
+        say(1500, "お電話ありがとうございました。株式会社野田、AI受付が承りました。失礼いたします。（模擬）");
+        setTimeout(async () => { if (!closed) ctx.log("fake_tool_result", await ctx.toolCall("end_call", { reason: "受付が終わった" })); }, 1600);
+        return;
       }
       const result = turn === 2
         ? await ctx.toolCall("lookup_faq", { question: "点検は無料ですか" })

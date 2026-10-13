@@ -1,4 +1,5 @@
-"""Tool schemas every voice adapter gets: the existing intake tools plus FAQ lookup and emergency flagging."""
+"""Tool schemas every voice adapter gets: the existing intake tools plus FAQ lookup, emergency flagging and the
+end of the call."""
 from __future__ import annotations
 
 from ..concierge.prompts import TOOLS
@@ -30,5 +31,16 @@ RECEPTION_TOOLS = TOOLS + [
                        "properties": {"level": {"type": "string", "enum": ["obvious", "ambiguous", "undetermined"]},
                                       "reason": {"type": "string"}},
                        "required": ["level"]},
+    },
+    {
+        "type": "function",
+        "name": "end_call",
+        "description": ("最後のあいさつ（「お電話ありがとうございました。失礼いたします。」）を言い終えた後に呼ぶ。"
+                        "これ以上は話さない。お客様が先に切るのを少し待ってから、こちらで電話を切る。"),
+        # one property: an object without properties may be refused by some vendors' schema checks
+        "parameters": {"type": "object",
+                       "properties": {"reason": {"type": "string",
+                                                 "description": "終える理由（例：受付が終わった、お客様が終えたいと言った）"}},
+                       "required": []},
     },
 ]

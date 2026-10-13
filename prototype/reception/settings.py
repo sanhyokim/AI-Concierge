@@ -57,7 +57,10 @@ FAQ_SEEDS = [
      "焼肉店、焼き鳥店、焼きとん店など、厨房や焼き場に排気設備があるお店を対象にしています。"
      "そのほかのお店も、ご相談の内容を伺って、担当者からご連絡します。", "うちの店|焼肉|焼き鳥|焼きとん|お店|店でも,頼め|対象|対応|やって|でき"),
 ]
-FALLBACK_ANSWER = "その点は、担当者が確認してご連絡します。"   # FAQ-10: recorded as an open question
+FALLBACK_ANSWER = "その点は、担当の者が確認のうえ、折り返しご連絡いたします。"   # FAQ-10: recorded as an open question
+# 終話の待ち時間: after the AI's last words, how long to wait for the caller to hang up first (the caller hangs up
+# first by custom). Undecided (spec 3-6); 2-3 s recommended. The browser lab uses this value.
+HANGUP_WAIT_S = 3.0
 
 
 def validate_config(data: dict) -> dict:

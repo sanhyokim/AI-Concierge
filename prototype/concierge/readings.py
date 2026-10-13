@@ -57,8 +57,11 @@ def group_phone_number(number: str) -> list[str]:
 
 
 def phone_reading(number: str) -> str:
-    """'092-123-4567' -> 'ゼロキュウニー、イチニーサン、ヨンゴーロクナナ'."""
-    return "、".join("".join(DIGIT_KANA[c] for c in group) for group in group_phone_number(number))
+    """'092-123-4567' -> 'ゼロキュウニーの、イチニーサンの、ヨンゴーロクナナ'.
+
+    0 is ゼロ, never マル or 〇, and 「の」 joins the groups, as phone-answering manuals do (2026-10-13: the AI
+    read 0 as マル and the caller found it odd)."""
+    return "の、".join("".join(DIGIT_KANA[c] for c in group) for group in group_phone_number(number))
 
 
 def count_morae(kana: str) -> int:

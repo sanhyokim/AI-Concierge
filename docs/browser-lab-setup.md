@@ -123,19 +123,21 @@
 
 - 試験専用のプロジェクトや鍵を作り、業者側でも予算と通知を設定します。業者側の予算も、前払いの残高も、上限で必ず止まるとは限りません。
 - 指示文は、会話の開始時に管理画面のFAQから作り、サーバーが接続のときに送ります。
-- 業務処理（ツール）は次の5つです。定義は `python3 -c "import json; from prototype.reception.tooldefs import RECEPTION_TOOLS; print(json.dumps(RECEPTION_TOOLS, ensure_ascii=False, indent=1))"` で表示できます。
+- 業務処理（ツール）は次の7つです。定義は `python3 -c "import json; from prototype.reception.tooldefs import RECEPTION_TOOLS; print(json.dumps(RECEPTION_TOOLS, ensure_ascii=False, indent=1))"` で表示できます。
 
   | ツール | 引数 |
   | --- | --- |
-  | `save_field` | `field`, `value` |
-  | `request_readback` | `field` |
+  | `save_field` | `field`, `value`（電話番号・希望日時は、結果の `read_back_now.say` をそのまま読んで復唱する） |
+  | `request_readback` | `field`（読み直すとき） |
   | `confirm_field` | `field`, `value` |
+  | `save_fields` | `shop_name`, `caller_name`, `request`, `preferred_datetime`, `callback_number`（まとめて保存） |
   | `lookup_faq` | `question` |
   | `flag_emergency` | `level`, `reason` |
+  | `end_call` | `reason`（最後のあいさつの後。画面が3秒待って電話を切る） |
 
 | 構成 | 業者側で行うこと | 業務処理の経路 | 試験での注意 |
 | --- | --- | --- | --- |
-| GPT-Live 1 | OpenAIの試験用プロジェクトの鍵。会話の設定は、サーバーが接続のときに送る | delegation（Responses）。裏方のモデルに5つのツールを関数として渡し、関数呼び出しは `response.event` でブラウザーに届く。ブラウザーが共通の処理へ送り、`response.item.create`＋`response.create` で返す | 裏方のモデルは別料金（L_live）。声は `audio.output.voice`（既定 marin。日本語に合う声は未確認）。言語の設定欄はなく、指示文で日本語を指定する。発話・割り込みのイベントはない |
+| GPT-Live 1 | OpenAIの試験用プロジェクトの鍵。会話の設定は、サーバーが接続のときに送る | delegation（Responses）。裏方のモデルに7つのツールを関数として渡し、関数呼び出しは `response.event` でブラウザーに届く。ブラウザーが共通の処理へ送り、`response.item.create`＋`response.create` で返す | 裏方のモデルは別料金（L_live）。声は `audio.output.voice`（既定 marin。日本語に合う声は未確認）。言語の設定欄はなく、指示文で日本語を指定する。発話・割り込みのイベントはない |
 | Gemini 3.8 Live | Google AI Studioの鍵。無料枠は入出力がGoogleの改善に使われる条件なので、架空のデータだけで使う。有料枠は前払い | 関数呼び出し（`toolCall`／`toolResponse`） | 履歴はターンごとに課金されるため、履歴を短く保つ設定（contextWindowCompression）を送る。声は `prebuiltVoiceConfig`（既定 Kore。3.8で同じ名前が使えるかは未確認） |
 
 保留の候補（ElevenLabs・Cartesia・GPT-Realtime-2.1）の準備は、保留を解くときに改めて確かめます。ElevenLabs はエージェントと client tools を業者の画面で作り、Cartesia は新しいエージェントのWebSocket（`/v1/agents/websocket`）と Client function を使う構成で書いてあります。
@@ -175,7 +177,8 @@
 
 ## 9. 結果と記録
 
-- 終わったら「終える」を押し、判定の欄とメモを記入して、「結果を保存」を押します。保存は1回の会話につき1回です。
+- AIは最後のあいさつの後に end_call を呼び、お客様が話さないまま3秒たつと、画面が「ツー・ツー・ツー」と鳴らして会話を終えます（お客様が短いあいさつ以外を話したら、切るのをやめて会話を続けます）。切れないときや途中でやめるときは「終える」を押します。
+- 終わったら、判定の欄とメモを記入して、「結果を保存」を押します。保存は1回の会話につき1回です。
 - 結果は `prototype/results/browser-lab/` に保存されます（gitの対象外）。業者の記録（文字起こし・イベント）、端末の計測、判定、サーバーが記録した業務処理と受付の項目・要約、サーバー側の会話の記録（止めた理由、業者の終了の確認）が入ります。
 - AIの拒否の後は、拒否より前の文字起こしを結果から除きます（サーバーでも削除）。
 

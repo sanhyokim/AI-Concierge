@@ -12,6 +12,8 @@ it is a proposal for the browser stage (measurement plan v2), not an approved bu
 """
 from __future__ import annotations
 
+from ..concierge.prompts import GREETING, SPEECH_MANNERS  # noqa: F401  (GREETING is used by vendors)
+from ..reception.faq import TOOL_RULES
 from ..reception.tooldefs import RECEPTION_TOOLS as TOOLS
 from ..engines.budget import Limits
 
@@ -41,13 +43,13 @@ CANDIDATES = {
         "env": ["ELEVENLABS_API_KEY", "ELEVENLABS_AGENT_ID"], "vendor": "elevenlabs_lab",
         "upper_usd_per_min": 0.12, "increment_s": 60, "verified": False, "logic_path": "client_tools",
         "applies": {"instructions": "override", "voice": "override"}, "hold": HOLD_BY_USER,
-        "note": "エージェントと client tools（5つ）はElevenLabsの画面で作る（docs/browser-lab-setup.md）"},
+        "note": "エージェントと client tools（7つ）はElevenLabsの画面で作る（docs/browser-lab-setup.md）"},
     "cartesia-agents": {
         "name": "Cartesia Managed Agents", "adapter": "cartesia", "env": ["CARTESIA_API_KEY", "CARTESIA_AGENT_ID"],
         "vendor": "cartesia_lab", "upper_usd_per_min": 0.10, "increment_s": 60, "verified": False,
         "cartesia_version": "2026-08-14", "logic_path": "client_tools",
         "applies": {"instructions": "agent_fixed", "voice": "agent_fixed"}, "hold": HOLD_BY_USER,
-        "note": "エージェントと Client function（5つ）はCartesiaの画面で作る。新しいWebSocket（/v1/agents/websocket）で接続"},
+        "note": "エージェントと Client function（7つ）はCartesiaの画面で作る。新しいWebSocket（/v1/agents/websocket）で接続"},
     "gpt-realtime-2.1": {
         "name": "OpenAI GPT-Realtime-2.1（比較の基準）", "adapter": "openai-realtime", "env": ["OPENAI_API_KEY"],
         "vendor": "openai_lab", "model": "gpt-realtime-2.1", "voice": "marin", "upper_usd_per_min": 0.30,
@@ -126,23 +128,20 @@ MOCK_FAQ = """\
 - 担当者がお電話をお受けする時間は、9時から17時です。
 - 清掃の作業は、深夜や早朝にも対応しています。日時は担当者から折り返してご相談します。
 - 福岡を中心に、九州・中国・四国で対応しています。
-- FAQにないことは「担当者が確認してご連絡します」と答え、確認事項として記録します。
+- FAQにないことは「担当の者が確認のうえ、折り返しご連絡いたします」と答え、確認事項として記録します。
 """
 
 LAB_RULES = """\
 あなたは株式会社野田（飲食店の排煙ダクト・厨房換気設備の清掃と保守）の電話受付AIです。これは試験です。
-- 冒頭で「AIによる受付」であることを短く伝えます。丁寧で自然な敬語で、一度に一つだけ質問します。
-- お客様が話し始めたら、すぐに話すのをやめて聞きます。「はい」「うん」などの短い相づちだけなら、話を続けます。
+- 最初のあいさつで、AIによる受付であることを伝えます。下の【話し方】のとおり、丁寧な敬語で、一度に一つだけ伺います。
+- お客様が話し始めたら、すぐに話すのをやめて聞きます。「はい」などの短い相づちだけなら、話を続けます。
   「違います」「ちょっと待って」「訂正します」には、すぐに応じます。言い終えていない内容を、伝えたことにしません。
-- 既に聞いた情報は聞き直しません。分からない項目は無理に聞き続けません。
-- 料金・条件は下の模擬FAQの範囲だけで答え、予約や訪問を確定・約束しません。担当者へのライブ転送はできないので、折り返しを案内します。
-- 電話番号・日時は、区切りごとにはっきり復唱し、合っているかを確認します。「はい、違います」は肯定ではありません。
-- ツールがある場合：聞き取った値は save_field、復唱の前に request_readback、明確に肯定されたら confirm_field を呼びます。
-  処理を待つ間もお客様の話を聞き、追加や訂正を受け付けます。結果が出る前に約束しません。
+- 既に伺った情報は聞き直しません。分からない項目は無理に聞き続けません。
+- 料金・条件はFAQの範囲だけで答え、予約や訪問を確定・約束しません。担当の者へおつなぎすることはできないので、折り返しをご案内します。
+- 電話番号・日時は、区切りごとにはっきり復唱し、合っているかを確かめます。「はい、違います」は肯定ではありません。
 """
-LAB_INSTRUCTIONS = LAB_RULES + "\n" + MOCK_FAQ   # used only when no reception service is attached
-
-GREETING = "お電話ありがとうございます。株式会社野田のAI受付です。ご用件をお伺いします。"
+# used only when no reception service is attached; the service builds the same blocks from the call's settings
+LAB_INSTRUCTIONS = LAB_RULES + "\n" + SPEECH_MANNERS + "\n" + TOOL_RULES + "\n" + MOCK_FAQ
 
 
 def openai_tools() -> list:

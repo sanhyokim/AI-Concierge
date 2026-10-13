@@ -112,6 +112,21 @@ function fail(msg) { console.error("FAIL:", msg); process.exitCode = 1; }
     if (spoken.transcripts !== 0) fail("pre-refusal transcripts must not be kept on the page");
     const sessions = await (await page.request.get(url + "/api/sessions")).json();
     if (!String(sessions.sessions[0].stop_reason || "").startsWith("ai_refused")) fail("server must record why the session stopped");
+
+    // the AI's last words and end_call: the page waits for the caller, plays the hang-up tone and ends the session
+    await page.goto(url + "/?fake_script=closing");
+    await page.waitForFunction(() => document.querySelectorAll("#candidate option").length > 1);
+    await page.selectOption("#candidate", "fake");
+    await page.click("#startBtn");
+    await page.waitForFunction(() => document.getElementById("status").textContent.startsWith("会話中"), null, { timeout: 15000 });
+    await page.waitForFunction(() => document.getElementById("status").textContent.startsWith("終了"), null, { timeout: 40000 });
+    const closing = await page.evaluate(() => ({ status: document.getElementById("status").textContent,
+      kinds: window.__lab.events.map((e) => e.kind) }));
+    if (!closing.status.includes("AIが最後のあいさつの後に電話を切りました")) fail("end_call must end the session: " + closing.status);
+    if (!closing.kinds.includes("終話の待ち") || !closing.kinds.includes("AIが電話を切った")) fail("hang-up wait and hang-up must be logged");
+    if (closing.kinds.includes("終話を取り消し")) fail("a short goodbye must not cancel the hang-up");
+    const afterClosing = await (await page.request.get(url + "/api/sessions")).json();
+    if (!String(afterClosing.sessions[0].end_reason || "").startsWith("AIが終話")) fail("server must record that the AI ended the call");
     if (errors.length) fail("page errors: " + errors.join(" | "));
     console.log(JSON.stringify({ latencies: stats.lat, interruption_stops: stats.stops, interruptions: ints.map((r) => r.outcome),
       tool_calls: stats.tools, saved: files[0], business_logic: saved.comparison.business_logic_status, event_kinds: stats.kinds }, null, 1));

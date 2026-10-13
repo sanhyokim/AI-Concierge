@@ -71,6 +71,7 @@ export async function connect(ctx) {
       const result = await ctx.toolCall(item.name, args);
       if (result && result.stop) return;
       send({ type: "response.item.create", item: { type: "function_call_output", call_id: item.call_id, output: JSON.stringify(result) } });
+      if (result && result.hangup) return;   // end_call: the last words are said; no new response, the page hangs up
       const r = await ctx.vendorEvent("response_create");
       if (r && r.stop) return;
       send({ type: "response.create" });

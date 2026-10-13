@@ -14,17 +14,17 @@ import re
 import unicodedata
 
 from ..concierge.confirmation import Reply, classify_reply
+from ..concierge.prompts import CLOSING, GREETING
 from ..concierge.readings import digits_only, is_valid_jp_number, resolve_relative_day
 
 ORDER = ("request", "shop_name", "caller_name", "callback_number", "preferred_datetime")
 LABEL = {"request": "ご用件", "shop_name": "店舗名", "caller_name": "お名前", "callback_number": "折り返し先のお電話番号",
          "preferred_datetime": "ご希望の日時"}
-ASK = {"request": "ご用件を伺えますか。", "shop_name": "店舗名を伺えますか。", "caller_name": "お名前を伺えますか。",
-       "callback_number": "担当者から折り返すお電話番号を伺えますか。",
-       "preferred_datetime": "ご希望の日時があれば伺えますか。"}
+ASK = {"request": "どのようなご用件でしょうか。", "shop_name": "恐れ入りますが、店舗名をお伺いしてもよろしいでしょうか。",
+       "caller_name": "恐れ入りますが、お名前をお伺いしてもよろしいでしょうか。",
+       "callback_number": "担当の者から折り返しお電話いたしますので、ご連絡先のお電話番号をお伺いしてもよろしいでしょうか。",
+       "preferred_datetime": "ご希望の日時はございますか。"}
 CONFIRM = ("callback_number", "preferred_datetime")
-GREETING = "お電話ありがとうございます。株式会社野田のAI受付です。ご用件をお伺いします。"
-CLOSING = "ありがとうございました。内容を担当者に伝え、担当者から折り返しご連絡します。失礼いたします。"
 _RELATIVE = re.compile(r"明明後日|しあさって|明後日|あさって|明日|あした|(?:来週|今週)の?[月火水木金土日]")
 _PHONE = re.compile(r"0\d{1,4}-\d{1,4}-\d{3,4}|0\d{9,10}")
 _REQUEST_WORDS = ("清掃", "点検", "修理", "見積", "交換", "取り付け", "相談")
@@ -57,8 +57,8 @@ class RuleAgent:
             return {"forwarded": False, "reason": r["reason"], "stop_ai": r.get("stop_ai", False),
                     "actions": r.get("actions", []), "say": []}
         if r.get("recording_stopped"):
-            say = ["承知しました。ここからの録音を止め、これまでの録音も削除します。ご用件の受付は、このままAIが続けます。"
-                   "AIでの音声の処理もお望みでなければ、お申し付けください。"]   # A-02 (spec 4-2)
+            say = ["承知いたしました。ここからの録音を止め、これまでの録音も削除いたします。ご用件の受付は、このままAIが続けます。"
+                   "AIでの音声の処理もご希望でなければ、お申し付けください。"]   # A-02 (spec 4-2)
             for line in say:
                 self.svc.ai_utterance(self.call_id, line)
             return {"forwarded": True, "recording_stopped": True, "actions": r.get("actions", []), "say": say}
@@ -87,7 +87,11 @@ class RuleAgent:
         if not res.get("ok"):
             return [ASK[field]]
         self.awaiting = field
-        return [f"{LABEL[field]}を復唱します。{res['read_this_clearly']}。{res['then_ask']}"]
+        return [self._readback_line(field, res)]
+
+    @staticmethod
+    def _readback_line(field: str, res: dict) -> str:
+        return f"{LABEL[field]}を復唱いたします。{res['read_this_clearly']}。{res['then_ask']}"
 
     def _date(self, text: str, current: str | None) -> str | None:
         md = re.search(r"(\d{1,2})月(\d{1,2})日", text)
@@ -168,13 +172,13 @@ class RuleAgent:
                 self.human_pending = False
                 accepted = reply == Reply.AFFIRMATIVE
                 self.svc.consent_event(self.call_id, "human_request_answer", accepted)
-                return ["ありがとうございます。短く伺います。"] + self._next_question() if accepted else []
-            return ["恐れ入ります。AIで短く伺ってもよろしいですか。"]
+                return ["ありがとうございます。短くお伺いいたします。"] + self._next_question() if accepted else []
+            return ["恐れ入ります。AIで短くお伺いしてもよろしいでしょうか。"]
         if any(w in text for w in ("人と話", "担当者と話", "人間と", "担当の方と", "人に代わ")):
             self.svc.consent_event(self.call_id, "human_request")
             self.human_pending = True
-            return ["申し訳ありません。この電話から担当者へおつなぎすることはできませんが、担当者から折り返しご連絡します。"
-                    "折り返しのため、AIで短くご用件とご連絡先を伺ってもよろしいですか。"]
+            return ["申し訳ございません。この電話から担当の者へおつなぎすることはできかねますが、担当の者から折り返しご連絡いたします。"
+                    "折り返しのため、AIでご用件とご連絡先を短くお伺いしてもよろしいでしょうか。"]   # A-03
         if any(w in text for w in ("火が出", "燃えて", "炎が", "火事")):
             res = self._tool("flag_emergency", level="obvious", reason="火・炎の訴え")
             return [f"（録音済みの緊急の案内 {res.get('play')} を流しました）", ASK["callback_number"]]
@@ -203,13 +207,13 @@ class RuleAgent:
                     out.append("ありがとうございます。")
                     return out + self._after_save(found, exclude=field)
                 if "interrupted" in str(res.get("reason", "")):   # the vendor said the read-back was cut off
-                    return ["途中で切れてしまいましたので、もう一度復唱します。"] + self._readback(field)
+                    return ["失礼いたしました。途中で切れてしまいましたので、もう一度復唱いたします。"] + self._readback(field)
             if field in found:
                 self.awaiting = None
                 return self._save_all(found, out)
             if classify_reply(text) == Reply.NEGATIVE:
                 self.awaiting = None
-                return [f"失礼しました。正しい{LABEL[field]}を伺えますか。"]
+                return [f"失礼いたしました。恐れ入りますが、正しい{LABEL[field]}をお伺いしてもよろしいでしょうか。"]
             return ["恐れ入ります。こちらでお間違いないでしょうか。"]
         if found:
             return self._save_all(found, out)
@@ -220,19 +224,22 @@ class RuleAgent:
             days, self.unclear_day = self.unclear_day, []
             return ["恐れ入ります。" + "と、".join(f"{d.month}月{d.day}日（{'月火水木金土日'[d.weekday()]}）" for d in days)
                     + "の、どちらでしょうか。"]
-        return ["恐れ入ります。もう一度伺えますか。"]
+        return ["恐れ入ります。もう一度お聞かせいただけますでしょうか。"]
 
     def _save_all(self, found: dict, out: list[str]) -> list[str]:
-        for field, value in found.items():
-            res = self._tool("save_field", field=field, value=value)
-            if res.get("reason") == "field_not_storable":
-                self.skip.add(field)
+        res = self._tool("save_fields", **found)   # one call; a number or a date comes back ready to read
+        self.skip.update(res.get("not_stored_by_setting", []))
+        now = res.get("read_back_now")
+        if now:
+            self.awaiting = now["field"]
+            return out + ["承知いたしました。", self._readback_line(now["field"], now)]
         return out + self._after_save(found)
 
     def _after_save(self, found: dict, exclude: str | None = None) -> list[str]:
-        for field in CONFIRM:
-            if field in found and field != exclude and field not in self.skip:
-                st = (self._values().get(field) or {}).get("status")
+        values = self._values()
+        for field in CONFIRM:   # also one heard together with the item just confirmed (read_back_later)
+            if field != exclude and field not in self.skip:
+                st = (values.get(field) or {}).get("status")
                 if st in ("heard", "corrected_unconfirmed"):
-                    return ["承知しました。"] + self._readback(field)
-        return (["承知しました。"] if found else []) + self._next_question()
+                    return ["承知いたしました。"] + self._readback(field)
+        return (["承知いたしました。"] if found else []) + self._next_question()

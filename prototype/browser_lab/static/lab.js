@@ -18,7 +18,7 @@ const SCENARIOS = [
             "AIが止まらずに、そのまま話し続けるかを聞く",
             "日にちを聞かれたら「明後日でお願いします。」、続けて「明後日って何日でしたっけ？」",
             "AIが答えた日付と曜日が、今日から2日後と合っているかを確かめる",
-            "「以上です。ありがとうございました。」と言い、「終える」を押す"] },
+            "「以上です。ありがとうございました。」と言い、AIの最後のあいさつの後、電話が切れる（ツー・ツー・ツー）のを待つ。切れなければ「終える」を押す"] },
   { id: "C2", title: "「はい、違います」からの訂正", how: "AIの復唱の途中で「はい、違います。電話番号は…」と訂正する",
     check: "冒頭の「はい」を肯定にしない。訂正を聞き、正しい番号を復唱し、肯定まで確認済みにしない",
     lines: ["AIのあいさつを最後まで聞く",
@@ -26,35 +26,35 @@ const SCENARIOS = [
             "電話番号を聞かれたら「折り返しは、090-1234-5678です。」",
             "AIが番号を読み上げ始めたら、途中で「はい、違います。末尾は5679です。」",
             "AIが正しい番号（…5679）を読み直したら「はい、合っています。」",
-            "ほかに聞かれたら答え、最後に「以上です。」と言って「終える」を押す"] },
+            "ほかに聞かれたら答え、最後に「以上です。」と言い、AIの最後のあいさつの後、電話が切れる（ツー・ツー・ツー）のを待つ。切れなければ「終える」を押す"] },
   { id: "C3", title: "停止の求め", how: "AIの発話の最初・途中・終わり際で「ちょっと待って」と言う",
     check: "止まって待つ。言い終えていない部分を伝えた扱いにしない",
     lines: ["AIのあいさつを聞いてから「点検は無料ですか？」",
             "AIが答え始めたら、すぐに「ちょっと待って」",
             "2〜3秒黙ってから「すみません、続けてください」",
             "AIの返事の途中と、終わり際でも「ちょっと待って」と言ってみる",
-            "「以上です。」と言い、「終える」を押す"] },
+            "「以上です。」と言い、AIの最後のあいさつの後、電話が切れる（ツー・ツー・ツー）のを待つ。切れなければ「終える」を押す"] },
   { id: "C4", title: "間と言い直し", how: "考えて一度間を空け、同じ内容を言い直す",
     check: "発話の終わりを早まって決めない。言い直した後の意味で受け付ける",
     lines: ["AIのあいさつを聞く",
             "「えーと……（2秒黙る）……焼肉ほのか博多店です。」",
             "「用件は、清掃の……いや、点検をお願いしたいです。」",
             "AIが「点検」として受け付けたか（清掃と取り違えていないか）を聞く",
-            "「以上です。」と言い、「終える」を押す"] },
+            "「以上です。」と言い、AIの最後のあいさつの後、電話が切れる（ツー・ツー・ツー）のを待つ。切れなければ「終える」を押す"] },
   { id: "C5", title: "処理中の追加・訂正", how: "（業務処理を4秒遅らせる）その間に用件を追加・訂正する",
     check: "処理中も聞ける。結果を先に約束しない。保存・要約と会話が食い違わない",
     lines: ["「焼肉ほのか博多店の田中です。無煙ロースター8台の清掃をお願いします。」",
             "AIが確認や処理をしている間（約4秒）に「あと、ダクトの点検もお願いします。」",
             "「希望日は10月8日の午後3時です。……すみません、9日の金曜日に変更してください。」",
             "最後にAIがまとめた内容（清掃＋ダクトの点検、9日の金曜日）が合っているかを聞く",
-            "「以上です。」と言い、「終える」を押す"] },
+            "「以上です。」と言い、AIの最後のあいさつの後、電話が切れる（ツー・ツー・ツー）のを待つ。切れなければ「終える」を押す"] },
   { id: "C6", title: "専門用語・番号・日時", how: "株式会社野田、ダクト、無煙ロースター、電話番号、日付・時間を伝える",
     check: "発音・受付の正確さ。電話番号・日時を区切って明瞭に復唱し、確認する（部分減速は必須ではない）",
     lines: ["「株式会社野田さんですよね。無煙ロースターとダクトの清掃をお願いしたいです。」",
             "電話番号を聞かれたら「090-1234-5678です。」",
             "日時を聞かれたら「10月9日、金曜日の午後3時でお願いします。」",
             "AIの読み方（会社名・ダクト・番号・日時）が正しく、聞き取りやすいかを聞く",
-            "「以上です。」と言い、「終える」を押す"] },
+            "「以上です。」と言い、AIの最後のあいさつの後、電話が切れる（ツー・ツー・ツー）のを待つ。切れなければ「終える」を押す"] },
   { id: "C7", title: "ふだんの話し方", how: "名乗らずに質問から入り、情報を小出しにし、あいまいに言い、途中で言い直す",
     check: "足りない情報（店名・名前・電話番号）を一つずつ自然に聞けるか。言い直し（8台→7台）を取り込むか。" +
       "あいまいな日時を確定したことにしないか。話がそれた後に自然に戻れるか",
@@ -65,7 +65,7 @@ const SCENARIOS = [
             "日時を聞かれたら「来週のどっかで。午後なら大体いけます。」",
             "「あ、ちょっと待ってください……すみません、どこまで話しましたっけ。」",
             "電話番号を聞かれたら「090の1234の5678です。」",
-            "「以上で。」と言い、「終える」を押す（AIが聞いてきた順に合わせて答える）"] },
+            "「以上で。」と言い、AIの最後のあいさつの後、電話が切れる（ツー・ツー・ツー）のを待つ。切れなければ「終える」を押す（AIが聞いてきた順に合わせて答える）"] },
 ];
 // Audio-only judgments (any candidate) and business-logic judgments (only where tool calls reached the server).
 const JUDGE_AUDIO = [
@@ -91,7 +91,7 @@ const st = {
   events: [], transcripts: [], toolCalls: [], latencies: [], stops: [], flags: [], interruptions: [], csrf: "", lastInterrupt: null,
   user: { on: false, since: null, below: null, startT: null }, ai: { on: false, since: null, below: null, startT: null },
   lastUserEnd: null, lastAiEnd: null, pendingInterrupt: null, userSpeechListeners: new Set(),
-  uttSeq: 0, aiStopped: false, closing: false, hb: null, aiPost: null,
+  uttSeq: 0, aiStopped: false, closing: false, hb: null, aiPost: null, hangup: null, hungUp: false,
 };
 const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
@@ -188,6 +188,7 @@ function step(side, db, thr, startHold, endHold, onStart, onEnd) {
 }
 
 function tick() {
+  checkHangup();
   const micDb = levelDb(st.micAnalyser);
   const aiDb = st.conn && st.conn.outputLevel ? st.conn.outputLevel() : levelDb(st.aiAnalyser);
   $("micDb").textContent = `${micDb.toFixed(0)} dBFS`;
@@ -237,10 +238,63 @@ function tick() {
   });
 }
 
+// --- the end of the call: the AI says its last words, the caller may hang up first, then this side hangs up ---
+// Callers could not tell when the call was over (2026-10-13, C1): the AI now says a closing line and calls
+// end_call; after the wait (both sides quiet), the page plays the hang-up tone and ends the session.
+const GOODBYE_WORDS = /(はい|ええ|どうも|ありがとうございました|ありがとうございます|ありがとう|失礼いたします|失礼しま[ーっ]?す|失礼しました|よろしくお願いいたします|よろしくお願いします|お願いします|以上です|以上|分かりました|わかりました|了解です|では|じゃあ|はーい|[、。,.！!？?\s　])/g;
+
+function scheduleHangup(waitMs) {
+  if (st.closing || st.hangup) return;
+  st.hangup = { waitMs: waitMs || 3000, quietSince: null };
+  log("終話の待ち", `AIが最後のあいさつを終えた。お客様が先に切るのを${(st.hangup.waitMs / 1000).toFixed(1)}秒待ってから、こちらで切る`);
+}
+
+// a short goodbye from the caller (「はい、失礼します」) keeps the hang-up; anything else means the talk goes on
+function closingReply(text) {
+  const t = String(text || "").trim();
+  return t.length <= 30 && t.replace(GOODBYE_WORDS, "").length <= 2;
+}
+
+function cancelHangup(text) {
+  if (!st.hangup || closingReply(text)) return;
+  st.hangup = null;
+  log("終話を取り消し", "お客様が続けて話したので、会話を続ける");
+}
+
+function checkHangup() {
+  const h = st.hangup;
+  if (!h || st.closing) return;
+  if (st.ai.on || st.user.on) { h.quietSince = null; return; }
+  const t = now();
+  if (h.quietSince === null) h.quietSince = t;
+  if (t - h.quietSince >= h.waitMs) { st.hangup = null; hangUp(); }
+}
+
+// Japanese hang-up tone: 400 Hz, 0.5 s on and 0.5 s off, three times; played directly (not measured as AI audio)
+function playHangupTone() {
+  if (!st.ac || st.ac.state === "closed") return Promise.resolve();
+  const g = st.ac.createGain(), o = st.ac.createOscillator(), t = st.ac.currentTime + 0.05;
+  g.gain.value = 0; o.frequency.value = 400; o.connect(g); g.connect(st.ac.destination);
+  for (let i = 0; i < 3; i++) { g.gain.setValueAtTime(0.12, t + i); g.gain.setValueAtTime(0, t + i + 0.5); }
+  o.start(t); o.stop(t + 2.6);
+  return new Promise((resolve) => setTimeout(resolve, 2700));
+}
+
+async function hangUp() {
+  st.hungUp = true;
+  log("AIが電話を切った", "最後のあいさつの後、お客様が話さなかったので切った（ツー・ツー・ツー）");
+  if (st.mic) st.mic.getTracks().forEach((tr) => { tr.enabled = false; });
+  try { if (st.conn && st.conn.mute) st.conn.mute(); } catch (e) { /* closing anyway */ }
+  $("status").textContent = "電話を切りました（ツー・ツー・ツー）";
+  await playHangupTone();
+  await stop("AIが終話（最後のあいさつの後に切った）");
+}
+
 // --- what the server must hear: caller utterances, vendor interruptions, vendor counts ----------------------
 
 async function sendUtterance(text) {
   const seq = ++st.uttSeq;
+  cancelHangup(text);
   try {
     await st.aiPost;   // the AI's read-back must reach the server before the caller's reply to it
     const r = await post("api/utterance", { session_id: st.session.session_id, text, seq });
@@ -325,6 +379,7 @@ function makeCtx(creds) {
       } catch (e) { call.result = { ok: false, reason: String(e.message || e) }; }
       st.toolCalls.push(call);
       log("業務処理の結果", call.result);
+      if (name === "end_call" && call.result && call.result.ok) scheduleHangup(call.result.hangup_wait_ms);
       if (call.result && call.result.stop && !st.closing) stop(`アプリ内の制限（${call.result.reason}）`);
       return call.result;
     },
@@ -355,7 +410,7 @@ async function start() {
   $("startBtn").disabled = true;
   Object.assign(st, { events: [], transcripts: [], toolCalls: [], latencies: [], stops: [], flags: [], interruptions: [],
     lastUserEnd: null, lastAiEnd: null, pendingInterrupt: null, lastInterrupt: null, session: null, conn: null,
-    uttSeq: 0, aiStopped: false, closing: false });
+    uttSeq: 0, aiStopped: false, closing: false, hangup: null, hungUp: false });
   $("saveBtn").disabled = true;
   st.user = { on: false, since: null, below: null, startT: null };
   st.ai = { on: false, since: null, below: null, startT: null };
@@ -428,7 +483,7 @@ async function stop(reason) {
   }
   st.conn = null;
   if (st.ac) { try { await st.ac.close(); } catch (e) { /* closed */ } }
-  $("status").textContent = "終了";
+  $("status").textContent = st.hungUp ? "終了（AIが最後のあいさつの後に電話を切りました）" : "終了";
   $("startBtn").disabled = false;
 }
 
@@ -523,7 +578,7 @@ async function loadCandidates() {
       `<p>管理画面の設定の反映：指示 ${esc(c.applies.instructions)}／声 ${esc(c.applies.voice)}</p>` +
       (c.hold ? "" : `<p>これまでの会話：${n.sessions}回（回数の上限なし。1回の会話は${esc(String(c.max_session_min))}分で止まります）</p>`) +
       envHelp(c);
-    $("limit").textContent = `1回の会話は${c.max_session_min}分で自動的に止まります（画面を閉じても、サーバーが止めます）。終わったら「終える」を押してください。` +
+    $("limit").textContent = `1回の会話は${c.max_session_min}分で自動的に止まります（画面を閉じても、サーバーが止めます）。AIが最後のあいさつの後に電話を切ります。切れないときや、途中でやめるときは「終える」を押してください。` +
       `費用は、会話ごとに台帳へ見込みを記録します（最大時間×$${c.upper_usd_per_min}/分。GPT-Liveは裏方のモデルの分を足す）。` +
       "回数と費用の上限はありません。業者側の予算の設定（OpenAIの月の予算など）は残しておいてください。";
   };

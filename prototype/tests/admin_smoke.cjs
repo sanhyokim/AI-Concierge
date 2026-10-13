@@ -227,7 +227,7 @@ const lastAi = (page) => page.$$eval("#chat .msg.ai", (els) => (els.at(-1) || {}
     await toastSays(admin2, "保存しました");
     check("call C is AI again", (await demoCall(page, url, "2026-10-05T18:00")) === "AI受付");
     await say(page, "点検は無料ですか？");
-    check("next call uses the disabled FAQ state", (await page.textContent("#chat")).includes("担当者が確認してご連絡します"));
+    check("next call uses the disabled FAQ state", (await page.textContent("#chat")).includes("担当の者が確認のうえ"));
     // 8: AI refusal stops sending and deletes the earlier transcript
     await say(page, "AIとは話したくないです");
     await say(page, "090-1234-5678です");
@@ -253,7 +253,7 @@ const lastAi = (page) => page.$$eval("#chat .msg.ai", (els) => (els.at(-1) || {}
     await page.waitForFunction(() => document.getElementById("chat").textContent.includes("確認済みにしません"));
     await say(page, "はい、合っています。");
     const aiLines = await page.$$eval("#chat .msg.ai", (els) => els.slice(-2).map((x) => x.textContent).join(" "));
-    check("interrupted read-back is read again, not confirmed", aiLines.includes("もう一度復唱") && aiLines.includes("を復唱します"), aiLines);
+    check("interrupted read-back is read again, not confirmed", aiLines.includes("もう一度復唱") && aiLines.includes("を復唱いたします"), aiLines);
     await say(page, "はい、合っています。");
     const numberRow = await page.textContent("#fieldTable tr[data-name=callback_number]");
     check("the second read-back can be confirmed", numberRow.includes("本人確認済み"), numberRow);

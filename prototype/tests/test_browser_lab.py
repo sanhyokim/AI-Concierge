@@ -169,7 +169,7 @@ class LabBusinessLogicTest(unittest.TestCase):
         self.assertEqual(body["delegation"]["type"], "responses")
         names = [t["name"] for t in body["delegation"]["responses"]["tools"]]
         self.assertEqual(names, ["save_field", "request_readback", "confirm_field", "save_fields", "lookup_faq",
-                                 "flag_emergency"])
+                                 "flag_emergency", "end_call"])
         many = next(t for t in body["delegation"]["responses"]["tools"] if t["name"] == "save_fields")
         self.assertEqual(sorted(many["parameters"]["required"]), sorted(many["parameters"]["properties"]))   # strict
         self.assertEqual(body["delegation"]["responses"]["model"], "gpt-6-luna")

@@ -208,7 +208,7 @@ class ServiceTest(unittest.TestCase):
             svc.correct_field(cid, "callback_number", "090-1234-5679", "staff", "")             # reason required
         view = svc.correct_field(cid, "callback_number", "090-1234-5679", "staff", "折り返して確認（架空）")
         c = view["corrections"][0]
-        self.assertEqual((c["before_value"], c["before_status"], c["after_value"]), ("09012345678", "heard", "09012345679"))
+        self.assertEqual((c["before_value"], c["before_status"], c["after_value"]), ("09012345678", "awaiting_confirmation", "09012345679"))   # saving starts the read-back
         self.assertEqual([s["version"] for s in view["summaries"]], [1, 2])
         self.assertIn("担当者が補正", view["summaries"][1]["text"])
         v2 = [n for n in view["notifications"] if n["version"] == 2]

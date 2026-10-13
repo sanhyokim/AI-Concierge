@@ -15,6 +15,9 @@ import datetime as dt
 from ..concierge.confirmation import FieldStore, Status
 from ..concierge.readings import date_phrase, datetime_phrase, digits_only, phone_reading
 
+READBACK_FIELDS = ("callback_number", "preferred_datetime")   # read back digit by digit / with the weekday
+THEN_ASK = "こちらでお間違いないでしょうか。"
+
 
 class ToolHandler:
     def __init__(self) -> None:
@@ -106,20 +109,43 @@ class ToolHandler:
                 return value
         return value
 
+    def start_readback(self, field: str, t_ms: int | None = None) -> dict:
+        """Mark the read-back of a saved value and return the exact words to say. The caller's next reply is the
+        answer to it."""
+        state = self.store.get(field)
+        state.read_back(state.value, t_ms=t_ms, after_seq=self._utt_seq)
+        self._last_readback = field
+        reading = self._reading(field, state.value)
+        return {"field": field, "read_this_clearly": reading, "then_ask": THEN_ASK,
+                "say": f"復唱いたします。{reading}。{THEN_ASK}"}
+
+    def save(self, field: str, value: str, t_ms: int | None = None) -> str:
+        """Store a heard value. The same value again keeps a confirmation already given (the model often
+        re-sends every value at the end of the call)."""
+        state = self.store.get(field)
+        value = self._normalize(field, value)
+        if state.status == Status.CONFIRMED and state.value == value:
+            return state.status.value
+        return state.hear(value, t_ms=t_ms).value
+
+    def needs_readback(self, field: str) -> bool:
+        f = self.store.fields.get(field)
+        return field in READBACK_FIELDS and bool(f and f.value) and f.status in (Status.HEARD, Status.CORRECTED)
+
     def handle(self, name: str, args: dict, t_ms: int | None = None) -> dict:
         field = args.get("field", "")
         if name == "save_field":
-            status = self.store.get(field).hear(self._normalize(field, args.get("value", "")), t_ms=t_ms)
-            result = {"ok": True, "status": status.value}
+            status = self.save(field, args.get("value", ""), t_ms=t_ms)
+            result = {"ok": True, "status": status}
+            if self.needs_readback(field):   # one tool call instead of save + request_readback
+                result["read_back_now"] = self.start_readback(field, t_ms)
+                result["status"] = self.store.get(field).status.value
         elif name == "request_readback":
             state = self.store.get(field)
             if state.value is None:
                 result = {"ok": False, "reason": "no value saved yet"}
             else:
-                state.read_back(state.value, t_ms=t_ms, after_seq=self._utt_seq)
-                self._last_readback = field
-                result = {"ok": True, "read_this_clearly": self._reading(field, state.value),
-                          "then_ask": "こちらでお間違いないでしょうか。"}
+                result = {"ok": True, **{k: v for k, v in self.start_readback(field, t_ms).items() if k != "field"}}
         elif name == "confirm_field":
             state = self.store.get(field)
             if (state.status == Status.CONFIRMED and state.value is not None

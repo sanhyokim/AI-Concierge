@@ -61,6 +61,7 @@ FAKE_SCRIPTS = {   # what the offline candidate "hears" at each end of caller sp
     "default": ["（模擬）焼肉ほのか博多店の田中です", "（模擬）点検は無料ですか"],
     "refusal": ["（模擬）点検は無料ですか", "人と話したいので、AIは使わないでください"],
     "recording": ["録音はしないでください", "（模擬）点検は無料ですか", "（模擬）ダクトの清掃をお願いします"],
+    "closing": ["（模擬）以上です。ありがとうございました。", "はい、失礼します。"],
 }
 
 
