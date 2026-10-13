@@ -15,6 +15,7 @@ from prototype.admin.auth import Auth
 from prototype.reception.store import Store
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
+UTF8_PATHS = sys.getfilesystemencoding().lower().replace("-", "") == "utf8"
 OPENAI = "sk-proj-" + "a" * 40
 GEMINI = "AIza" + "b" * 35
 
@@ -166,8 +167,11 @@ class MacStartFileTest(unittest.TestCase):
                               capture_output=True, text=True, encoding="utf-8", timeout=30)
 
     def test_executable_and_valid_bash(self):
-        for name in ("start_mac.command", "reset_password_mac.command"):
-            mode = subprocess.run(["git", "ls-files", "-s", name], cwd=ROOT, capture_output=True, text=True,
+        names = ["start_mac.command", "reset_password_mac.command"]
+        if UTF8_PATHS:   # a Japanese file name (Mac only; Mac paths are always UTF-8)
+            names.append("AI受付を起動_mac.command")
+        for name in names:
+            mode = subprocess.run(["git", "-c", "core.quotepath=false", "ls-files", "-s", name], cwd=ROOT, capture_output=True, text=True,
                                   encoding="utf-8").stdout.split()[0]
             self.assertEqual(mode, "100755", name)
             self.assertEqual(subprocess.run(["bash", "-n", str(ROOT / name)]).returncode, 0, name)
@@ -258,3 +262,74 @@ class HttpsCheckTest(unittest.TestCase):
         self.assertEqual(setup.check_https(say=said.append, connect=fails(socket.gaierror(8, "nodename"))),
                          setup.HTTPS_NETWORK)
         self.assertEqual(setup.check_https(say=said.append, connect=fails(TimeoutError())), setup.HTTPS_NETWORK)
+
+
+@unittest.skipUnless(sys.platform != "win32", "runs bash")
+@unittest.skipUnless(UTF8_PATHS, "the launcher has a Japanese name; Mac file names are always UTF-8")
+class MacLauncherTest(unittest.TestCase):
+    """AI受付を起動_mac.command: approved once, it installs each newer download into ~/AI-Concierge (2026-10-13:
+    every new ZIP brought macOS's 「開いていません」 dialog back) and keeps the records and the password."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.home = pathlib.Path(tmp.name) / "home"
+        self.dl = self.home / "Downloads"
+        self.dl.mkdir(parents=True)
+        self.app = self.home / "AI-Concierge"
+
+    def download(self, name="AI-Concierge-claude-new-session-w4sjel.zip", age_s=0):
+        z = self.dl / name
+        import zipfile   # like GitHub's ZIP, from the files in the working tree (so uncommitted changes count)
+        files = subprocess.run(["git", "-c", "core.quotepath=false", "ls-files", "-z"], cwd=ROOT, check=True,
+                               capture_output=True).stdout.decode("utf-8").split("\0")
+        with zipfile.ZipFile(z, "w") as out:
+            for name in filter(None, files):
+                src = ROOT / name
+                if not src.is_file() or name.startswith("docs/screenshots/"):
+                    continue
+                info = zipfile.ZipInfo("AI-Concierge-claude-new-session-w4sjel/" + name)
+                info.external_attr = (0o100755 if os.access(src, os.X_OK) else 0o100644) << 16
+                out.writestr(info, src.read_bytes())
+        t = time.time() + age_s
+        os.utime(z, (t, t))
+        return z
+
+    def launch(self):
+        env = {**os.environ, "HOME": str(self.home), "LAUNCHER_INSTALL_ONLY": "1"}
+        return subprocess.run(["/bin/bash", str(ROOT / "AI受付を起動_mac.command")], input="\n", env=env,
+                              capture_output=True, text=True, encoding="utf-8", timeout=60)
+
+    def test_nothing_downloaded(self):
+        r = self.launch()
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("ZIP が見つかりません", r.stdout)
+
+    def test_installs_newer_downloads_and_keeps_records(self):
+        self.download()
+        r = self.launch()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertTrue((self.app / "prototype" / "admin" / "__main__.py").is_file())
+        launcher = self.home / "AI受付を起動_mac.command"            # the approved-free copy for the Dock
+        self.assertEqual(launcher.read_bytes(), (self.app / "AI受付を起動_mac.command").read_bytes())
+        self.assertTrue(os.access(launcher, os.X_OK))
+        (self.app / "prototype" / "data").mkdir()
+        (self.app / "prototype" / "data" / "reception.sqlite3").write_text("records", encoding="utf-8")
+        (self.app / "prototype" / "results" / "mine.json").write_text("result", encoding="utf-8")
+        self.assertIn("新しいダウンロードはありません", self.launch().stdout)
+        self.download(age_s=60)                                        # a newer download replaces the program
+        (self.app / "old-file").write_text("x", encoding="utf-8")
+        r = self.launch()
+        self.assertIn("入れました", r.stdout)
+        self.assertFalse((self.app / "old-file").exists())
+        self.assertEqual((self.app / "prototype" / "data" / "reception.sqlite3").read_text(encoding="utf-8"), "records")
+        self.assertEqual((self.app / "prototype" / "results" / "mine.json").read_text(encoding="utf-8"), "result")
+        self.assertTrue(os.access(self.app / "start_mac.command", os.X_OK))
+        self.assertEqual(list(self.home.glob("AI-Concierge.old.*")), [])
+        folder = self.dl / "AI-Concierge-claude-new-session-w4sjel 2"   # Safari unpacks the ZIP itself
+        subprocess.run(["unzip", "-q", str(self.download("x.zip")), "-d", str(folder)], check=True)
+        t = time.time() + 120
+        os.utime(folder, (t, t))
+        self.assertIn("AI-Concierge-claude-new-session-w4sjel 2", self.launch().stdout)
+        self.assertEqual((self.app / "prototype" / "data" / "reception.sqlite3").read_text(encoding="utf-8"), "records")
+

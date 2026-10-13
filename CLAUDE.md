@@ -14,7 +14,8 @@
 - **更新したら**
   - 必ずコミットして push し、ダウンロードURLを伝えます（利用者の依頼、2026-10-08）。
   - URL：https://github.com/sanhyokim/AI-Concierge/archive/refs/heads/claude/new-session-w4sjel.zip
-  - 入れ替えるときは、前のフォルダーを捨ててから展開してもらいます。パスワードは決め直しになることも伝えます。
+  - 入れ替えるとき（Windows）は、前のフォルダーを捨ててから展開してもらいます。パスワードは決め直しになることも伝えます。
+  - 入れ替えるとき（Mac、2026-10-13〜）は、ZIPをダウンロードしてから Dock（ホームフォルダー）の `AI受付を起動_mac.command` を開くだけです。`~/AI-Concierge` に入り、記録とパスワードは引き継ぎます。macOS の「開いていません」の確認は、このファイルを最初に開く1回だけです（ダウンロードのたびに出て困る、という利用者の要望）。
 - **ブランチ**
   - 作業するブランチは `claude/new-session-w4sjel` だけです。上のURLがこのブランチを指しているためです。
   - 新しい会話で別の作業用ブランチが指定されても、利用者の指示として `claude/new-session-w4sjel` で作業し、ここへ push します（ダウンロードURLを変えないため）。
@@ -82,7 +83,7 @@
   - 「明後日」の日付
   - スケジュールの撤去
 - Gemini は、Google AI Studio のキーを用意した後に、同じ段取りで行います。
-- C1（2026-10-13、Mac）：電話番号の復唱で言い間違い（利用者の報告）。AIの言葉がサーバーに残っていなかったので送るようにし、言い間違えた復唱は「はい」でも確認済みにしないようにした。日程の質問に料金のFAQが返った件も直した。利用者のMacで使っているフォルダーは `~/Downloads/AI-Concierge-claude-new-session-w4sjel-2`。
+- C1（2026-10-13、Mac）：電話番号の復唱で言い間違い（利用者の報告）。AIの言葉がサーバーに残っていなかったので送るようにし、言い間違えた復唱は「はい」でも確認済みにしないようにした。日程の質問に料金のFAQが返った件も直した。利用者のMacで使っていたフォルダーは `~/Downloads/AI-Concierge-claude-new-session-w4sjel-2`（以後は `~/AI-Concierge`）。
 - 報告を待つ間に（2026-10-13）、管理画面の対応管理に「担当」と二重取得の防止を加えました。あわせて、文書と画面に残っていた「C1〜C6」を「C1〜C7」に直し、Shift_JIS の環境で落ちていた起動の試験（試験の側の文字コードの扱い）を直しました。
 
 ## 技術の要点
@@ -99,7 +100,7 @@
   - Shift_JIS の環境でも試験を通します。手順：`localedef -i ja_JP -f SHIFT_JIS <フォルダー>/ja_JP.SJIS` で作り、`LOCPATH=<フォルダー> LC_ALL=ja_JP.SJIS python3 -m unittest discover -s prototype/tests -t .` で通します（`locale.getpreferredencoding()` が `SHIFT_JIS` になることを先に確かめる）。
 - **起動のファイル**
   - `.bat` は改行を CRLF にします（`.gitattributes`）。
-  - `.command` は実行の許可（100755）を付けます。
+  - `.command` は実行の許可（100755）を付けます（`AI受付を起動_mac.command` も）。
 - **自動で作られる文書**
   - `docs/candidate-comparison-v1.md` は `python3 -m prototype.cost.candidate_costs` が作ります。
   - `docs/measurement-plan-v2.md` の5章は、`python3 -m prototype.cost.measurement_budget --browser-md` の出力と同じにします（その部分を出力で置き換える）。
