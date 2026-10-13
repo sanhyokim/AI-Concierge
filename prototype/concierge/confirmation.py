@@ -91,6 +91,7 @@ class FieldState:
     read_back_after_seq: int | None = None  # caller-utterance number when the read-back was requested
     readback_interrupted: bool = False
     readback_mismatch: str | None = None    # what the AI said instead of the value (from its own transcript)
+    readback_spoken_ok: bool = False        # the AI's transcript said the value (and nothing different)
 
     def _log(self, event: str, t_ms: int | None, **extra) -> None:
         self.history.append({"event": event, "value": self.value, "status": self.status.value,
@@ -103,7 +104,7 @@ class FieldState:
         self.value, self.source, self.read_back_value = value, source, None
         self.revision += 1
         self.read_back_revision, self.read_back_after_seq, self.readback_interrupted = None, None, False
-        self.readback_mismatch = None
+        self.readback_mismatch, self.readback_spoken_ok = None, False
         self.status = Status.CORRECTED if had_value and changed else Status.HEARD
         self._log("hear", t_ms)
         return self.status
@@ -114,7 +115,7 @@ class FieldState:
             raise ValueError(f"read back {value!r} but the stored value is {self.value!r}")
         self.read_back_value = value
         self.read_back_revision, self.read_back_after_seq, self.readback_interrupted = self.revision, after_seq, False
-        self.readback_mismatch = None
+        self.readback_mismatch, self.readback_spoken_ok = None, False
         self.status = Status.AWAITING
         self._log("read_back", t_ms, after_seq=after_seq)
         return self.status
@@ -141,9 +142,10 @@ class FieldState:
         else:
             return None
         if wrong:
-            self.readback_mismatch = wrong
+            self.readback_mismatch, self.readback_spoken_ok = wrong, False
             self._log("read_back_spoken_mismatch", t_ms, said=wrong)
-        elif said_any:
+        elif said_any and not self.readback_mismatch and not self.readback_spoken_ok:
+            self.readback_spoken_ok = True
             self._log("read_back_spoken_ok", t_ms)
         return wrong
 

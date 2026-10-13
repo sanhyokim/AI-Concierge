@@ -24,6 +24,7 @@ class ToolHandler:
         self._utt_seq = 0
         self._utt_ids: set[str] = set()
         self._consumed: set[int] = set()
+        self._last_readback: str | None = None   # the field read back most recently
 
     # --- caller utterances (transcript events only) ----------------------------------------------------
     @property
@@ -64,6 +65,23 @@ class ToolHandler:
                 out[name] = wrong
         return out
 
+    def confirm_from_reply(self, t_ms: int | None = None) -> str | None:
+        """After a caller utterance: confirm the item read back most recently, when the server itself saw the AI
+        say the value (its transcript) and this utterance is a clear affirmation. The model often answers
+        「ありがとうございます」 without calling confirm_field (2026-10-13: neither the date nor the number was
+        confirmed), and every extra tool call is a pause in the conversation. Returns the confirmed field."""
+        name = self._last_readback
+        f = self.store.fields.get(name) if name else None
+        if (not f or f.status != Status.AWAITING or not f.readback_spoken_ok or self._utt_seq in self._consumed
+                or f.read_back_after_seq is None or self._utt_seq <= f.read_back_after_seq):
+            return None
+        ok, _ = f.confirm(f.value, self._utt_text, t_ms=t_ms, reply_seq=self._utt_seq)
+        if not ok:
+            return None
+        self._consumed.add(self._utt_seq)
+        f._log("confirmed_by_server", t_ms, reply_seq=self._utt_seq)
+        return name
+
     def awaiting_reply(self, field: str) -> bool:
         """True while a read-back of this field has no caller utterance after it."""
         f = self.store.fields.get(field)
@@ -99,10 +117,15 @@ class ToolHandler:
                 result = {"ok": False, "reason": "no value saved yet"}
             else:
                 state.read_back(state.value, t_ms=t_ms, after_seq=self._utt_seq)
+                self._last_readback = field
                 result = {"ok": True, "read_this_clearly": self._reading(field, state.value),
                           "then_ask": "こちらでお間違いないでしょうか。"}
         elif name == "confirm_field":
-            if self._utt_seq in self._consumed:
+            state = self.store.get(field)
+            if (state.status == Status.CONFIRMED and state.value is not None
+                    and self._normalize(field, args.get("value", "")) == state.value):
+                result = {"ok": True, "reason": "already confirmed by the server from the read-back and the reply"}
+            elif self._utt_seq in self._consumed:
                 result = {"ok": False, "reason": "this reply was already used to confirm another item; ask again"}
             else:
                 ok, reason = self.store.get(field).confirm(self._normalize(field, args.get("value", "")),

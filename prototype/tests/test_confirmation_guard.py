@@ -154,7 +154,9 @@ class SpokenReadBackTest(unittest.TestCase):
         from prototype.concierge.readings import spoken_digit_runs
         self.assertEqual(spoken_digit_runs("ゼロハチゼロ、ゴーロクヨンヨン、ニーゼロゴーゼロ。こちらでお間違いないでしょうか。"),
                          ["08056442050"])
-        self.assertEqual(spoken_digit_runs("ぜろはちぜろ ごーろくよんよん にーぜろごーぜろ"), ["08056442050"])
+        # hiragana is not read as digits: 「2050に」 ends with the particle に (2026-10-13 second run, a false alarm)
+        self.assertEqual(spoken_digit_runs("では、担当者より080、5644、2050に折り返しご連絡いたします。"), ["08056442050"])
+        self.assertEqual(spoken_digit_runs("ぜろはちぜろ"), [])
         self.assertEqual(spoken_digit_runs("〇八〇の五六四四の二〇五〇"), ["08056442050"])
         self.assertEqual(spoken_digit_runs("080-5644-2050ですね"), ["08056442050"])
         # ordinary words that start with a digit word, and quantities with a counter, are not numbers
@@ -210,6 +212,37 @@ class SpokenReadBackTest(unittest.TestCase):
         self.assertIn(("ai", {"text": "ゼロハチゼロ、ゴーロクヨンゴ、ニーゼロゴーゼロ。こちらでお間違いないでしょうか。"}), kinds)
         self.assertIn(("read_back_mismatch", {"field": "callback_number", "said": "08056452050"}), kinds)
 
+
+    def test_the_server_confirms_a_correct_read_back_answered_yes(self):
+        # 2026-10-13 second run: the AI read both back correctly, the caller said yes, and it never called
+        # confirm_field, so neither was confirmed
+        h = ToolHandler()
+        h.handle("save_field", {"field": "callback_number", "value": "080-5644-2050"})
+        h.handle("request_readback", {"field": "callback_number"})
+        h.ai_said("はい、復唱します。080、5644、2050、こちらでお間違いないでしょうか。")
+        h.caller_said("はい、間違いない", "u1")
+        self.assertEqual(h.confirm_from_reply(), "callback_number")
+        self.assertEqual(h.store.get("callback_number").status.value, "confirmed_by_caller")
+        r = h.handle("confirm_field", {"field": "callback_number", "value": "08056442050"})   # a late call is fine
+        self.assertTrue(r["ok"])
+        h.ai_said("では、担当者より080、5644、2050に折り返しご連絡いたします。")      # no false alarm afterwards
+        self.assertIsNone(h.store.get("callback_number").readback_mismatch)
+
+    def test_the_server_does_not_confirm_without_seeing_the_read_back(self):
+        h = handler_with_readback()
+        h.caller_said("はい", "u1")                       # no AI transcript: only confirm_field can confirm
+        self.assertIsNone(h.confirm_from_reply())
+        h = handler_with_readback()
+        h.ai_said("ゼロキュウゼロ、イチニーサンヨン、ゴーロクナナキュウ。よろしいですか。")   # misspoken
+        h.caller_said("はい", "u1")
+        self.assertIsNone(h.confirm_from_reply())
+        h = handler_with_readback()
+        h.ai_said("090、1234、5678でよろしいですか。")
+        for reply in ("いいえ、違います", "えーと"):
+            h.caller_said(reply, reply)
+            self.assertIsNone(h.confirm_from_reply())
+        h.caller_said("はい、合ってます", "u9")
+        self.assertEqual(h.confirm_from_reply(), "callback_number")
 
 if __name__ == "__main__":
     unittest.main()

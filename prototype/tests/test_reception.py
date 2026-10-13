@@ -292,6 +292,35 @@ class ServiceTest(unittest.TestCase):
         self.assertEqual(ask("深夜に作業できますか"), "FAQ-05")
 
 
+    def test_save_fields_saves_several_values_in_one_call(self):
+        svc = service()
+        cid = svc.start_call(at="2026-10-13T13:30")["id"]
+        res = svc.tool(cid, "save_fields", {"shop_name": "焼肉ほのか博多店", "caller_name": "田中",
+                                            "request": "無煙ロースター15台の清掃", "preferred_datetime": "2026-10-14",
+                                            "callback_number": ""})
+        self.assertEqual(res["saved"], {"shop_name": "heard", "caller_name": "heard", "request": "heard",
+                                        "preferred_datetime": "heard"})
+        self.assertEqual(svc.fields(cid)["preferred_datetime"]["value"], "2026-10-14")
+        self.assertNotIn("callback_number", svc.fields(cid))
+
+    def test_a_correct_read_back_and_a_yes_confirm_without_confirm_field(self):
+        svc = service()
+        cid = svc.start_call(at="2026-10-13T13:30")["id"]
+        svc.tool(cid, "save_field", {"field": "callback_number", "value": "080-5644-2050"})
+        svc.tool(cid, "request_readback", {"field": "callback_number"})
+        svc.ai_utterance(cid, "はい、復唱します。080、5644、2050、こちらでお間違いないでしょうか。")
+        self.assertEqual(svc.caller_utterance(cid, "はい、間違いない", "u1")["confirmed"], "callback_number")
+        self.assertEqual(svc.fields(cid)["callback_number"]["status"], "confirmed_by_caller")
+        self.assertIn("confirmed_by_reply", [e["kind"] for e in svc.call_view(cid)["events"]])
+
+    def test_scheduling_questions_get_no_faq(self):
+        from prototype.reception.faq import faq_lookup
+        faqs = [{"code": c, "question": q, "answer": a, "keywords": k} for c, q, a, k in S.FAQ_SEEDS]
+        # 2026-10-13 second run: this got FAQ-09 (「依頼できますか」)
+        self.assertNotIn("faq", faq_lookup(faqs, "明日（2026年10月14日）に無煙ロースター15台の清掃を依頼できますか。"))
+        self.assertEqual(faq_lookup(faqs, "焼き鳥のお店でも頼めますか")["faq"], "FAQ-09")
+
+
 class OutboxTest(unittest.TestCase):
     def setUp(self):
         self.clock = Clock()

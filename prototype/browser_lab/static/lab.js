@@ -91,7 +91,7 @@ const st = {
   events: [], transcripts: [], toolCalls: [], latencies: [], stops: [], flags: [], interruptions: [], csrf: "", lastInterrupt: null,
   user: { on: false, since: null, below: null, startT: null }, ai: { on: false, since: null, below: null, startT: null },
   lastUserEnd: null, lastAiEnd: null, pendingInterrupt: null, userSpeechListeners: new Set(),
-  uttSeq: 0, aiStopped: false, closing: false, hb: null,
+  uttSeq: 0, aiStopped: false, closing: false, hb: null, aiPost: null,
 };
 const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
@@ -242,8 +242,10 @@ function tick() {
 async function sendUtterance(text) {
   const seq = ++st.uttSeq;
   try {
+    await st.aiPost;   // the AI's read-back must reach the server before the caller's reply to it
     const r = await post("api/utterance", { session_id: st.session.session_id, text, seq });
     if (r.recording_stopped) log("録音の拒否（発話）", "録音を止め、拒否より前の録音を削除する。AIの利用は拒否されていないので、会話は続ける");
+    if (r.confirmed) log("確認済み", `${r.confirmed}：AIの復唱と、お客様の「はい」をサーバーが確かめた`);
     if (r.human_request) log("人との会話の希望", "ライブ転送はできない。折り返しを案内する（X-02）");
     if (r.stop_ai) await stopAi(r.reason || "ai_refused_by_speech", "AIの拒否（発話）");
     return r;
@@ -304,7 +306,9 @@ function makeCtx(creds) {
       st.transcripts.push({ t_ms: now(), scenario: st.scenario, role, text });
       log(role === "user" ? "お客様" : "AI", text);
       if (role === "user") return st.session && !st.closing ? sendUtterance(text) : Promise.resolve(null);
-      return st.session ? sendAiUtterance(text) : Promise.resolve(null);
+      if (!st.session) return Promise.resolve(null);
+      st.aiPost = sendAiUtterance(text);
+      return st.aiPost;
     },
     vendorInterrupted: (source) => reportInterrupted(source),
     vendorEvent: (kind, data) => reportVendorEvent(kind, data),

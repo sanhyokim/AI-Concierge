@@ -178,21 +178,18 @@ _SPOKEN_DIGIT_WORDS = sorted({
     "〇": "0", "零": "0", "一": "1", "二": "2", "三": "3", "四": "4", "五": "5", "六": "6", "七": "7",
     "八": "8", "九": "9",
 }.items(), key=lambda kv: -len(kv[0]))
-_RUN_SEPARATORS = "、,・-‐ー― 　ノ"   # between digit groups; 「ー」 also lengthens ゴー/ニー and is skipped
+_RUN_SEPARATORS = "、,・-‐ー― 　の"   # between digit groups; 「ー」 also lengthens ゴー/ニー and is skipped
 _COUNTER_AFTER = "年月日時分円台件階番号歳"   # 「2026年」「15日」: a quantity, not part of a phone number
-
-
-def _to_katakana(text: str) -> str:
-    return "".join(chr(ord(c) + 0x60) if "ぁ" <= c <= "ゖ" else c for c in text)
 
 
 def spoken_digit_runs(text: str) -> list[str]:
     """Digit sequences said in the text: '080-5644', 'ゼロハチゼロ、ゴーロクヨンヨン', '〇八〇'.
 
-    A run is a stretch made only of digits, digit words and separators. Runs of one or two digits are
-    ignored (「ご確認」 starts with ゴ, 「一度」 with 一), as are numbers followed by a counter (「15日」).
+    A run is a stretch made only of digits, katakana or kanji digit words and separators. Hiragana is not read
+    as digits: 「2050に折り返し」 ends with the particle に, not 2 (2026-10-13 browser test). Runs of one or two
+    digits are ignored (「一度」 starts with 一), as are numbers followed by a counter (「15日」).
     """
-    t = _to_katakana(unicodedata.normalize("NFKC", text))
+    t = unicodedata.normalize("NFKC", text)
     runs, cur, i = [], "", 0
     def close(next_char: str = "") -> None:
         nonlocal cur

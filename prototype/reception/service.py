@@ -308,6 +308,12 @@ class ReceptionService:
                 out = {"forward": False, "stop_ai": True, "reason": "ai_refused_by_speech",
                        "recording_stopped": out.get("recording_stopped", False),
                        "actions": out.get("actions", []) + acts}
+            else:
+                confirmed = sess.tools.confirm_from_reply()
+                if confirmed:   # the server saw the AI read the value back and this reply affirm it
+                    self._event(call_id, "confirmed_by_reply", {"field": confirmed, "seq": sess.tools.utterance_seq})
+                    self._persist(call_id, sess)
+                    out["confirmed"] = confirmed
             return out
 
     def ai_interrupted(self, call_id: str, source: str) -> dict:
@@ -357,6 +363,8 @@ class ReceptionService:
                     self._add_open_question(call, str(args.get("question", ""))[:200], snap)
             elif name == "flag_emergency":
                 res = self._emergency(call, args)
+            elif name == "save_fields":
+                res, logged_args = self._save_fields(sess, snap, args)
             elif name in ("save_field", "request_readback", "confirm_field"):
                 field = args.get("field", "")
                 if field not in S.FIELD_KEYS:
@@ -372,6 +380,25 @@ class ReceptionService:
             self._event(call_id, "tool", {"name": name, "args": logged_args, "result": res})
             self._persist(call_id, sess)
             return res
+
+    def _save_fields(self, sess: CallSession, snap: dict, args: dict) -> tuple[dict, dict]:
+        """Several heard values in one tool call (an empty string = not heard). One call instead of one per
+        value: each tool call is a pause before the AI speaks again (2026-10-13: six calls in a row)."""
+        saved, skipped, logged = {}, [], {}
+        for field in S.FIELD_KEYS:
+            value = str(args.get(field) or "").strip()
+            if not value:
+                continue
+            if not snap["config"]["fields"][field]["store"]:
+                skipped.append(field)
+                logged[field] = "（保存しない設定のため記録しない）"
+                continue
+            saved[field] = sess.tools.handle("save_field", {"field": field, "value": value})["status"]
+            logged[field] = value
+        res = {"ok": True, "saved": saved}
+        if skipped:
+            res["not_stored_by_setting"] = skipped
+        return res, logged
 
     def _add_open_question(self, call: dict, question: str, snap: dict) -> None:
         qs = json.loads(call["open_questions"])

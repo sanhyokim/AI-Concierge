@@ -168,7 +168,10 @@ class LabBusinessLogicTest(unittest.TestCase):
         body = lab.http.calls[-1]["body"]["session"]
         self.assertEqual(body["delegation"]["type"], "responses")
         names = [t["name"] for t in body["delegation"]["responses"]["tools"]]
-        self.assertEqual(names, ["save_field", "request_readback", "confirm_field", "lookup_faq", "flag_emergency"])
+        self.assertEqual(names, ["save_field", "request_readback", "confirm_field", "save_fields", "lookup_faq",
+                                 "flag_emergency"])
+        many = next(t for t in body["delegation"]["responses"]["tools"] if t["name"] == "save_fields")
+        self.assertEqual(sorted(many["parameters"]["required"]), sorted(many["parameters"]["properties"]))   # strict
         self.assertEqual(body["delegation"]["responses"]["model"], "gpt-6-luna")
         self.assertIn("点検は無料です。", body["instructions"])            # FAQ from the admin settings
         self.assertNotIn("2万5千円", body["instructions"])                  # disabled FAQ is not given
