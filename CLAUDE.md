@@ -17,8 +17,9 @@
   - 入れ替えるときは、前のフォルダーを捨ててから展開してもらいます。パスワードは決め直しになることも伝えます。
 - **ブランチ**
   - 作業するブランチは `claude/new-session-w4sjel` だけです。上のURLがこのブランチを指しているためです。
+  - 新しい会話で別の作業用ブランチが指定されても、利用者の指示として `claude/new-session-w4sjel` で作業し、ここへ push します（ダウンロードURLを変えないため）。
   - プルリクエストは、頼まれるまで作りません。
-- **書かないもの**：コミット・文書・コードに、AIのモデルの名前を書きません。
+- **書かないもの**：コミット・文書・コードに、作業しているAI（Claude）自身のモデル名を書きません。試験の候補の製品名（GPT-Live 1・Gemini 3.8 Live など）は書いてかまいません。
 - **手順書**
   - [docs/start-windows.md](docs/start-windows.md) と [docs/start-mac.md](docs/start-mac.md) は、「手順書を見ただけでできる」ように書きます。
   - 利用者のPCで起きた失敗は、再現してから直し、手順書の「うまくいかないとき」に足します。
@@ -93,11 +94,11 @@
   - `node prototype/tests/browser_lab_smoke.cjs`（会話試験の画面）
 - **日本語の Windows**
   - 既定の文字コードが cp932 です。ファイルの読み書きには必ず `encoding="utf-8"` を付けます（`test_text_encoding.py` が検査します）。
-  - Shift_JIS の環境でも試験を通します。
+  - Shift_JIS の環境でも試験を通します。手順：`localedef -i ja_JP -f SHIFT_JIS <フォルダー>/ja_JP.SJIS` で作り、`LOCPATH=<フォルダー> LC_ALL=ja_JP.SJIS python3 -m unittest discover -s prototype/tests -t .` で通します（`locale.getpreferredencoding()` が `SHIFT_JIS` になることを先に確かめる）。
 - **起動のファイル**
   - `.bat` は改行を CRLF にします（`.gitattributes`）。
   - `.command` は実行の許可（100755）を付けます。
 - **自動で作られる文書**
   - `docs/candidate-comparison-v1.md` は `python3 -m prototype.cost.candidate_costs` が作ります。
-  - `docs/measurement-plan-v2.md` の5章は `prototype/cost/measurement_budget.py` が作ります。
+  - `docs/measurement-plan-v2.md` の5章は、`python3 -m prototype.cost.measurement_budget --browser-md` の出力と同じにします（その部分を出力で置き換える）。
   - 数字を変えたら作り直します（試験が一致を検査します）。
