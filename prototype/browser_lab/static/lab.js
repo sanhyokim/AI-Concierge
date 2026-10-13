@@ -250,6 +250,17 @@ async function sendUtterance(text) {
   } catch (e) { log("utterance_error", String(e.message || e)); return null; }
 }
 
+// the AI's own words go to the server too: they stay in the call's history, and a read-back that said a
+// different number or date than the saved value cannot be confirmed by the caller's 「はい」
+async function sendAiUtterance(text) {
+  try {
+    const r = await post("api/ai_utterance", { session_id: st.session.session_id, text });
+    for (const [field, said] of Object.entries(r.read_back_mismatch || {}))
+      log("復唱の言い間違い", `${field}：AIは「${said}」と言った。保存した値と違うので、「はい」でも確認済みにしない（言い直させる）`);
+    return r;
+  } catch (e) { log("ai_utterance_error", String(e.message || e)); return null; }
+}
+
 async function reportInterrupted(source) {
   log("業者の割り込みの通知", source);
   if (!st.session || st.aiStopped || st.closing) return null;
@@ -292,7 +303,8 @@ function makeCtx(creds) {
       if (!text || st.aiStopped) return Promise.resolve(null);
       st.transcripts.push({ t_ms: now(), scenario: st.scenario, role, text });
       log(role === "user" ? "お客様" : "AI", text);
-      return role === "user" && st.session && !st.closing ? sendUtterance(text) : Promise.resolve(null);
+      if (role === "user") return st.session && !st.closing ? sendUtterance(text) : Promise.resolve(null);
+      return st.session ? sendAiUtterance(text) : Promise.resolve(null);
     },
     vendorInterrupted: (source) => reportInterrupted(source),
     vendorEvent: (kind, data) => reportVendorEvent(kind, data),

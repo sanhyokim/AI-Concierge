@@ -352,6 +352,11 @@ class Lab:
             self._stop(sid, res.get("reason") or "ai_stopped")
         return res
 
+    def ai_utterance(self, sid: str, text: str) -> dict:
+        """The AI's own transcript of one turn: kept in the call's history and checked against a pending read-back."""
+        row = self._row(sid)
+        return self.service.ai_utterance(row["call_id"], str(text)[:4000])
+
     def interrupted(self, sid: str, source: str) -> dict:
         row = self._row(sid)
         return self.service.ai_interrupted(row["call_id"], str(source)[:80])
@@ -524,6 +529,8 @@ def api_post(lab: Lab, path: str, body: dict) -> tuple[int, dict]:
                                  int(body.get("delay_ms") or 0))
         if path == "/api/utterance":
             return 200, lab.utterance(sid, body.get("text", ""), body.get("seq"))
+        if path == "/api/ai_utterance":
+            return 200, lab.ai_utterance(sid, body.get("text", ""))
         if path == "/api/interrupted":
             return 200, lab.interrupted(sid, body.get("source", "vendor"))
         if path == "/api/vendor_event":

@@ -274,6 +274,24 @@ class ServiceTest(unittest.TestCase):
         self.assertLessEqual({"handled_by", "handled_at", "handled_version"}, cols)
 
 
+    def test_a_question_that_only_names_the_subject_gets_no_price_answer(self):
+        from prototype.reception.faq import faq_lookup
+        faqs = [{"code": c, "question": q, "answer": a, "keywords": k} for c, q, a, k in S.FAQ_SEEDS]
+        ask = lambda q: faq_lookup(faqs, q).get("faq")
+        # 2026-10-13 browser test C1: a scheduling question got the roaster price (FAQ-02)
+        self.assertIsNone(ask("明後日（2026年10月15日）に無煙ロースターの清掃に来てもらえるか、日程の空き状況を確認したい"))
+        self.assertIsNone(ask("焼肉ほのか博多店の田中です"))
+        self.assertIsNone(ask("点検に来てほしい"))
+        self.assertEqual(ask("無煙ロースターの清掃はいくらですか"), "FAQ-02")
+        self.assertEqual(ask("ダクトの清掃の料金"), "FAQ-03")
+        self.assertEqual(ask("フードの見積もりはどうなりますか"), "FAQ-03")
+        faqs = [f for f in faqs if f["code"] != "FAQ-02"]               # roaster price disabled: no other price answer
+        self.assertIsNone(ask("ロースターの清掃の料金"))
+        self.assertEqual(ask("点検は無料ですか"), "FAQ-01")
+        self.assertEqual(ask("うちの店でも頼めますか"), "FAQ-09")
+        self.assertEqual(ask("深夜に作業できますか"), "FAQ-05")
+
+
 class OutboxTest(unittest.TestCase):
     def setUp(self):
         self.clock = Clock()

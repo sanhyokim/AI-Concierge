@@ -53,6 +53,17 @@ class ToolHandler:
                 out.append(name)
         return out
 
+    def ai_said(self, text: str, t_ms: int | None = None) -> dict[str, str]:
+        """The AI's own transcript of what it just said. A read-back that said a different number or date than
+        the saved value is marked, so the caller's 「はい」 to it cannot confirm the value. Returns field -> what
+        was said instead."""
+        out = {}
+        for name, f in self.store.fields.items():
+            wrong = f.check_spoken(text, t_ms)
+            if wrong:
+                out[name] = wrong
+        return out
+
     def awaiting_reply(self, field: str) -> bool:
         """True while a read-back of this field has no caller utterance after it."""
         f = self.store.fields.get(field)

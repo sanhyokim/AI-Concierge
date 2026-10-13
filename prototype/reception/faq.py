@@ -16,11 +16,20 @@ def _norm(text: str) -> str:
 
 
 def faq_lookup(faqs: list[dict], question: str) -> dict:
-    """Best keyword match among the enabled FAQ of this call. No match -> FAQ-10 and an open question."""
+    """Best keyword match among the enabled FAQ of this call. No match -> FAQ-10 and an open question.
+
+    A keyword written as 「いくら|料金|値段」 is a required group: one of its words must be in the question, or that
+    FAQ is not chosen. It keeps a question that only names the subject (「無煙ロースターの清掃に明後日来られますか」)
+    from getting a price answer (2026-10-13, browser test C1).
+    """
     q = _norm(question)
     best, best_score = None, 0
     for f in faqs:
-        score = sum(1 for k in (f.get("keywords") or "").split(",") if k and k in q)
+        words = [k.strip() for k in (f.get("keywords") or "").replace("、", ",").split(",") if k.strip()]
+        groups = [[w for w in k.split("|") if w] for k in words if "|" in k]
+        if any(not any(w in q for w in g) for g in groups):
+            continue
+        score = sum(1 for k in words if "|" not in k and k in q) + len(groups)
         if score > best_score:
             best, best_score = f, score
     if best is None:

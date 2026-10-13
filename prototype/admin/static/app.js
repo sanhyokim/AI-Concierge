@@ -110,7 +110,8 @@ routes.faq = async () => {
     <p class="sub">有効なFAQだけを、AIが答える範囲に使います。変更・有効／無効は<b>次の会話から</b>反映されます（通話中の会話は、開始時のFAQのまま）。すべて未承認の推奨案・試作です。</p>
     <details><summary>FAQを追加する</summary>
       <label>質問の例 <input id="newQ"></label><label>回答 <textarea id="newA" rows="3"></textarea></label>
-      <label>探すための語（読点・カンマ区切り）<input id="newK" placeholder="例：駐車場,車"></label>
+      <label>探すための語（読点・カンマ区切り）<input id="newK" placeholder="例：駐車場,車,ある|止め|置け"></label>
+      <p class="sub">「いくら|料金|値段」のように「|」でつないだ語は、どれかが質問に入っていないと、そのFAQは選ばれません（「無煙ロースター」とだけ言った日程の質問に、料金の答えが返らないようにするため）。</p>
       <button class="primary" id="addFaq">追加</button></details></section>
     <div id="faqList">${faqs.map((f) => `<section class="card" style="margin-top:10px" data-id="${f.id}">
       <div class="row"><b>${esc(f.code)}</b><span class="badge warn">${esc(f.approval)}</span>
@@ -230,6 +231,7 @@ function eventText(e) {
     case "recording_stopped": return "録音を停止（以降は録音しない）";
     case "recording_deleted": return d.why || "拒否より前の録音を削除";
     case "vendor_interrupted": return `業者の割り込みの通知（${d.source}）：${(d.invalidated || []).length ? `返事の前に遮られた復唱 ${d.invalidated.join("・")} を確認済みにしない` : "無効にした復唱はない"}`;
+    case "read_back_mismatch": return `復唱の言い間違い（${d.field === "callback_number" ? "折り返し先" : d.field === "preferred_datetime" ? "希望日時" : d.field}）：AIは「${d.said}」と言った。保存した値と違うので、「はい」でも確認済みにしない`;
     case "forward_to_staff": return d.text || "担当者の携帯へ転送";
     default: return `${e.kind} ${d && Object.keys(d).length ? JSON.stringify(d) : ""}`;
   }

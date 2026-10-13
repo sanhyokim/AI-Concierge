@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import datetime as dt
 import re
+import unicodedata
 
 DIGIT_KANA = {
     "0": "ゼロ", "1": "イチ", "2": "ニー", "3": "サン", "4": "ヨン",
@@ -163,3 +164,118 @@ def resolve_relative_day(expression: str, call_time: dt.datetime) -> tuple[list[
         candidates = [day] if not ambiguous else [day, day + dt.timedelta(days=7)]
         return candidates, ambiguous
     return [], True
+
+
+# --- what the AI actually said in a read-back ---------------------------------
+# The server hands the model the exact words to read back, but the model may still say something else.
+# These parse the AI's own transcript of a read-back so that a different number or date is caught before
+# the caller's 「はい」 can confirm it.
+
+_SPOKEN_DIGIT_WORDS = sorted({
+    "ゼロ": "0", "レイ": "0", "マル": "0", "イチ": "1", "ニー": "2", "ニイ": "2", "ニ": "2", "サン": "3",
+    "ヨン": "4", "シ": "4", "ゴー": "5", "ゴ": "5", "ロク": "6", "ナナ": "7", "シチ": "7", "ハチ": "8",
+    "キュウ": "9", "キュー": "9", "ク": "9",
+    "〇": "0", "零": "0", "一": "1", "二": "2", "三": "3", "四": "4", "五": "5", "六": "6", "七": "7",
+    "八": "8", "九": "9",
+}.items(), key=lambda kv: -len(kv[0]))
+_RUN_SEPARATORS = "、,・-‐ー― 　ノ"   # between digit groups; 「ー」 also lengthens ゴー/ニー and is skipped
+_COUNTER_AFTER = "年月日時分円台件階番号歳"   # 「2026年」「15日」: a quantity, not part of a phone number
+
+
+def _to_katakana(text: str) -> str:
+    return "".join(chr(ord(c) + 0x60) if "ぁ" <= c <= "ゖ" else c for c in text)
+
+
+def spoken_digit_runs(text: str) -> list[str]:
+    """Digit sequences said in the text: '080-5644', 'ゼロハチゼロ、ゴーロクヨンヨン', '〇八〇'.
+
+    A run is a stretch made only of digits, digit words and separators. Runs of one or two digits are
+    ignored (「ご確認」 starts with ゴ, 「一度」 with 一), as are numbers followed by a counter (「15日」).
+    """
+    t = _to_katakana(unicodedata.normalize("NFKC", text))
+    runs, cur, i = [], "", 0
+    def close(next_char: str = "") -> None:
+        nonlocal cur
+        if len(cur) >= 3 and not (next_char and next_char in _COUNTER_AFTER):
+            runs.append(cur)
+        cur = ""
+    while i < len(t):
+        c = t[i]
+        if c.isdigit():
+            cur += c
+            i += 1
+            continue
+        for word, d in _SPOKEN_DIGIT_WORDS:
+            if t.startswith(word, i):
+                cur += d
+                i += len(word)
+                break
+        else:
+            if cur and c in _RUN_SEPARATORS:
+                i += 1
+                continue
+            close(c)
+            i += 1
+    close()
+    return runs
+
+
+def spoken_number_mismatch(text: str, number: str) -> str | None:
+    """The digits the AI said, when they are not the number it was asked to read back; None when they match
+    or when the text says no number. Saying the same number twice is not a mismatch."""
+    said = "".join(spoken_digit_runs(text))
+    want = digits_only(number)
+    if not said or not want:
+        return None
+    if len(said) % len(want) == 0 and said == want * (len(said) // len(want)):
+        return None
+    return said
+
+
+_KANJI_NUM = {"〇": 0, "一": 1, "二": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8, "九": 9}
+
+
+def _kanji_int(s: str) -> int | None:
+    """'15', '十五', '二十一' -> int (up to 99)."""
+    if s.isdigit():
+        return int(s)
+    if "十" in s:
+        tens, _, ones = s.partition("十")
+        t = _KANJI_NUM.get(tens, None) if tens else 1
+        o = _KANJI_NUM.get(ones, None) if ones else 0
+        return None if t is None or o is None else t * 10 + o
+    return _KANJI_NUM.get(s) if len(s) == 1 else None
+
+
+_NUM = r"(\d{1,2}|[〇一二三四五六七八九十]{1,3})"
+
+
+def spoken_datetime_mismatch(text: str, value: str) -> str | None:
+    """What the AI said, when its month/day, weekday or hour differs from the ISO value it was asked to read
+    back ('2026-10-15' or '2026-10-15T15:00'); None when it matches or says no date."""
+    try:
+        when = dt.datetime.fromisoformat(value) if "T" in value or " " in value else None
+        day = when.date() if when else dt.date.fromisoformat(value)
+    except ValueError:
+        return None
+    t = unicodedata.normalize("NFKC", text)
+    wrong = []
+    for m in re.finditer(_NUM + "月" + _NUM + "日", t):
+        mo, d = _kanji_int(m.group(1)), _kanji_int(m.group(2))
+        if (mo, d) != (day.month, day.day):
+            wrong.append(m.group(0))
+    for m in re.finditer(r"([月火水木金土日])曜", t):
+        if m.group(1) != WEEKDAY_KANJI[day.weekday()]:
+            wrong.append(m.group(0) + "日")
+    if when is not None:
+        for m in re.finditer(r"(午前|午後)?" + _NUM + "時", t):
+            h = _kanji_int(m.group(2))
+            if h is None:
+                continue
+            if m.group(1) == "午後" and h < 12:
+                h += 12
+            elif m.group(1) == "午前" and h == 12:
+                h = 0
+            if h != when.hour and not (m.group(1) is None and h + 12 == when.hour):
+                wrong.append(m.group(0))
+    return "、".join(wrong) or None

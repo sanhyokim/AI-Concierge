@@ -319,14 +319,21 @@ class ReceptionService:
             self._persist(call_id, sess)
             return {"invalidated": invalidated}
 
-    def ai_utterance(self, call_id: str, text: str) -> None:
+    def ai_utterance(self, call_id: str, text: str) -> dict:
+        """What the AI said (its own transcript of one turn). Kept in the call's history, and checked against a
+        pending read-back: a different number or date than the saved value blocks the confirmation."""
         sess = self._session(call_id)
         with sess.lock:
             call = self._call(call_id)
             if self._ai_block_reason(call, sess):
-                return
+                return {"recorded": False}
             store = json.loads(call["snapshot"])["config"]["store_transcript"]
             self._event(call_id, "ai", {"text": text if store else "（文字起こしを保存しない設定）"})
+            wrong = sess.tools.ai_said(text)
+            for name, said in wrong.items():
+                self._event(call_id, "read_back_mismatch", {"field": name, "said": said})
+            self._persist(call_id, sess)
+            return {"recorded": True, "read_back_mismatch": wrong}
 
     def tool(self, call_id: str, name: str, args: dict, caller_utterance: str = "") -> dict:
         """caller_utterance (text an adapter attaches to a tool call) is ignored on purpose: only transcript

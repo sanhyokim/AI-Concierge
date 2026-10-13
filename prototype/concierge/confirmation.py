@@ -13,7 +13,8 @@ Live conversations (ToolHandler) also require, for a confirmation:
   (``reply_seq > read_back_after_seq``), so an earlier "はい" cannot be reused;
 - the value and its revision are the ones that were read back (a later correction invalidates it);
 - the vendor did not report that the read-back was interrupted;
-- a reply to a phone number contains no digits that differ from the number read back.
+- a reply to a phone number contains no digits that differ from the number read back;
+- the AI's own transcript of the read-back did not say a different number or date (``check_spoken``).
 Calling ``confirm`` without sequence numbers is kept for the offline scenario checks only.
 """
 from __future__ import annotations
@@ -22,6 +23,8 @@ import re
 import unicodedata
 from dataclasses import dataclass, field
 from enum import Enum
+
+from .readings import spoken_datetime_mismatch, spoken_digit_runs, spoken_number_mismatch
 
 
 class Status(str, Enum):
@@ -87,6 +90,7 @@ class FieldState:
     read_back_revision: int | None = None
     read_back_after_seq: int | None = None  # caller-utterance number when the read-back was requested
     readback_interrupted: bool = False
+    readback_mismatch: str | None = None    # what the AI said instead of the value (from its own transcript)
 
     def _log(self, event: str, t_ms: int | None, **extra) -> None:
         self.history.append({"event": event, "value": self.value, "status": self.status.value,
@@ -99,6 +103,7 @@ class FieldState:
         self.value, self.source, self.read_back_value = value, source, None
         self.revision += 1
         self.read_back_revision, self.read_back_after_seq, self.readback_interrupted = None, None, False
+        self.readback_mismatch = None
         self.status = Status.CORRECTED if had_value and changed else Status.HEARD
         self._log("hear", t_ms)
         return self.status
@@ -109,6 +114,7 @@ class FieldState:
             raise ValueError(f"read back {value!r} but the stored value is {self.value!r}")
         self.read_back_value = value
         self.read_back_revision, self.read_back_after_seq, self.readback_interrupted = self.revision, after_seq, False
+        self.readback_mismatch = None
         self.status = Status.AWAITING
         self._log("read_back", t_ms, after_seq=after_seq)
         return self.status
@@ -120,6 +126,26 @@ class FieldState:
         self.readback_interrupted = True
         self._log("read_back_interrupted", t_ms, source=source)
         return True
+
+    def check_spoken(self, ai_text: str, t_ms: int | None = None) -> str | None:
+        """The AI's transcript while this read-back is pending. Returns what it said instead of the value, if
+        it said a different number or date; a later confirmation is then refused until it reads back again."""
+        if self.status != Status.AWAITING or not self.value:
+            return None
+        if self.name == "callback_number":
+            wrong = spoken_number_mismatch(ai_text, self.value)
+            said_any = bool(spoken_digit_runs(ai_text))
+        elif self.name == "preferred_datetime":
+            wrong = spoken_datetime_mismatch(ai_text, self.value)
+            said_any = bool(re.search(r"(月|曜|時)", unicodedata.normalize("NFKC", ai_text)))
+        else:
+            return None
+        if wrong:
+            self.readback_mismatch = wrong
+            self._log("read_back_spoken_mismatch", t_ms, said=wrong)
+        elif said_any:
+            self._log("read_back_spoken_ok", t_ms)
+        return wrong
 
     def answer(self, utterance: str, t_ms: int | None = None) -> Reply:
         """The caller replied after a read-back. Only an affirmative reply confirms."""
@@ -141,6 +167,9 @@ class FieldState:
             return False, "value differs from the value that was read back"
         if self.readback_interrupted:
             return False, "the read-back was interrupted; read it back again and ask"
+        if self.readback_mismatch:
+            return False, (f"your read-back said {self.readback_mismatch}, which is not the saved value; call "
+                           "request_readback again and read read_this_clearly exactly, then ask again")
         if self.read_back_after_seq is not None and (reply_seq is None or reply_seq <= self.read_back_after_seq):
             return False, "no caller reply after the read-back yet; wait for the reply"
         if self.name == "callback_number" and _foreign_digits(last_caller_utterance, value):
