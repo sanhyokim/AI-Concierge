@@ -27,7 +27,8 @@ export async function connect(ctx) {
       ctx.log("vendor_event", { type: "setupComplete" });
       capture = await startCapture(ac, ctx.micStream, 16000, (buf) =>
         send({ realtimeInput: { audio: { data: toBase64(buf), mimeType: "audio/pcm;rate=16000" } } }));
-      send({ realtimeInput: { text: "最初のあいさつをしてください。" } });
+      // the short prompt (2026-10-14) has no greeting: the page asks for the exact words, as for GPT-Live
+      send({ realtimeInput: { text: `最初に日本語で次のあいさつをしてください：「${ctx.credentials.greeting}」` } });
       return;
     }
     const sc = ev.serverContent;

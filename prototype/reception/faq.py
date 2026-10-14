@@ -62,6 +62,80 @@ TOOL_RULES = """\
 """
 
 
+# --- the short prompts (2026-10-14): a short conversation prompt for the voice model, the steps elsewhere -------
+# Gemini 3.8 Live talks and calls the tools itself: short rules here, the rest is in the tool descriptions and in
+# what the tools return (read_back_now.say, the FAQ answer).
+DIRECT_TOOL_RULES = """\
+【業務処理（ツール）】
+- 業務処理を呼ぶ前に、「かしこまりました。」などと短く返事をします。
+- 電話番号と日時は、聞いたらすぐ save_field で保存し、返ってきた read_back_now.say を一字一句そのまま読みます。
+- 店舗名・お名前・ご用件は、そろったところで save_fields を1回呼んで保存します。訂正された値は save_field で保存し直します。
+- 復唱にお客様が「はい」と答えたら、確認は済んでいます。復唱が残っていれば（read_back_later）、request_readback を呼び、
+  返ってきた say を読みます。
+- 料金・条件・対応地域を聞かれたら、必ず lookup_faq を呼び、返ってきた answer の範囲だけで答えます。
+  日程の空きや訪問の可否は呼ばずに、「担当の者から折り返しお電話して、日程をご相談いたします。」とお伝えします。
+- 火や煙など危険の訴えがあったら flag_emergency を呼び、返ってきた指示に従います。
+"""
+
+# GPT-Live: the voice model only decides when to hand work to its backend (delegation policy of OpenAI's guide).
+DELEGATION_POLICY = """\
+【裏方への頼み方】
+裏方（業務処理の担当）ができること：聞き取った内容の保存と、電話番号・日時の復唱の文づくり。料金・条件・対応地域の確認。
+日付と曜日の確認。回線の番号の確認。危険の訴えの記録。通話の終了。
+裏方に頼むとき：
+- お客様が店舗名・お名前・ご用件・電話番号・日時をおっしゃったとき、訂正されたとき
+- 電話番号・日時の復唱に、お客様が「はい」と答えたとき（次の復唱があれば、裏方が文を返します）
+- 料金・条件・対応地域や、日付・曜日を聞かれたとき
+- 火や煙など、危険の訴えがあったとき
+- 最後のあいさつを言い終えたとき
+裏方に頼まないとき：短い聞き返しや、相づちだけのとき。
+- 頼むときは、先に「かしこまりました。」などと短く返事をします。結果を推測して話しません。
+- 裏方の結果の「そのまま読む文：」は、一字一句変えずに読みます。
+- 「お伝えすること：」は、内容を変えずに、丁寧な言葉でお伝えします。
+- 「次にすること：」は声に出さず、そのとおりに進めます。
+"""
+
+# GPT-Live's backend (delegation) model: the procedures, the tools, the dates and the FAQ.
+BACKEND_RULES = """\
+【あなたの役割】あなたは、株式会社野田（飲食店の排煙ダクト・厨房換気設備の清掃と保守）の電話受付AIの裏方です。
+お客様と話すのは声のAIです。声のAIから頼まれたことを業務処理（ツール）で行い、結果を短く返します。
+【返し方】次の3つの形のどれかで、短く返します。ほかの説明は付けません。
+- 「そのまま読む文：」：業務処理の結果に say があるとき（read_back_now.say など）、その文を一字一句変えずに続けます。
+  数字や日付を読み替えません（0を「マル」と読む、「〇」と書く、などをしません）。
+- 「お伝えすること：」：お客様への答え（FAQの答えなど）。内容を変えずに「〜でございます」「〜いたします」の丁寧な言い方に整えます。
+- 「次にすること：」：声のAIへの指示で、お客様には聞かせません。例：「次にすること：ご希望の日時を伺ってください。」
+  店舗名・お名前・ご用件・折り返しのお電話番号・ご希望の日時を伺い、確認も済んだら、
+  「次にすること：ご用件をまとめて確かめ、終わりのごあいさつに進んでください。」と返します。
+【業務処理（ツール）】
+- 電話番号と希望日時は、受け取ったらすぐ save_field で保存し、read_back_now.say を返します。
+- 店舗名・お名前・ご用件は save_fields でまとめて保存します（結果に read_back_now があれば、その say を返します）。
+  訂正された値は、save_field（1項目）で保存し直します。
+- 復唱にお客様が「はい」と答えたと伝えられたら、サーバーが確認済みにしています。confirm_field は呼ばなくてかまいません。
+  まだ復唱していない値があれば（read_back_later）、request_readback を呼び、返ってきた say を返します。
+- 料金・条件・対応範囲の質問は lookup_faq を呼び、answer の範囲だけで返します。
+  日程の空きや訪問の可否は FAQ ではないので呼ばず、「担当の者から折り返しお電話して、日程をご相談いたします。」と返します。
+- 火や煙が出ているなど明白な危険は flag_emergency(level="obvious")、曖昧なら "ambiguous"、判断できなければ "undetermined" を呼び、
+  返ってきた指示を返します。安全とは断定せず、訪問や時刻を約束しません。
+- 最後のあいさつを言い終えたと伝えられたら、end_call を呼びます。
+"""
+
+
+def voice_line_hint(has_line_number: bool) -> str:
+    """GPT-Live's voice model: whether the line delivered a number; the backend reads it (no digits here)."""
+    if has_line_number:
+        return ("【回線の番号】この電話には、回線の番号が届いています。折り返し先を伺うときは、まず裏方に回線の番号の確認を頼み、"
+                "返ってきた文をそのまま読みます。お客様が先に番号をおっしゃったときは、その番号を裏方に伝えます。")
+    return "【回線の番号】この電話は非通知です。折り返し先のお電話番号は、必ず口頭で伺います。"
+
+
+def backend_line_block(has_line_number: bool) -> str:
+    if has_line_number:
+        return ("【回線の番号】この電話には、回線の番号が届いています。\n"
+                "- 折り返し先の確認を頼まれたら、offer_line_number を呼び、read_back_now.say を返します。\n"
+                "- お客様が別の番号をおっしゃったら、save_field で保存し、read_back_now.say を返します。")
+    return "【回線の番号】この電話は非通知か、回線の番号が届いていません。offer_line_number は呼びません。"
+
+
 def line_block(has_line_number: bool) -> str:
     """Whether the line delivered the caller's number. The digits themselves are not in the instructions: the
     tool returns the exact words, so the AI cannot read them its own way (user request 2026-10-14)."""
@@ -75,15 +149,20 @@ def line_block(has_line_number: bool) -> str:
             "offer_line_number は呼びません。")
 
 
-def date_block(call_time: dt.datetime, days: int = DAYS_AHEAD) -> str:
+def today_line(call_time: dt.datetime) -> str:
+    today = call_time.date()
+    return (f"【今日】{today.year}年{today.month}月{today.day}日（{WEEKDAY_KANJI[today.weekday()]}） "
+            f"{call_time.hour}時{call_time.minute:02d}分（日本時間。この通話の開始時）")
+
+
+def date_block(call_time: dt.datetime, days: int = DAYS_AHEAD, brief: bool = False) -> str:
     """Today's date and a look-up table of the next days, so the model reads 「明後日」「来週の火曜」 off the table
-    instead of computing weekdays itself (2026-10-08: the AI did not know what day 「明後日」 was)."""
+    instead of computing weekdays itself (2026-10-08: the AI did not know what day 「明後日」 was).
+    brief: the table with three rules (the short prompt, 2026-10-14)."""
     today = call_time.date()
     monday = today - dt.timedelta(days=today.weekday())
     w = WEEKDAY_KANJI
-    lines = [f"【今日】{today.year}年{today.month}月{today.day}日（{w[today.weekday()]}） "
-             f"{call_time.hour}時{call_time.minute:02d}分（日本時間。この通話の開始時）",
-             "【日付の早見表】"]
+    lines = [today_line(call_time), "【日付の早見表】"]
     d2 = today + dt.timedelta(days=2)
     for i in range(days):
         d = today + dt.timedelta(days=i)
@@ -92,6 +171,11 @@ def date_block(call_time: dt.datetime, days: int = DAYS_AHEAD) -> str:
         if week in _WEEK:
             names.append(f"{_WEEK[week]}の{w[d.weekday()]}曜")
         lines.append(f"- {d.month}/{d.day}（{w[d.weekday()]}）" + ("：" + "・".join(names) if names else ""))
+    if brief:
+        return "\n".join(lines + [
+            "- 「明日」「明後日」「来週の◯曜」は、この表で日付と曜日に直します。曜日を自分で計算しません。",
+            f"- save_field には、{d2.isoformat()}（時刻があれば {d2.isoformat()}T14:00）のような具体的な日付で保存します。",
+            "- 深夜0時〜5時の「明日」、土日の「来週の◯曜」、表より先の日は、日付と曜日をお客様に確かめます。"])
     lines += [
         "- 「明日」「明後日」「来週の◯曜」などは、上の表で具体的な日付と曜日に直します。曜日を自分で計算しません。",
         f"  聞かれたら「明後日は{d2.month}月{d2.day}日、{w[d2.weekday()]}曜日です」のように、表の日付と曜日で答えます。",

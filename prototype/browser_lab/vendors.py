@@ -155,8 +155,12 @@ def mint(cfg: dict, env: dict, http: Http = http_json, instructions: str = LAB_I
 
 
 def exchange_live_sdp(cfg: dict, env: dict, offer_sdp: str, http: Http = http_json,
-                      instructions: str = LAB_INSTRUCTIONS, voice: str | None = None) -> dict:
+                      instructions: str = LAB_INSTRUCTIONS, voice: str | None = None,
+                      backend_instructions: str | None = None) -> dict:
     """GPT-Live: the server posts the browser's offer to /v1/live/sessions with the key and returns the answer.
+
+    instructions go to the voice model and backend_instructions (default: the same text) to the backend model:
+    a short conversation prompt and the detailed steps in the backend (OpenAI's prompting guide, 2026-10-14).
 
     Business logic uses Responses delegation: the backend model gets the reception tools as functions and its
     function calls reach the page as response.event / response.output_item.done, which the page sends to the
@@ -165,8 +169,8 @@ def exchange_live_sdp(cfg: dict, env: dict, offer_sdp: str, http: Http = http_js
     body = {"session": {
         "model": cfg["model"], "instructions": instructions, "audio": {"output": {"voice": voice or "marin"}},
         "delegation": {"type": "responses", "responses": {
-            "model": model, "instructions": instructions, "tools": _function_tools(), "tool_choice": "auto",
-            "parallel_tool_calls": False, "max_output_tokens": MAX_OUTPUT_TOKENS}},
+            "model": model, "instructions": backend_instructions or instructions, "tools": _function_tools(),
+            "tool_choice": "auto", "parallel_tool_calls": False, "max_output_tokens": MAX_OUTPUT_TOKENS}},
         "store": False},
         "transport": {"type": "webrtc", "sdp": offer_sdp}}
     _, data = http("POST", "https://api.openai.com/v1/live/sessions",

@@ -31,13 +31,15 @@ CANDIDATES = {
         "name": "OpenAI GPT-Live 1", "adapter": "gpt-live", "env": ["OPENAI_API_KEY"], "vendor": "openai_lab",
         "model": "gpt-live-1", "upper_usd_per_min": 0.06, "increment_s": 1, "verified": False,
         "logic_path": "delegation_responses", "applies": {"instructions": "session", "voice": "session"},
+        "prompt_style": "voice_and_backend",   # short prompt for the voice model, the steps for the backend (2026-10-14)
         "delegation_model_env": "GPT_LIVE_DELEGATION_MODEL", "delegation_model_default": "gpt-6-luna",
         "note": "日本語の対応は公式に明記がない（最初に確かめる）。業務処理は delegation（Responses）の裏方のモデルへ。"
                 "裏方のモデルは別料金で、GPT_LIVE_DELEGATION_MODEL で指定（既定 gpt-6-luna）"},
     "gemini-3.8-live": {
         "name": "Google Gemini 3.8 Live", "adapter": "gemini-live", "env": ["GEMINI_API_KEY"], "vendor": "google_lab",
         "model": "models/gemini-3.8-live", "upper_usd_per_min": 0.06, "increment_s": 60, "verified": False,
-        "logic_path": "function_call", "applies": {"instructions": "session", "voice": "session"}},
+        "logic_path": "function_call", "applies": {"instructions": "session", "voice": "session"},
+        "prompt_style": "short"},   # short prompt; the steps are in the tool descriptions and results (2026-10-14)
     "elevenagents": {
         "name": "ElevenLabs ElevenAgents（Expressive mode）", "adapter": "elevenlabs",
         "env": ["ELEVENLABS_API_KEY", "ELEVENLABS_AGENT_ID"], "vendor": "elevenlabs_lab",
@@ -141,6 +143,12 @@ LAB_RULES = """\
 - 電話番号・日時は、区切りごとにはっきり復唱し、合っているかを確かめます。「はい、違います」は肯定ではありません。
 """
 # used only when no reception service is attached; the service builds the same blocks from the call's settings
+# The opening of the short prompts (GPT-Live 1, Gemini 3.8 Live; 2026-10-14). The greeting itself is sent by the page.
+LAB_PERSONA = """\
+あなたは株式会社野田（飲食店の排煙ダクト・厨房換気設備の清掃と保守）の電話受付AIです。これは試験です。
+AIによる受付として、ご用件を伺い、担当の者から折り返しお電話するようにお取り次ぎします。必ず日本語で話します。
+"""
+
 LAB_INSTRUCTIONS = LAB_RULES + "\n" + SPEECH_MANNERS + "\n" + TOOL_RULES + "\n" + MOCK_FAQ
 
 

@@ -19,11 +19,12 @@ from dataclasses import asdict
 
 from ..concierge.call_flow import CallFlow, Consent
 from ..concierge.confirmation import FieldState, Status
-from ..concierge.prompts import BASE_INSTRUCTIONS, SPEECH_MANNERS
+from ..concierge.prompts import BASE_INSTRUCTIONS, SPEECH_MANNERS, VOICE_RULES
 from ..concierge.readings import digits_only
 from ..engines.tools import READBACK_FIELDS, ToolHandler
 from . import settings as S
-from .faq import TOOL_RULES, date_block, faq_block, faq_lookup, line_block
+from .faq import (BACKEND_RULES, DELEGATION_POLICY, DIRECT_TOOL_RULES, TOOL_RULES, backend_line_block,
+                  date_block, faq_block, faq_lookup, line_block, today_line, voice_line_hint)
 from .speech_consent import detect as detect_spoken_consent
 from .notify import Outbox
 from .routing import Decision, decide
@@ -276,6 +277,29 @@ class ReceptionService:
         at = parse_at(snap["decision"]["at_jst"])
         return (preamble.rstrip() + "\n" + SPEECH_MANNERS + "\n" + TOOL_RULES + "\n" + line_block(bool(call["caller_id"]))
                 + "\n" + date_block(at) + "\n" + faq_block(snap["faqs"]))
+
+    def voice_instructions(self, call_id: str, preamble: str, backend: bool) -> str:
+        """The short conversation prompt (2026-10-14): role, speaking style, what to ask, guardrails, the end.
+        backend=True (GPT-Live): when to hand work to the backend model, which gets backend_instructions().
+        backend=False (Gemini): short tool rules and the date table; the FAQ comes only from lookup_faq."""
+        call = self._call(call_id)
+        at = parse_at(json.loads(call["snapshot"])["decision"]["at_jst"])
+        has_line = bool(call["caller_id"])
+        if backend:
+            parts = [VOICE_RULES.format(end="裏方に、最後のあいさつを言い終えたことを伝えます"), DELEGATION_POLICY,
+                     voice_line_hint(has_line), today_line(at) + "。日付や曜日は自分で計算せず、裏方に確かめます。"]
+        else:
+            parts = [VOICE_RULES.format(end="end_call を呼びます"), DIRECT_TOOL_RULES, line_block(has_line),
+                     date_block(at, brief=True)]
+        return "\n".join(part.rstrip() for part in [preamble, *parts])
+
+    def backend_instructions(self, call_id: str) -> str:
+        """GPT-Live's backend (delegation) model: the procedures, the tools, the dates and this call's FAQ."""
+        call = self._call(call_id)
+        snap = json.loads(call["snapshot"])
+        at = parse_at(snap["decision"]["at_jst"])
+        return "\n".join([BACKEND_RULES.rstrip(), backend_line_block(bool(call["caller_id"])), date_block(at),
+                          faq_block(snap["faqs"])])
 
     def snapshot(self, call_id: str) -> dict:
         return json.loads(self._call(call_id)["snapshot"])

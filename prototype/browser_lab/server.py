@@ -41,8 +41,8 @@ from ..concierge.readings import digits_only, is_valid_jp_number
 from ..reception.service import ReceptionService
 from ..reception.store import DEFAULT_DB, Store, dumps, iso, now_jst
 from . import vendors, wsclient
-from .config import (APPLY_LABELS, CANDIDATES, DELEGATION_PRICES, LAB_LIMITS, LAB_LIMITS_BY_STAGE, LAB_RULES,
-                     LAB_STAGES, LOGIC_PATHS, MAX_BACKEND_RESPONSES, MAX_MINT_FAILURES, MAX_RESPONSE_CREATES,
+from .config import (APPLY_LABELS, CANDIDATES, DELEGATION_PRICES, LAB_LIMITS, LAB_LIMITS_BY_STAGE, LAB_PERSONA,
+                     LAB_RULES, LAB_STAGES, LOGIC_PATHS, MAX_BACKEND_RESPONSES, MAX_MINT_FAILURES, MAX_RESPONSE_CREATES,
                      MAX_SESSION_MIN, MAX_TOOL_CALLS, SESSION_GRACE_S, SESSIONS, apply_modes, delegation_model,
                      public_candidates, released, session_reserve_usd)
 
@@ -179,6 +179,17 @@ class Lab:
                 overrides["tts"] = {"voiceId": voice}
         return applied, voice, overrides
 
+    def _instructions(self, cfg: dict, call: dict) -> tuple[str, str | None]:
+        """(what the voice model gets, what GPT-Live's backend model gets). GPT-Live and Gemini get the short
+        prompt (2026-10-14); the held candidates keep the full one."""
+        style = cfg.get("prompt_style")
+        if style == "voice_and_backend":
+            return (self.service.voice_instructions(call["id"], LAB_PERSONA, backend=True),
+                    self.service.backend_instructions(call["id"]))
+        if style == "short":
+            return self.service.voice_instructions(call["id"], LAB_PERSONA, backend=False), None
+        return self.service.instructions(call["id"], preamble=LAB_RULES), None
+
     def start(self, candidate: str, fake_script: str | None = None, caller_id: str | None = None) -> dict:
         cfg = CANDIDATES.get(candidate)
         if cfg is None:
@@ -221,8 +232,12 @@ class Lab:
                 self._set(sid, status="not_started", end_reason="台帳の上限で開始しなかった")
                 raise
         call = self.service.start_call(dialed="browser-lab", source="browser_lab", force_ai=True, caller_id=caller)
-        instructions = self.service.instructions(call["id"], preamble=LAB_RULES)
+        instructions, backend_instructions = self._instructions(cfg, call)
         applied, voice, overrides = self._applied(cfg, candidate, call)
+        if cfg.get("prompt_style"):
+            applied["instructions"] += (f"／短い指示：声のモデルへ{len(instructions):,}字" +
+                                        (f"、裏方のモデルへ{len(backend_instructions):,}字（FAQを含む）"
+                                         if backend_instructions else "（FAQは lookup_faq で渡す）"))
         if overrides and "agent" in overrides:
             overrides["agent"]["prompt"]["prompt"] = instructions
             overrides["agent"]["firstMessage"] = vendors.GREETING
@@ -241,7 +256,8 @@ class Lab:
         self._set(sid, status="active", rid=rid, call_id=call["id"], last_seen=iso(now_jst()))
         with self.lock:
             self.sessions[sid] = {"candidate": candidate, "cfg": cfg, "rid": rid, "started": now,
-                                  "call_id": call["id"], "instructions": instructions, "voice": voice,
+                                  "call_id": call["id"], "instructions": instructions,
+                                  "backend_instructions": backend_instructions, "voice": voice,
                                   "sdp_done": False}
         return {"session_id": sid, "candidate": candidate, "adapter": cfg["adapter"], "verified": cfg["verified"],
                 "logic_path": LOGIC_PATHS[cfg["logic_path"]], "call_id": call["id"], "caller_id": caller,
@@ -273,7 +289,7 @@ class Lab:
             s["sdp_done"] = True
         try:
             out = vendors.exchange_live_sdp(s["cfg"], self.env, offer, self.http, instructions=s["instructions"],
-                                            voice=s["voice"])
+                                            voice=s["voice"], backend_instructions=s["backend_instructions"])
         except vendors.VendorError as exc:
             print(f"[会話試験] {CANDIDATES[row['candidate']]['name']} の接続に失敗：{exc}", flush=True)
             if exc.rejected:   # refused with 4xx: no session exists, nothing to bill

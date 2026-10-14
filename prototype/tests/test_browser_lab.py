@@ -173,8 +173,10 @@ class LabBusinessLogicTest(unittest.TestCase):
         many = next(t for t in body["delegation"]["responses"]["tools"] if t["name"] == "save_fields")
         self.assertEqual(sorted(many["parameters"]["required"]), sorted(many["parameters"]["properties"]))   # strict
         self.assertEqual(body["delegation"]["responses"]["model"], "gpt-6-luna")
-        self.assertIn("点検は無料です。", body["instructions"])            # FAQ from the admin settings
-        self.assertNotIn("2万5千円", body["instructions"])                  # disabled FAQ is not given
+        backend = body["delegation"]["responses"]["instructions"]
+        self.assertIn("点検は無料です。", backend)                          # FAQ from the admin settings
+        self.assertNotIn("2万5千円", backend)                               # disabled FAQ is not given
+        self.assertNotIn("点検は無料です。", body["instructions"])          # the voice model's prompt is short
         self.assertNotIn("secret-key", json.dumps(body))
         with self.assertRaises(ValueError):                                 # one vendor session per reservation
             lab.sdp(s["session_id"], "offer")
@@ -426,7 +428,8 @@ class LabSessionControlTest(unittest.TestCase):
         setup1 = g1["credentials"]["setup"]["setup"]
         self.assertEqual(setup1["speechConfig"]["voiceConfig"]["prebuiltVoiceConfig"]["voiceName"], "Kore")
         self.assertIn("Kore（管理画面の設定）", g1["applied"]["voice"])
-        self.assertIn("点検は無料です。", setup1["systemInstruction"]["parts"][0]["text"])
+        # the short prompt (2026-10-14): Gemini gets the FAQ of the call's snapshot through lookup_faq only
+        self.assertNotIn("点検は無料です。", setup1["systemInstruction"]["parts"][0]["text"])
         # change the voice and disable a FAQ while g1 is still running
         _, cfg, _ = lab.service.config()
         cfg["voices"] = [v if v["candidate"] != "gemini-3.8-live" else {**v, "voice": "Aoede"} for v in cfg["voices"]]
