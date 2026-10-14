@@ -426,9 +426,11 @@ async function start() {
     st.ac.createMediaStreamSource(st.mic).connect(st.micAnalyser);
     $("status").textContent = "接続中";
     const fakeScript = new URLSearchParams(location.search).get("fake_script") || undefined;
-    st.session = await post("api/session/start", { candidate: cand.id, fake_script: fakeScript });
+    st.session = await post("api/session/start", { candidate: cand.id, fake_script: fakeScript,
+      caller_id: $("callerId").value.trim() || undefined });
     st.t0 = performance.now();
     log("session_start", { candidate: cand.id, verified: st.session.verified, call_id: st.session.call_id, voice: st.session.voice,
+      line_number: st.session.caller_id || "非通知",
       applied: st.session.applied, counts: st.session.counts });
     if (!st.session.verified) log("注意", "この構成は公式資料に沿って書いたが、接続はまだ確かめていない");
     const c = st.session.counts || {};

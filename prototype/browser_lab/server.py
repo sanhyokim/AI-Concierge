@@ -37,6 +37,7 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from ..engines.budget import DEFAULT_LEDGER, BudgetExceeded, UsageLedger
+from ..concierge.readings import digits_only, is_valid_jp_number
 from ..reception.service import ReceptionService
 from ..reception.store import DEFAULT_DB, Store, dumps, iso, now_jst
 from . import vendors, wsclient
@@ -178,10 +179,13 @@ class Lab:
                 overrides["tts"] = {"voiceId": voice}
         return applied, voice, overrides
 
-    def start(self, candidate: str, fake_script: str | None = None) -> dict:
+    def start(self, candidate: str, fake_script: str | None = None, caller_id: str | None = None) -> dict:
         cfg = CANDIDATES.get(candidate)
         if cfg is None:
             raise ValueError(f"unknown candidate {candidate}")
+        caller = digits_only(caller_id or "") or None   # a fictitious line number typed on the page (no phone line)
+        if caller and not is_valid_jp_number(caller):
+            raise ValueError("回線の番号は、0から始まる10桁か11桁の番号を入れてください（架空の番号。空欄は非通知）")
         if cfg.get("hold") and candidate not in released(self.env):
             raise SessionLimit(f"保留中の候補です：{cfg['hold']}（解除は利用者の承認の後、LAB_RELEASE_HOLD）")
         missing = [k for k in cfg["env"] if not self.env.get(k)]
@@ -216,7 +220,7 @@ class Lab:
             except BudgetExceeded:
                 self._set(sid, status="not_started", end_reason="台帳の上限で開始しなかった")
                 raise
-        call = self.service.start_call(dialed="browser-lab", source="browser_lab", force_ai=True)
+        call = self.service.start_call(dialed="browser-lab", source="browser_lab", force_ai=True, caller_id=caller)
         instructions = self.service.instructions(call["id"], preamble=LAB_RULES)
         applied, voice, overrides = self._applied(cfg, candidate, call)
         if overrides and "agent" in overrides:
@@ -240,7 +244,7 @@ class Lab:
                                   "call_id": call["id"], "instructions": instructions, "voice": voice,
                                   "sdp_done": False}
         return {"session_id": sid, "candidate": candidate, "adapter": cfg["adapter"], "verified": cfg["verified"],
-                "logic_path": LOGIC_PATHS[cfg["logic_path"]], "call_id": call["id"],
+                "logic_path": LOGIC_PATHS[cfg["logic_path"]], "call_id": call["id"], "caller_id": caller,
                 "config_version": call["config_version"], "faq_codes": call["faq_codes"], "voice": voice,
                 "applied": applied, "stage": self.stage, "counts": self.counts(candidate),
                 "limits": {"tool_calls": MAX_TOOL_CALLS, "backend_responses": MAX_BACKEND_RESPONSES,
@@ -517,7 +521,7 @@ def api_post(lab: Lab, path: str, body: dict) -> tuple[int, dict]:
     sid = body.get("session_id", "")
     try:
         if path == "/api/session/start":
-            return 200, lab.start(body.get("candidate", ""), body.get("fake_script"))
+            return 200, lab.start(body.get("candidate", ""), body.get("fake_script"), body.get("caller_id"))
         if path == "/api/session/sdp":
             return 200, lab.sdp(sid, body.get("sdp", ""))
         if path == "/api/session/end":

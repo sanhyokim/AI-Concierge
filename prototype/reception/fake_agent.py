@@ -45,6 +45,7 @@ class RuleAgent:
         self.skip: set[str] = set()            # fields the settings say not to store
         self.done = False
         self.unclear_day: list = []          # candidate dates of an ambiguous 「来週の火曜」 or late-night 「明日」
+        self.line_offered = False            # asked once whether to call back on the line's number
 
     # --- entry points ----------------------------------------------------------------------------------
     def greeting(self) -> list[str]:
@@ -78,6 +79,12 @@ class RuleAgent:
         have = self._values()
         for f in ORDER:
             if f not in self.skip and not (have.get(f) or {}).get("value"):
+                if f == "callback_number" and not self.line_offered:   # the line's number first (spec 2)
+                    self.line_offered = True
+                    res = self._tool("offer_line_number")
+                    if res.get("read_back_now"):
+                        self.awaiting = f
+                        return [res["read_back_now"]["say"]]
                 return [ASK[f]]
         self.done = True
         return [CLOSING]

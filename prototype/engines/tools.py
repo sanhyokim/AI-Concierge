@@ -119,14 +119,14 @@ class ToolHandler:
         return {"field": field, "read_this_clearly": reading, "then_ask": THEN_ASK,
                 "say": f"復唱いたします。{reading}。{THEN_ASK}"}
 
-    def save(self, field: str, value: str, t_ms: int | None = None) -> str:
+    def save(self, field: str, value: str, t_ms: int | None = None, source: str = "speech") -> str:
         """Store a heard value. The same value again keeps a confirmation already given (the model often
         re-sends every value at the end of the call)."""
         state = self.store.get(field)
         value = self._normalize(field, value)
         if state.status == Status.CONFIRMED and state.value == value:
             return state.status.value
-        return state.hear(value, t_ms=t_ms).value
+        return state.hear(value, source=source, t_ms=t_ms).value
 
     def needs_readback(self, field: str) -> bool:
         f = self.store.fields.get(field)

@@ -43,13 +43,13 @@ CANDIDATES = {
         "env": ["ELEVENLABS_API_KEY", "ELEVENLABS_AGENT_ID"], "vendor": "elevenlabs_lab",
         "upper_usd_per_min": 0.12, "increment_s": 60, "verified": False, "logic_path": "client_tools",
         "applies": {"instructions": "override", "voice": "override"}, "hold": HOLD_BY_USER,
-        "note": "エージェントと client tools（7つ）はElevenLabsの画面で作る（docs/browser-lab-setup.md）"},
+        "note": "エージェントと client tools（8つ）はElevenLabsの画面で作る（docs/browser-lab-setup.md）"},
     "cartesia-agents": {
         "name": "Cartesia Managed Agents", "adapter": "cartesia", "env": ["CARTESIA_API_KEY", "CARTESIA_AGENT_ID"],
         "vendor": "cartesia_lab", "upper_usd_per_min": 0.10, "increment_s": 60, "verified": False,
         "cartesia_version": "2026-08-14", "logic_path": "client_tools",
         "applies": {"instructions": "agent_fixed", "voice": "agent_fixed"}, "hold": HOLD_BY_USER,
-        "note": "エージェントと Client function（7つ）はCartesiaの画面で作る。新しいWebSocket（/v1/agents/websocket）で接続"},
+        "note": "エージェントと Client function（8つ）はCartesiaの画面で作る。新しいWebSocket（/v1/agents/websocket）で接続"},
     "gpt-realtime-2.1": {
         "name": "OpenAI GPT-Realtime-2.1（比較の基準）", "adapter": "openai-realtime", "env": ["OPENAI_API_KEY"],
         "vendor": "openai_lab", "model": "gpt-realtime-2.1", "voice": "marin", "upper_usd_per_min": 0.30,

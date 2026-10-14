@@ -62,6 +62,19 @@ TOOL_RULES = """\
 """
 
 
+def line_block(has_line_number: bool) -> str:
+    """Whether the line delivered the caller's number. The digits themselves are not in the instructions: the
+    tool returns the exact words, so the AI cannot read them its own way (user request 2026-10-14)."""
+    if has_line_number:
+        return ("【回線の番号】この電話には、回線の番号（お客様がおかけの電話番号）が届いています。\n"
+                "- 折り返し先を伺うときは、まず offer_line_number を呼び、返ってきた read_back_now.say をそのまま読みます。\n"
+                "- お客様が「はい」とおっしゃれば、その番号で承ります（サーバーが確認済みにします）。\n"
+                "- 別の番号をおっしゃったら、save_field で保存し、返ってきた say で復唱します。\n"
+                "- お客様が先に番号をおっしゃったときは、offer_line_number を呼ばずに、その番号を保存して復唱します。")
+    return ("【回線の番号】この電話は非通知か、回線の番号が届いていません。折り返し先のお電話番号は、必ず口頭で伺います。"
+            "offer_line_number は呼びません。")
+
+
 def date_block(call_time: dt.datetime, days: int = DAYS_AHEAD) -> str:
     """Today's date and a look-up table of the next days, so the model reads 「明後日」「来週の火曜」 off the table
     instead of computing weekdays itself (2026-10-08: the AI did not know what day 「明後日」 was)."""

@@ -20,7 +20,7 @@
   .grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
   section { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
   label { display: block; margin: 6px 0; }
-  select, input[type=number], textarea { width: 100%; font: inherit; color: inherit; background: var(--bg);
+  select, input[type=number], input[type=tel], textarea { width: 100%; font: inherit; color: inherit; background: var(--bg);
            border: 1px solid var(--line); border-radius: 6px; padding: 6px; }
   button { font: inherit; padding: 7px 14px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); cursor: pointer; }
   button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
@@ -64,6 +64,8 @@
         <select id="output"><option value="headset">ヘッドセット（推奨）</option><option value="speaker">スピーカー</option></select></label>
       <label><input type="checkbox" id="echo" checked> エコー抑制（ブラウザーの機能）</label>
       <label>試験の回 <input type="number" id="round" value="1" min="1"></label>
+      <label>回線の番号（架空。電話でお客様の番号が届いた想定。空欄は非通知）
+        <input id="callerId" type="tel" placeholder="例 090-1111-2222" autocomplete="off"></label>
       <div class="row">
         <button class="primary" id="startBtn">会話を始める</button>
         <button id="stopBtn" disabled>終える</button>

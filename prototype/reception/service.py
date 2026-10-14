@@ -23,12 +23,12 @@ from ..concierge.prompts import BASE_INSTRUCTIONS, SPEECH_MANNERS
 from ..concierge.readings import digits_only
 from ..engines.tools import READBACK_FIELDS, ToolHandler
 from . import settings as S
-from .faq import TOOL_RULES, date_block, faq_block, faq_lookup
+from .faq import TOOL_RULES, date_block, faq_block, faq_lookup, line_block
 from .speech_consent import detect as detect_spoken_consent
 from .notify import Outbox
 from .routing import Decision, decide
 from .store import Store, dumps, iso, now_jst, parse_at
-from .summary import build_summary, notification_body
+from .summary import build_summary, line_entry, notification_body
 
 AI_STATES = ("ai_conversation", "human_request_pending")
 EMERGENCY_ORDER = ("undetermined", "ambiguous", "obvious")
@@ -271,10 +271,11 @@ class ReceptionService:
         return self._ai_block_reason(self._call(call_id), self._session(call_id)) is None
 
     def instructions(self, call_id: str, preamble: str = BASE_INSTRUCTIONS) -> str:
-        snap = json.loads(self._call(call_id)["snapshot"])
+        call = self._call(call_id)
+        snap = json.loads(call["snapshot"])
         at = parse_at(snap["decision"]["at_jst"])
-        return (preamble.rstrip() + "\n" + SPEECH_MANNERS + "\n" + TOOL_RULES + "\n" + date_block(at) + "\n"
-                + faq_block(snap["faqs"]))
+        return (preamble.rstrip() + "\n" + SPEECH_MANNERS + "\n" + TOOL_RULES + "\n" + line_block(bool(call["caller_id"]))
+                + "\n" + date_block(at) + "\n" + faq_block(snap["faqs"]))
 
     def snapshot(self, call_id: str) -> dict:
         return json.loads(self._call(call_id)["snapshot"])
@@ -366,6 +367,8 @@ class ReceptionService:
                 res = self._emergency(call, args)
             elif name == "save_fields":
                 res, logged_args = self._save_fields(sess, snap, args)
+            elif name == "offer_line_number":
+                res = self._offer_line_number(call, sess, snap)
             elif name == "end_call":
                 # the AI said its last words; the page (or the phone side) hangs up after the caller had the chance
                 res = {"ok": True, "hangup": True, "hangup_wait_ms": int(S.HANGUP_WAIT_S * 1000),
@@ -412,6 +415,26 @@ class ReceptionService:
             res["read_back_later"] = {"fields": pending[1:],
                                       "how": "お客様が「はい」と答えた後で、request_readback を呼んで復唱する"}
         return res, logged
+
+    def _offer_line_number(self, call: dict, sess: CallSession, snap: dict) -> dict:
+        """Ask whether to call back on the number the line delivered (spec 2: the first way to get the callback
+        number). The number is saved as the callback number (source: the line) and read back; only the caller's
+        clear 「はい」 to that read-back confirms it, as for a number said aloud (user request 2026-10-14)."""
+        if not snap["config"]["fields"]["callback_number"]["store"]:
+            return {"ok": False, "reason": "field_not_storable", "say": "この項目は、設定により伺いません。次の質問へ進んでください。"}
+        caller = call["caller_id"]
+        if not caller:
+            return {"ok": False, "reason": "no_line_number",
+                    "note": "非通知か、回線の番号が届いていません。折り返し先のお電話番号を口頭で伺ってください。"}
+        state = sess.tools.store.fields.get("callback_number")
+        if state and state.status == Status.CONFIRMED:
+            return {"ok": True, "already_confirmed": True, "note": "折り返し先は確認済みです。伺い直さないでください。"}
+        sess.tools.save("callback_number", caller, source="line")
+        now = sess.tools.start_readback("callback_number")
+        now["say"] = (f"折り返しのお電話は、いまおかけいただいているお電話番号、{now['read_this_clearly']}で、"
+                      "よろしいでしょうか。")
+        return {"ok": True, "read_back_now": now,
+                "if_no": "別の番号をおっしゃったら save_field で保存し、返ってきた say で復唱します"}
 
     def _add_open_question(self, call: dict, question: str, snap: dict) -> None:
         qs = json.loads(call["open_questions"])
@@ -525,7 +548,7 @@ class ReceptionService:
         snap = json.loads(call["snapshot"])
         kinds = json.loads(call["notify_kinds"]) + ([f"emergency_{call['emergency']}"] if call["emergency"] else [])
         summ = build_summary(self._fields(call["id"]), snap["config"], json.loads(call["open_questions"]), kinds,
-                             corrected)
+                             corrected, caller_id=call["caller_id"])
         self.store.x("INSERT INTO summaries(call_id, version, text, items, review, reason, created_at) "
                      "VALUES(?, ?, ?, ?, ?, ?, ?)", (call["id"], version, summ["text"], dumps(summ["items"]),
                                                      dumps(summ["review"]), reason, iso(self.clock())))
@@ -560,7 +583,8 @@ class ReceptionService:
         if not latest:
             raise ValueError("この受付には要約がありません（担当者へ転送した通話、または通話中）")
         kinds = json.loads(call["notify_kinds"]) + ([f"emergency_{call['emergency']}"] if call["emergency"] else [])
-        summ = {"items": json.loads(latest["items"]), "kinds": kinds}
+        items = json.loads(latest["items"])
+        summ = {"items": items, "kinds": kinds, "line": line_entry(call["caller_id"], items)}
         res = self._enqueue(call, latest["version"], summ)
         self.store.audit(user, "notification_reinject", call_id, {"version": latest["version"], **res})
         return res

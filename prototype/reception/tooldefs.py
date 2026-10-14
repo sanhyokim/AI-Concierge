@@ -34,6 +34,16 @@ RECEPTION_TOOLS = TOOLS + [
     },
     {
         "type": "function",
+        "name": "offer_line_number",
+        "description": ("折り返し先を伺うときに、まず呼ぶ。お客様がおかけの電話番号（回線の番号）に折り返してよいかを伺う言葉"
+                        "（read_back_now.say）が返るので、一字一句そのまま読む。回線の番号がなければ ok=false が返るので、口頭で伺う。"),
+        # one property: an object without properties may be refused by some vendors' schema checks
+        "parameters": {"type": "object",
+                       "properties": {"reason": {"type": "string", "description": "任意。空文字でよい"}},
+                       "required": []},
+    },
+    {
+        "type": "function",
         "name": "end_call",
         "description": ("最後のあいさつ（「お電話ありがとうございました。失礼いたします。」）を言い終えた後に呼ぶ。"
                         "これ以上は話さない。お客様が先に切るのを少し待ってから、こちらで電話を切る。"),
