@@ -75,6 +75,18 @@ class SetupPromptTest(unittest.TestCase):
         self.assertNotIn("OPENAI_API_KEY", env2)                 # three wrong shapes: not set
         self.assertIn("設定済み", "\n".join(self.said))
 
+    def test_both_shapes_of_google_key_are_accepted(self):
+        # AI Studio has made "auth keys" starting with AQ. since 2026-05-28 (2026-10-14: the user is about to make one)
+        for prefix, key in (("AQ.", "AQ." + "c" * 50), ("AIza", GEMINI)):
+            env, said = {"OPENAI_API_KEY": OPENAI}, []
+            setup.ask_keys(env, scripted(key), said.append)
+            self.assertEqual(env["GEMINI_API_KEY"], key)
+            self.assertIn(f"{prefix} で始まる {len(key)} 文字", "\n".join(said))
+        env = {"OPENAI_API_KEY": OPENAI}
+        setup.ask_keys(env, scripted("AQ", "AQ.short", "Aiza" + "d" * 35), self.said.append)
+        self.assertNotIn("GEMINI_API_KEY", env)
+        self.assertIn("AQ.・AIza で始まり", "\n".join(self.said))
+
 
 class WindowsStartFileTest(unittest.TestCase):
     def test_start_files_are_crlf_and_their_labels_exist(self):

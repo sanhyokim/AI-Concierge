@@ -18,8 +18,9 @@ from ..reception.store import Store
 
 MIN_PASSWORD = 8
 KEYS = (   # only the two candidates of the first connection check (user decision 2026-10-07)
-    ("OPENAI_API_KEY", "OpenAI（GPT-Live 1）のAPIキー", "sk-"),
-    ("GEMINI_API_KEY", "Google AI Studio（Gemini 3.8 Live）のAPIキー", "AIza"),
+    ("OPENAI_API_KEY", "OpenAI（GPT-Live 1）のAPIキー", ("sk-",)),
+    # AI Studio has made "auth keys" (AQ.…) since 2026-05-28; keys made before that start with AIza
+    ("GEMINI_API_KEY", "Google AI Studio（Gemini 3.8 Live）のAPIキー", ("AQ.", "AIza")),
 )
 
 Ask = Callable[[str], str]
@@ -82,18 +83,20 @@ def ask_keys(env: dict | None = None, ask: Ask = getpass.getpass, say: Say = pri
     say("【APIキー】キーを貼り付けて Enter を押します。貼り付けても画面には何も表示されませんが、入っています。")
     say("  キーはこのPCのメモリーにだけ置き、ファイルには書きません（次に起動したときは、もう一度入力します）。")
     say("  まだキーがない・使わない場合は、何も入力せずに Enter を押してください（オフラインの模擬だけで動かせます）。")
-    for name, label, prefix in KEYS:
+    for name, label, prefixes in KEYS:
+        shape = "・".join(prefixes)
         if env.get(name):
             say(f"- {label}：設定済み（このPCの環境変数）")
             got[name] = "env"
             continue
         for attempt in range(tries):
-            value = _clean(ask(f"- {label}（{prefix}… で始まる）："))
+            value = _clean(ask(f"- {label}（{'… か '.join(prefixes)}… で始まる）："))
             if not value:
                 say("  → 入力なし。この候補は選べません。")
                 break
-            if not value.startswith(prefix) or len(value) < 20 or any(c.isspace() for c in value):
-                say(f"  → 形が違うようです（{prefix} で始まり、空白のない長い文字列のはずです）。もう一度貼り付けてください。")
+            prefix = next((p for p in prefixes if value.startswith(p)), None)
+            if not prefix or len(value) < 20 or any(c.isspace() for c in value):
+                say(f"  → 形が違うようです（{shape} で始まり、空白のない長い文字列のはずです）。もう一度貼り付けてください。")
                 continue
             env[name] = value
             got[name] = "typed"
