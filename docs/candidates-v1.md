@@ -26,13 +26,13 @@
 ### OpenAI GPT-Live 1（初回（試験の対象））
 
 - モデル・構成：gpt-live-1
-- 公式で確認：2026-09-10に一般提供（変更履歴）／同時に聞いて話す設計。業務処理は delegation（responses／client）で別のモデル・処理へ渡す／エンドポイントは /v1/live/sessions。Realtimeとは別のプロトコル（移行ガイドあり）／$0.05/分、秒単位の課金。バックエンドのモデルとツールは別料金
+- 公式で確認：2026-09-10に一般提供（変更履歴）／同時に聞いて話す設計。業務処理は delegation（responses／client）で別のモデル・処理へ渡す／エンドポイントは /v1/live/sessions。Realtimeとは別のプロトコル（移行ガイドあり）／$0.05/分、秒単位の課金。バックエンドのモデルとツールは別料金／2026-10-15に GPT-Live-1.1 が ChatGPT・Codex・dots に出た（日本語を含む訛りの改善、日本語の新しい声、裏方への任せ方が自然に、指示の効きの改善）。APIは「近日」で、2026-10-16の時点では使えない（APIのモデル一覧は gpt-live-1 だけ）
 - 日本語：公式の言語の一覧がなく、追加の声の表は英語・ポルトガル語だけ。言語は指示文で指定する（最初の接続で日本語の受付を確かめる）
 - 接続：ブラウザーはWebRTC。こちらのサーバーが鍵を使って POST /v1/live/sessions でSDPを交換する（ブラウザーに鍵を渡さない）。電話はSIP、またはサーバーのWebSocketで中継
 - 未確認：日本語の会話品質／発話の開始・終了と割り込みのイベント／バックエンドのモデルの費用（記号 L_live）
 - 自社で作るもの：自社の中継・業務処理が要る（delegationの受け口）
 - 位置づけの理由：同時に聞いて話す会話モデルの代表。相づち・訂正への対応を最初に確かめる
-- 出典：[1](https://developers.openai.com/api/docs/models/gpt-live-1)、[2](https://developers.openai.com/api/docs/guides/voice-webrtc?api=live)、[3](https://developers.openai.com/api/docs/guides/live-delegation)、[4](https://developers.openai.com/api/docs/guides/live-migration)、[5](https://developers.openai.com/api/docs/changelog)
+- 出典：[1](https://developers.openai.com/api/docs/models/gpt-live-1)、[2](https://developers.openai.com/api/docs/guides/voice-webrtc?api=live)、[3](https://developers.openai.com/api/docs/guides/live-delegation)、[4](https://developers.openai.com/api/docs/guides/live-migration)、[5](https://developers.openai.com/api/docs/changelog)、[6](https://community.openai.com/t/gpt-live-1-1-is-rolling-out-with-new-voices-and-better-accents/1406704)
 
 ### Google Gemini 3.8 Live（初回（試験の対象））
 
