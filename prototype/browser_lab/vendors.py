@@ -175,7 +175,9 @@ def exchange_live_sdp(cfg: dict, env: dict, offer_sdp: str, http: Http = http_js
             "model": cfg["model"], "instructions": instructions, "audio": {"output": {"voice": use_voice}},
             "delegation": {"type": "responses", "responses": {
                 "model": model, "instructions": backend_instructions or instructions, "tools": _function_tools(),
-                "tool_choice": "auto", "parallel_tool_calls": False, "max_output_tokens": MAX_OUTPUT_TOKENS}},
+                "tool_choice": "auto", "parallel_tool_calls": False, "max_output_tokens": MAX_OUTPUT_TOKENS,
+                **({"reasoning": {"effort": cfg["delegation_reasoning_effort"]}}
+                   if cfg.get("delegation_reasoning_effort") else {})}},
             "store": False},
             "transport": {"type": "webrtc", "sdp": offer_sdp}}
         return http("POST", "https://api.openai.com/v1/live/sessions",

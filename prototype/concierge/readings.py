@@ -85,7 +85,7 @@ _DAY_SPECIAL = {1: "ついたち", 2: "ふつか", 3: "みっか", 4: "よっか
                 20: "はつか", 24: "にじゅうよっか"}
 _ONES_NICHI = ["", "いち", "に", "さん", "よん", "ご", "ろく", "しち", "はち", "く"]
 _TENS = {1: "じゅう", 2: "にじゅう", 3: "さんじゅう", 4: "よんじゅう", 5: "ごじゅう"}
-_HOUR = {1: "いちじ", 2: "にじ", 3: "さんじ", 4: "よじ", 5: "ごじ", 6: "ろくじ", 7: "しちじ",
+_HOUR = {0: "ぜろじ", 1: "いちじ", 2: "にじ", 3: "さんじ", 4: "よじ", 5: "ごじ", 6: "ろくじ", 7: "しちじ",
          8: "はちじ", 9: "くじ", 10: "じゅうじ", 11: "じゅういちじ", 12: "じゅうにじ"}
 _MINUTE_ONES = {1: "いっぷん", 2: "にふん", 3: "さんぷん", 4: "よんぷん", 5: "ごふん",
                 6: "ろっぷん", 7: "ななふん", 8: "はっぷん", 9: "きゅうふん"}
@@ -116,6 +116,10 @@ def datetime_phrase(when: dt.datetime) -> tuple[str, str]:
     """Return (display, kana reading), e.g. ('10月6日、火曜日の、午後2時', 'じゅうがつむいか、…')."""
     ampm, ampm_kana = ("午前", "ごぜん") if when.hour < 12 else ("午後", "ごご")
     hour12 = when.hour % 12 or 12
+    if when.hour == 12:   # 「午後12時」 sounds wrong (2026-10-19 browser test): noon is お昼の12時
+        ampm, ampm_kana = "お昼の", "おひるの"
+    elif when.hour == 0:  # midnight: 午前0時, not the ambiguous 午前12時
+        ampm, ampm_kana, hour12 = "午前", "ごぜん", 0
     minute_display = f"{when.minute}分" if when.minute else ""
     display = (f"{when.month}月{when.day}日、{WEEKDAY_KANJI[when.weekday()]}曜日の、"
                f"{ampm}{hour12}時{minute_display}")

@@ -45,6 +45,7 @@ class Reply(str, Enum):
 
 # Affirmations that contain a negative-looking substring (間違い) are removed before the negative check,
 # so that the rest of the reply is still examined for a negation or a correction.
+_DATE_SPOKEN = r"(\d{1,2}|[〇一二三四五六七八九十]{1,3})月(\d{1,2}|[〇一二三四五六七八九十]{1,3})日|[月火水木金土日]曜"
 _AFFIRM_WITH_NEGATIVE_CHARS = ("間違いない", "間違いありません", "まちがいない", "まちがいありません")
 _NEGATIVE = ("違", "ちが", "いいえ", "いや", "じゃなく", "ではなく", "間違", "まちが", "そうじゃない")
 _AFFIRMATIVE = ("合って", "あって", "そうです", "その通り", "そのとおり", "それで大丈夫", "大丈夫です",
@@ -128,9 +129,12 @@ class FieldState:
         self._log("read_back_interrupted", t_ms, source=source)
         return True
 
+    spoke_now = False   # the AI's latest utterance read this value back correctly
+
     def check_spoken(self, ai_text: str, t_ms: int | None = None) -> str | None:
         """The AI's transcript while this read-back is pending. Returns what it said instead of the value, if
         it said a different number or date; a later confirmation is then refused until it reads back again."""
+        self.spoke_now = False
         if self.status != Status.AWAITING or not self.value:
             return None
         if self.name == "callback_number":
@@ -138,9 +142,11 @@ class FieldState:
             said_any = bool(spoken_digit_runs(ai_text))
         elif self.name == "preferred_datetime":
             wrong = spoken_datetime_mismatch(ai_text, self.value)
-            said_any = bool(re.search(r"(月|曜|時)", unicodedata.normalize("NFKC", ai_text)))
+            # the date itself (month and day, or the weekday): 「あさっての十二時ですね」 is not a read-back (2026-10-19)
+            said_any = bool(re.search(_DATE_SPOKEN, unicodedata.normalize("NFKC", ai_text)))
         else:
             return None
+        self.spoke_now = said_any and not wrong
         if wrong:
             self.readback_mismatch, self.readback_spoken_ok = wrong, False
             self._log("read_back_spoken_mismatch", t_ms, said=wrong)

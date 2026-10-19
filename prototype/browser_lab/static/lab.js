@@ -481,6 +481,8 @@ async function stop(reason) {
     st.session.duration_s = duration;
     log("session_end", { reason: reason || "試験者が終了", duration_s: Math.round(duration), estimate: st.session.ended,
       vendor_close: closeInfo.closed === undefined ? "対象外" : closeInfo.closed ? "業者の終了を確認" : "業者の終了・使用量は未確認" });
+    st.savedFile = null;
+    try { await save(true); } catch (e) { log("save_error", String(e.message || e)); }   // nothing is lost if the button is forgotten
     $("saveBtn").disabled = false;
   }
   st.conn = null;
@@ -507,7 +509,7 @@ window.addEventListener("pagehide", () => {
   } catch (e) { /* the watchdog expires it */ }
 });
 
-async function save() {
+async function save(auto) {
   const judgments = {}, audio = {}, logic = {};
   for (const s of SCENARIOS) {
     judgments[s.id] = {}; audio[s.id] = {}; logic[s.id] = {};
@@ -527,10 +529,13 @@ async function save() {
                   business_logic: { logic_path: st.session.logic_path, judgments: logic,
                                     note: "業務処理を含む比較。サーバーが業務処理を受け取らなかった会話は未評価" } },
     judgments, notes: $("notes").value, transcripts: st.transcripts, tool_calls: st.toolCalls, events: st.events,
+    replace: st.savedFile || null,   // one file per conversation: the button rewrites the file saved at the end
   };
   const r = await post("api/results", payload);
-  $("saved").textContent = `保存しました：${r.saved}`;
-  $("saveBtn").disabled = true;   // one file per conversation
+  st.savedFile = String(r.saved).split(/[\\/]/).pop();
+  $("saved").textContent = auto
+    ? `自動で保存しました：${r.saved}（判定とメモを書いたら「結果を保存」を押すと、同じファイルに書き足します）`
+    : `保存しました：${r.saved}`;
 }
 
 function renderStatic() {
@@ -590,7 +595,7 @@ async function loadCandidates() {
 
 $("startBtn").addEventListener("click", start);
 $("stopBtn").addEventListener("click", () => stop());
-$("saveBtn").addEventListener("click", save);
+$("saveBtn").addEventListener("click", () => save(false));
 $("refuseBtn").addEventListener("click", () => refuseAi().catch((e) => log("エラー", String(e.message || e))));
 renderStatic();
 loadCandidates();

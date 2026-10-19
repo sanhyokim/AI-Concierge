@@ -58,10 +58,14 @@ function fail(msg) { console.error("FAIL:", msg); process.exitCode = 1; }
       tools: window.__lab.toolCalls.length, kinds: [...new Set(window.__lab.events.map((e) => e.kind))] }));
     await page.click("#stopBtn");
     await page.waitForFunction(() => document.getElementById("status").textContent === "終了");
+    // saved on its own at the end (2026-10-19: a C1 was lost because the button was not pressed)
+    if (!(await page.textContent("#saved")).includes("自動で保存しました")) fail("not saved automatically at the end");
+    if (fs.readdirSync(path.join(tmp, "results")).length !== 1) fail("the automatic save should write one file");
     await page.selectOption("#j-C1-natural", "3");
     await page.click("#saveBtn");
-    await page.waitForFunction(() => document.getElementById("saved").textContent.includes("保存しました"));
+    await page.waitForFunction(() => document.getElementById("saved").textContent.startsWith("保存しました"));
     const files = fs.readdirSync(path.join(tmp, "results"));
+    if (files.length !== 1) fail("the button should rewrite the automatically saved file, not add one");
     const saved = JSON.parse(fs.readFileSync(path.join(tmp, "results", files[0]), "utf8"));
     if (stats.lat < 1) fail("no response latency measured");
     if (stats.tools < 1) fail("no tool call reached the server");

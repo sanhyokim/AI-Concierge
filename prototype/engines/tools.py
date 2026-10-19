@@ -66,6 +66,13 @@ class ToolHandler:
             wrong = f.check_spoken(text, t_ms)
             if wrong:
                 out[name] = wrong
+        # The caller's 「はい」 answers what the AI just read back, not what was saved last: on 2026-10-19 the
+        # number and the date were saved together, the AI read back the number, and the 「はい」 confirmed the date.
+        spoken = [name for name, f in self.store.fields.items() if f.spoke_now]
+        if len(spoken) == 1:
+            self._last_readback = spoken[0]
+        elif spoken:      # both in one breath: one 「はい」 cannot tell which; the model confirms each itself
+            self._last_readback = None
         return out
 
     def confirm_from_reply(self, t_ms: int | None = None) -> str | None:

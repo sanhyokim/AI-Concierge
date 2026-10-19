@@ -477,6 +477,13 @@ class Lab:
         ts = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
         cand = "".join(ch for ch in str(payload.get("candidate", "unknown")) if ch.isalnum() or ch in "-._")[:40]
         path = self.results_dir / f"{ts}-{cand}-{uuid.uuid4().hex[:6]}.json"
+        # The page saves on its own when a conversation ends (2026-10-19: a C1 was lost because the button was not
+        # pressed), and the button then rewrites that same file with the judgments. Only a file name already in
+        # this folder can be named, so the page cannot write anywhere else.
+        earlier = str(payload.pop("replace", "") or "")
+        if earlier and earlier == pathlib.Path(earlier).name and earlier.endswith(".json") \
+                and (self.results_dir / earlier).is_file():
+            path = self.results_dir / earlier
         sid = payload.get("session_id")
         row = self.store.q1("SELECT * FROM lab_sessions WHERE id = ?", (sid,)) if sid else None
         if row is not None:  # the record the server kept is what counts for the business-logic comparison

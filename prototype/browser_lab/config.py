@@ -33,6 +33,9 @@ CANDIDATES = {
         "logic_path": "delegation_responses", "applies": {"instructions": "session", "voice": "session"},
         "prompt_style": "voice_and_backend",   # short prompt for the voice model, the steps for the backend (2026-10-14)
         "delegation_model_env": "GPT_LIVE_DELEGATION_MODEL", "delegation_model_default": "gpt-6-luna",
+        # 2026-10-19 C1: the caller waited up to 30 s while the backend worked. OpenAI's delegation guide: "Use lower
+        # reasoning effort when it completes the task reliably". The backend only saves values and looks things up.
+        "delegation_reasoning_effort": "low",
         "note": "日本語の対応は公式に明記がない（最初に確かめる）。業務処理は delegation（Responses）の裏方のモデルへ。"
                 "裏方のモデルは別料金で、GPT_LIVE_DELEGATION_MODEL で指定（既定 gpt-6-luna）"},
     "gemini-3.8-live": {

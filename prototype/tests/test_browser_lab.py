@@ -142,6 +142,15 @@ class LabTest(unittest.TestCase):
         saved = json.loads(pathlib.Path(path).read_text(encoding="utf-8"))
         self.assertEqual(saved["path"], "browser_lab")
         self.assertEqual(len(saved["server_tool_calls"]), 3)
+        # the button rewrites the file saved at the end; any other name gets a new file in the results folder
+        again = lab.save_results({"candidate": "fake", "session_id": sid, "notes": "感想",
+                                  "replace": pathlib.Path(path).name})
+        self.assertEqual(again, path)
+        self.assertEqual(json.loads(pathlib.Path(path).read_text(encoding="utf-8"))["notes"], "感想")
+        for bad in ("../app.db", str(path), "missing.json"):
+            other = pathlib.Path(lab.save_results({"candidate": "fake", "replace": bad}))
+            self.assertNotEqual(str(other), path)
+            self.assertEqual(other.parent, pathlib.Path(path).parent)
 
 
 class LabBusinessLogicTest(unittest.TestCase):
@@ -173,6 +182,7 @@ class LabBusinessLogicTest(unittest.TestCase):
         many = next(t for t in body["delegation"]["responses"]["tools"] if t["name"] == "save_fields")
         self.assertEqual(sorted(many["parameters"]["required"]), sorted(many["parameters"]["properties"]))   # strict
         self.assertEqual(body["delegation"]["responses"]["model"], "gpt-6-luna")
+        self.assertEqual(body["delegation"]["responses"]["reasoning"], {"effort": "low"})   # 2026-10-19: 30 s waits
         backend = body["delegation"]["responses"]["instructions"]
         self.assertIn("点検は無料です。", backend)                          # FAQ from the admin settings
         self.assertNotIn("2万5千円", backend)                               # disabled FAQ is not given

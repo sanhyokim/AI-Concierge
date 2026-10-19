@@ -313,6 +313,30 @@ class ServiceTest(unittest.TestCase):
         self.assertEqual(svc.fields(cid)["callback_number"]["status"], "confirmed_by_caller")
         self.assertIn("confirmed_by_reply", [e["kind"] for e in svc.call_view(cid)["events"]])
 
+    def test_yes_confirms_what_the_ai_read_back_not_what_was_saved_last(self):
+        """2026-10-19 C1 (GPT-Live): the number and the date were saved together, the AI read back the number
+        after 「あさっての十二時ですね」, and the caller's 「はい」 confirmed the date."""
+        svc = service()
+        cid = svc.start_call(at="2026-10-19T15:31")["id"]
+        svc.caller_utterance(cid, "あさって大丈夫ですか?十二時ぐらいがお願いしたいです", "u1")
+        svc.tool(cid, "save_field", {"field": "callback_number", "value": "08056442050"})
+        svc.tool(cid, "save_field", {"field": "preferred_datetime", "value": "2026-10-21T12:00"})
+        svc.ai_utterance(cid, "承知いたしました。あさっての十二時ですね。復唱いたします。ゼロハチゼロの、ゴーロクヨンヨンの、"
+                              "ニーゼロゴーゼロ。こちらでお間違いないでしょうか。")
+        out = svc.caller_utterance(cid, "はい、そうです、あの日程の話じゃないんですか", "u2")
+        self.assertEqual(out.get("confirmed"), "callback_number")
+        self.assertEqual(svc.fields(cid)["preferred_datetime"]["status"], "awaiting_confirmation")
+        svc.ai_utterance(cid, "失礼いたしました。復唱いたします。10月21日、水曜日の、お昼の12時。こちらでお間違いないでしょうか。")
+        self.assertEqual(svc.caller_utterance(cid, "はい、そうです", "u3").get("confirmed"), "preferred_datetime")
+
+    def test_one_yes_to_two_read_backs_in_one_breath_confirms_neither(self):
+        svc = service()
+        cid = svc.start_call(at="2026-10-19T15:31")["id"]
+        svc.tool(cid, "save_field", {"field": "callback_number", "value": "08056442050"})
+        svc.tool(cid, "save_field", {"field": "preferred_datetime", "value": "2026-10-21T12:00"})
+        svc.ai_utterance(cid, "お電話番号はゼロハチゼロの、ゴーロクヨンヨンの、ニーゼロゴーゼロ、ご希望は10月21日、水曜日の、お昼の12時でよろしいでしょうか。")
+        self.assertIsNone(svc.caller_utterance(cid, "はい、そうです", "u1").get("confirmed"))
+
     def test_scheduling_questions_get_no_faq(self):
         from prototype.reception.faq import faq_lookup
         faqs = [{"code": c, "question": q, "answer": a, "keywords": k} for c, q, a, k in S.FAQ_SEEDS]
