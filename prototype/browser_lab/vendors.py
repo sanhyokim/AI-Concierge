@@ -25,6 +25,9 @@ Http = Callable[[str, str, dict, dict | None], tuple[int, dict | str]]
 ELEVENLABS_CLIENT_ESM = "https://cdn.jsdelivr.net/npm/@elevenlabs/client@1.26.0/+esm"
 
 
+FALLBACK_VOICE = "marin"   # GPT-Live's default voice, used when the chosen voice is refused
+
+
 class VendorError(RuntimeError):
     def __init__(self, message: str, status: int | None = None, unreached: bool = False,
                  certificate: bool = False) -> None:
@@ -166,17 +169,44 @@ def exchange_live_sdp(cfg: dict, env: dict, offer_sdp: str, http: Http = http_js
     function calls reach the page as response.event / response.output_item.done, which the page sends to the
     common reception service and answers with response.item.create + response.create."""
     model = delegation_model(cfg, env)
-    body = {"session": {
-        "model": cfg["model"], "instructions": instructions, "audio": {"output": {"voice": voice or "marin"}},
-        "delegation": {"type": "responses", "responses": {
-            "model": model, "instructions": backend_instructions or instructions, "tools": _function_tools(),
-            "tool_choice": "auto", "parallel_tool_calls": False, "max_output_tokens": MAX_OUTPUT_TOKENS}},
-        "store": False},
-        "transport": {"type": "webrtc", "sdp": offer_sdp}}
-    _, data = http("POST", "https://api.openai.com/v1/live/sessions",
-                   {"Authorization": f"Bearer {env['OPENAI_API_KEY']}", "Content-Type": "application/json"}, body)
+
+    def post(use_voice: str):
+        body = {"session": {
+            "model": cfg["model"], "instructions": instructions, "audio": {"output": {"voice": use_voice}},
+            "delegation": {"type": "responses", "responses": {
+                "model": model, "instructions": backend_instructions or instructions, "tools": _function_tools(),
+                "tool_choice": "auto", "parallel_tool_calls": False, "max_output_tokens": MAX_OUTPUT_TOKENS}},
+            "store": False},
+            "transport": {"type": "webrtc", "sdp": offer_sdp}}
+        return http("POST", "https://api.openai.com/v1/live/sessions",
+                    {"Authorization": f"Bearer {env['OPENAI_API_KEY']}", "Content-Type": "application/json"}, body)
+
+    fallback = None
+    try:
+        _, data = post(voice or FALLBACK_VOICE)
+    except VendorError as exc:
+        if not (voice and voice != FALLBACK_VOICE and voice_refused(exc)):
+            raise
+        # 2026-10-19: the first start with the new Japanese voice (harema) was refused with HTTP 400, and other
+        # accounts report the nine voices of 2026-10-16 refused. A 4xx creates no session, so ask once more with
+        # the default voice and say so on the page rather than stopping the test.
+        try:
+            _, data = post(FALLBACK_VOICE)
+        except VendorError as again:
+            raise VendorError(f"{again}（声 {voice} で断られたので {FALLBACK_VOICE} でも試しました。最初の返事：{exc}）"[:1400],
+                              again.status, again.unreached, again.certificate) from None
+        fallback = {"wanted": voice, "used": FALLBACK_VOICE, "reason": str(exc)[:600]}
     sdp = ((data.get("transport") or {}).get("sdp")) if isinstance(data, dict) else None
     if not sdp:
         raise VendorError("live/sessions: no transport.sdp in the response")
     sid = (data.get("session") or {}).get("id") or data.get("id")
-    return {"sdp": sdp, "vendor_session_id": sid or "unknown"}   # a session exists even if its id is missing
+    out = {"sdp": sdp, "vendor_session_id": sid or "unknown"}   # a session exists even if its id is missing
+    if fallback:
+        out["voice_fallback"] = fallback
+    return out
+
+
+def voice_refused(exc: VendorError) -> bool:
+    """A 4xx that names the voice, or a bare 4xx with no error text (nothing else to go on)."""
+    text = str(exc)
+    return exc.rejected and ("voice" in text.lower() or text.rstrip().endswith(f"HTTP {exc.status}"))

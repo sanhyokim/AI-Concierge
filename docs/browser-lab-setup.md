@@ -140,7 +140,7 @@
 
 | 構成 | 業者側で行うこと | 業務処理の経路 | 試験での注意 |
 | --- | --- | --- | --- |
-| GPT-Live 1 | OpenAIの試験用プロジェクトの鍵。会話の設定は、サーバーが接続のときに送る | delegation（Responses）。裏方のモデルに8つのツールを関数として渡し、関数呼び出しは `response.event` でブラウザーに届く。ブラウザーが共通の処理へ送り、`response.item.create`＋`response.create` で返す | 裏方のモデルは別料金（L_live）。声は `audio.output.voice`（既定は日本語の harema〔女性〕。男性の shida も登録済み。どちらも2026-10-16にAPIへ追加）。言語の設定欄はなく、指示文で日本語を指定する。発話・割り込みのイベントはない |
+| GPT-Live 1 | OpenAIの試験用プロジェクトの鍵。会話の設定は、サーバーが接続のときに送る | delegation（Responses）。裏方のモデルに8つのツールを関数として渡し、関数呼び出しは `response.event` でブラウザーに届く。ブラウザーが共通の処理へ送り、`response.item.create`＋`response.create` で返す | 裏方のモデルは別料金（L_live）。声は `audio.output.voice`（既定は日本語の harema〔女性〕。男性の shida も登録済み。どちらも2026-10-16にAPIへ追加。声が断られたときは、marin で一度だけつなぎ直して記録に残す）。言語の設定欄はなく、指示文で日本語を指定する。発話・割り込みのイベントはない |
 | Gemini 3.8 Live | Google AI Studioの鍵。無料枠は入出力がGoogleの改善に使われる条件なので、架空のデータだけで使う。有料枠は前払い | 関数呼び出し（`toolCall`／`toolResponse`） | 履歴はターンごとに課金されるため、履歴を短く保つ設定（contextWindowCompression）を送る。声は `prebuiltVoiceConfig`（既定 Kore。3.8で同じ名前が使えるかは未確認） |
 
 保留の候補（ElevenLabs・Cartesia・GPT-Realtime-2.1）の準備は、保留を解くときに改めて確かめます。ElevenLabs はエージェントと client tools を業者の画面で作り、Cartesia は新しいエージェントのWebSocket（`/v1/agents/websocket`）と Client function を使う構成で書いてあります。

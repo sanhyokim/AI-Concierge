@@ -302,6 +302,10 @@ class Lab:
                 raise vendors.VendorError(f"{exc}{CERT_HINT}", unreached=True, certificate=True) from None
             raise
         self._set(sid, vendor_session_id=out.get("vendor_session_id"))
+        if out.get("voice_fallback"):
+            fb = out["voice_fallback"]
+            s["voice"] = fb["used"]
+            print(f"[会話試験] 声 {fb['wanted']} は断られたので、{fb['used']} で接続しました：{fb['reason']}", flush=True)
         return out
 
     def _estimate(self, row: dict, rt: dict | None, duration_s: float, reason: str, final: bool = False) -> dict:

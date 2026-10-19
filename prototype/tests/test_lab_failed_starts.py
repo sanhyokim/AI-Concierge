@@ -210,3 +210,47 @@ class AdminReleaseTest(unittest.TestCase):
 if __name__ == "__main__":
     unittest.main()
 
+
+
+class VoiceFallbackTest(unittest.TestCase):
+    """2026-10-19: the first start with the new Japanese voice (harema) was refused with a bare HTTP 400."""
+    setUp, tearDown, lab, row = FailedStartTest.setUp, FailedStartTest.tearDown, FailedStartTest.lab, FailedStartTest.row
+
+    def voices(self, lab):
+        return [c["body"]["session"]["audio"]["output"]["voice"] for c in lab.http.calls]
+
+    def test_refused_voice_is_retried_once_with_marin(self):
+        url = "https://api.openai.com/v1/live/sessions"
+        for refusal in (vendors.VendorError(f"{url}: HTTP 400 ", 400),
+                        vendors.VendorError(url + ': HTTP 400 {"error": {"message": "Invalid value: harema", '
+                                            '"param": "session.audio.output.voice"}}', 400),
+                        vendors.VendorError(f"{url}: HTTP 403 Voice session access denied.", 403)):
+            lab = self.lab(refusal, LIVE_OK)
+            sid = lab.start("gpt-live-1")["session_id"]
+            out = lab.sdp(sid, "v=0 offer")
+            self.assertEqual(out["sdp"], "v=0 answer")
+            self.assertEqual(self.voices(lab), ["harema", "marin"])
+            self.assertEqual(out["voice_fallback"]["wanted"], "harema")
+            self.assertEqual(out["voice_fallback"]["used"], "marin")
+            self.assertEqual(lab.sessions[sid]["voice"], "marin")      # the results say which voice was heard
+            self.assertEqual(self.row(lab, sid)["status"], "active")
+
+    def test_other_refusals_are_not_retried(self):
+        lab = self.lab(http_400())                                     # names something else than the voice
+        sid = lab.start("gpt-live-1")["session_id"]
+        with self.assertRaises(vendors.VendorError):
+            lab.sdp(sid, "v=0 offer")
+        self.assertEqual(self.voices(lab), ["harema"])
+
+    def test_refused_twice_shows_both_answers(self):
+        url = "https://api.openai.com/v1/live/sessions"
+        lab = self.lab(vendors.VendorError(f"{url}: HTTP 400 ", 400),
+                       vendors.VendorError(url + ': HTTP 400 {"error": {"message": "other"}}', 400))
+        sid = lab.start("gpt-live-1")["session_id"]
+        with self.assertRaises(vendors.VendorError) as shown:
+            lab.sdp(sid, "v=0 offer")
+        self.assertIn("other", str(shown.exception))
+        self.assertIn("harema", str(shown.exception))
+        self.assertEqual(shown.exception.status, 400)
+        self.assertEqual(self.row(lab, sid)["status"], "vendor_rejected")   # nothing created, nothing counted
+        self.assertEqual(lab.ledger("openai_lab").totals()["open_reservations"], 0)

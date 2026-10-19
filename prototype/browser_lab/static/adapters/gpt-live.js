@@ -84,6 +84,10 @@ export async function connect(ctx) {
   const answer = await ctx.post(ctx.credentials.sdp_exchange, { session_id: ctx.session.session_id,
     sdp: pc.localDescription.sdp });
   await pc.setRemoteDescription({ type: "answer", sdp: answer.sdp });
+  if (answer.voice_fallback) {   // the chosen voice was refused; the server connected with the default voice
+    const fb = answer.voice_fallback;
+    ctx.log(`声 ${fb.wanted} はOpenAIに断られたので、${fb.used} で話します`, fb.reason);
+  }
   return {
     mute() { audio.muted = true; },
     async close() {
