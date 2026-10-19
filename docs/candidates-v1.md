@@ -8,7 +8,7 @@
 
 | 候補 | 種類 | 日本語 | ブラウザーからの接続 | 料金（公式） | 位置づけ |
 | --- | --- | --- | --- | --- | --- |
-| OpenAI GPT-Live 1 | 会話モデル（同時に聞いて話す） | 公式の言語の一覧がなく、追加の声の表は英語・ポルトガル語だけ。言語は指示文で指定する（最初の接続で日本語の受付を確かめる） | WebRTC。こちらのサーバーが鍵を使って POST /v1/live/sessions でSDPを交換する（ブラウザーに鍵を渡さない） | $0.05/分 | 初回（試験の対象） |
+| OpenAI GPT-Live 1 | 会話モデル（同時に聞いて話す） | 公式の言語の一覧はない。2026-10-16に日本語の声 harema（女性）と shida（男性）がAPIに追加された（会話試験の既定は harema）。言語は指示文で指定する | WebRTC。こちらのサーバーが鍵を使って POST /v1/live/sessions でSDPを交換する（ブラウザーに鍵を渡さない） | $0.05/分 | 初回（試験の対象） |
 | Google Gemini 3.8 Live | 会話モデル（音声） | Live APIの対応言語の表に日本語（ja）がある | 一時トークン（POST v1beta/auth_tokens、既定30分・1回）で、BidiGenerateContentConstrained のWebSocketにつなぐ | 音声入力 $0.005/分・出力 $0.018/分（目安） | 初回（試験の対象） |
 | ElevenLabs ElevenAgents（Expressive mode） | 会話サービス | Expressive modeの資料が日本語を明記 | @elevenlabs/client。署名付きURL（15分）またはWebRTCのトークンをサーバーで発行 | $0.08/分（から） | 保留（費用が高い。性能に大差がなければ使わない） |
 | Cartesia Managed Agents（Ink-2＋LLM＋Sonic-3.6） | 会話サービス（部品統合） | Ink-2・Sonic-3.6のモデル資料に日本語（ja） | 一時トークン（POST /access-token）で wss://api.cartesia.ai/agents/stream/{agent_id}?access_token= につなぐ | $0.06/分 | 保留（費用が高い。性能に大差がなければ使わない） |
@@ -26,8 +26,8 @@
 ### OpenAI GPT-Live 1（初回（試験の対象））
 
 - モデル・構成：gpt-live-1
-- 公式で確認：2026-09-10に一般提供（変更履歴）／同時に聞いて話す設計。業務処理は delegation（responses／client）で別のモデル・処理へ渡す／エンドポイントは /v1/live/sessions。Realtimeとは別のプロトコル（移行ガイドあり）／$0.05/分、秒単位の課金。バックエンドのモデルとツールは別料金／2026-10-15に GPT-Live-1.1 が ChatGPT・Codex・dots に出た（日本語を含む訛りの改善、日本語の新しい声、裏方への任せ方が自然に、指示の効きの改善）。APIは「近日」で、2026-10-16の時点では使えない（APIのモデル一覧は gpt-live-1 だけ）
-- 日本語：公式の言語の一覧がなく、追加の声の表は英語・ポルトガル語だけ。言語は指示文で指定する（最初の接続で日本語の受付を確かめる）
+- 公式で確認：2026-09-10に一般提供（変更履歴）／同時に聞いて話す設計。業務処理は delegation（responses／client）で別のモデル・処理へ渡す／エンドポイントは /v1/live/sessions。Realtimeとは別のプロトコル（移行ガイドあり）／$0.05/分、秒単位の課金。バックエンドのモデルとツールは別料金／2026-10-15に GPT-Live-1.1 が ChatGPT・Codex・dots に出た（日本語を含む訛りの改善、日本語の新しい声、裏方への任せ方が自然に、指示の効きの改善）。APIは「近日」で、2026-10-19の時点でも使えない（APIのモデル一覧は gpt-live-1 だけ）／2026-10-16に gpt-live-1 のAPIへ9つの声（日本語は harema・shida）と、文章から声を作る機能（Prompt-to-voice）が加わった（変更履歴）
+- 日本語：公式の言語の一覧はない。2026-10-16に日本語の声 harema（女性）と shida（男性）がAPIに追加された（会話試験の既定は harema）。言語は指示文で指定する
 - 接続：ブラウザーはWebRTC。こちらのサーバーが鍵を使って POST /v1/live/sessions でSDPを交換する（ブラウザーに鍵を渡さない）。電話はSIP、またはサーバーのWebSocketで中継
 - 未確認：日本語の会話品質／発話の開始・終了と割り込みのイベント／バックエンドのモデルの費用（記号 L_live）
 - 自社で作るもの：自社の中継・業務処理が要る（delegationの受け口）

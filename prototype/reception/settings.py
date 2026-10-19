@@ -24,9 +24,11 @@ DEFAULT_CONFIG = {
     "provisional": True,
     "ai_failure_action": "forward",
     "voices": [   # the first connection check uses GPT-Live and Gemini only (user decision 2026-10-07)
-        {"id": "v1", "candidate": "gpt-live-1", "voice": "marin", "label": "GPT-Liveの既定の声（日本語は未確認）"},
+        # GPT-Live's Japanese voices were added to the API on 2026-10-16 (feminine harema, masculine shida)
+        {"id": "v1", "candidate": "gpt-live-1", "voice": "harema", "label": "GPT-Liveの日本語の声（女性・harema）"},
         {"id": "v2", "candidate": "gemini-3.8-live", "voice": "Kore", "label": "Geminiの声（候補・日本語は未確認）"},
         {"id": "v3", "candidate": "fake", "voice": "tone", "label": "オフラインの模擬（音声の評価には使えない）"},
+        {"id": "v4", "candidate": "gpt-live-1", "voice": "shida", "label": "GPT-Liveの日本語の声（男性・shida）"},
     ],
     "active_voice": "v1",
     "fields": {k: {"store": True, "summary": True, "notify": True} for k in FIELD_KEYS},
@@ -123,8 +125,9 @@ VOICE_CATALOG = {
     "gpt-realtime-2.1": {"voices": ["marin", "cedar", "alloy", "ash", "ballad", "coral", "echo", "sage", "shimmer",
                                     "verse"],
                          "how": "接続のときにサーバーが声を指定する"},
-    "gpt-live-1": {"voices": ["marin"], "how": "接続のときにサーバーが audio.output.voice で指定する（既定は marin。"
-                                               "公式の追加の声の表は英語・ポルトガル語だけで、日本語に合う声は未確認）"},
+    "gpt-live-1": {"voices": ["harema", "shida", "marin"],
+                   "how": "接続のときにサーバーが audio.output.voice で指定する。日本語の声は harema（女性）と shida（男性）"
+                          "（2026-10-16 にAPIへ追加）。marin は業者の既定の声（日本語の声ではない）"},
     "gemini-3.8-live": {"voices": ["Kore", "Aoede", "Leda", "Puck", "Charon", "Orus"],
                         "how": "接続のときに prebuiltVoiceConfig で指定する（3.8で同じ名前が使えるかは未確認）"},
     "elevenagents": {"voices": [], "how": "ElevenLabsの画面でエージェントの声を選ぶ。声のIDを入力して登録（上書きの許可が要る）"},

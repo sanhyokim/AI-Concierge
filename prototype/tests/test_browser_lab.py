@@ -445,7 +445,7 @@ class LabSessionControlTest(unittest.TestCase):
         self.assertFalse(lab.tool(g2["session_id"], "lookup_faq", {"question": "ロースターの清掃の料金"})["found"])
         live = lab.start("gpt-live-1")
         lab.sdp(live["session_id"], "offer")
-        self.assertEqual(lab.http.calls[-1]["body"]["session"]["audio"]["output"]["voice"], "marin")
+        self.assertEqual(lab.http.calls[-1]["body"]["session"]["audio"]["output"]["voice"], "harema")   # Japanese voice
 
     def test_agent_fixed_settings_are_labelled_and_overrides_need_permission(self):
         from prototype.browser_lab.server import SessionLimit
