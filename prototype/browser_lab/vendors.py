@@ -187,9 +187,8 @@ def exchange_live_sdp(cfg: dict, env: dict, offer_sdp: str, http: Http = http_js
     except VendorError as exc:
         if not (voice and voice != FALLBACK_VOICE and voice_refused(exc)):
             raise
-        # 2026-10-19: the first start with the new Japanese voice (harema) was refused with HTTP 400, and other
-        # accounts report the nine voices of 2026-10-16 refused. A 4xx creates no session, so ask once more with
-        # the default voice and say so on the page rather than stopping the test.
+        # Other accounts report the nine voices of 2026-10-16 refused (OpenAI developer forum). A 4xx creates no
+        # session, so ask once more with the default voice and say so on the page rather than stopping the test.
         try:
             _, data = post(FALLBACK_VOICE)
         except VendorError as again:

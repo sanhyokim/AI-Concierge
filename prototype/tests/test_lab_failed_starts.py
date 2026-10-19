@@ -213,7 +213,7 @@ if __name__ == "__main__":
 
 
 class VoiceFallbackTest(unittest.TestCase):
-    """2026-10-19: the first start with the new Japanese voice (harema) was refused with a bare HTTP 400."""
+    """A refused voice (reported for the voices of 2026-10-16) falls back to marin once; other refusals do not."""
     setUp, tearDown, lab, row = FailedStartTest.setUp, FailedStartTest.tearDown, FailedStartTest.lab, FailedStartTest.row
 
     def voices(self, lab):
