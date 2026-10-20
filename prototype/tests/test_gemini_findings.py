@@ -120,5 +120,17 @@ class SpeechKanaTest(unittest.TestCase):
             self.assertNotIn("承り", text)
 
 
+class LookTest(unittest.TestCase):
+    """2026-10-20, user: the whole design was too cluttered. The lab now shares the admin app's stylesheet."""
+
+    def test_the_lab_gets_the_shared_stylesheet_even_when_run_on_its_own(self):
+        from prototype.browser_lab.server import static_file
+        body, ctype = static_file("/static/app.css")
+        self.assertEqual(ctype, "text/css; charset=utf-8")
+        self.assertIn(b".page-head", body)
+        page = static_file("/")[0].decode("utf-8")
+        self.assertIn('href="../static/app.css"', page)
+
+
 if __name__ == "__main__":
     unittest.main()

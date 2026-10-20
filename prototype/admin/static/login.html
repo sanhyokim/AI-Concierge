@@ -8,15 +8,16 @@
 </head>
 <body class="login-page">
 <main class="login">
-  <h1>AI受電 管理（試作）</h1>
-  <p class="demo-banner">デモ・試作：会社の回線には接続していません。架空のデータだけを使います。</p>
-  <form id="loginForm">
+  <div class="brand"><span class="mark" aria-hidden="true">野</span>AI受電 管理<span class="tag">試作</span></div>
+  <form id="loginForm" class="card">
+    <h2>ログイン</h2>
     <label>ユーザー名 <input id="username" name="username" autocomplete="username" value="admin" required></label>
     <label>パスワード <input id="password" name="password" type="password" autocomplete="current-password" required></label>
     <button class="primary" type="submit">ログイン</button>
     <p id="err" class="error" role="alert"></p>
+    <p class="sub">初回のパスワードは、サーバーを起動したときの黒い画面に1回だけ表示されます。</p>
   </form>
-  <p class="sub">初回のパスワードは、サーバーを起動したときのコンソールに1回だけ表示されます。</p>
+  <p class="demo-note">試作です。会社の回線にはつながっていません。架空のデータだけを使います。</p>
 </main>
 <script src="/static/login.js"></script>
 </body>

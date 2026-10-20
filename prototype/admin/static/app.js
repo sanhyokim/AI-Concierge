@@ -44,10 +44,14 @@ async function refreshAlerts() {
   const bad = (p.counts.failed_stopped || 0) + (p.counts.unknown || 0) + (p.counts.channel_stopped || 0);
   if (bad) out.push(`<div class="alert bad">通知の障害があります：失敗 ${p.counts.failed_stopped || 0}件・結果不明 ${p.counts.unknown || 0}件・停止中 ${p.counts.channel_stopped || 0}件。<a href="#/notify">通知の画面で確認</a></div>`);
   for (const c of p.stopped_channels) out.push(`<div class="alert bad">通知の経路「${esc(c.channel)}」が停止中：${esc(c.reason)}</div>`);
-  if (s.provisional) out.push(`<div class="alert info">FAQは暫定・架空の値です。本番の決定済みの設定ではありません。</div>`);
-  if (s.retention_unset) out.push(`<div class="alert info">受付記録の保存期間が未設定です（基本設定の画面で設定できます。自動削除は未実装）。</div>`);
+  const home = !(location.hash.split("/")[1] || "");   // the standing notes only on the home screen, not on every page
+  if (home && s.provisional) out.push(`<div class="alert info">FAQは暫定・架空の値です。本番の決定済みの設定ではありません。</div>`);
+  if (home && s.retention_unset) out.push(`<div class="alert info">受付記録の保存期間が未設定です（<a href="#/mode">基本設定</a>で設定できます。自動削除は未実装）。</div>`);
   document.getElementById("alerts").innerHTML = out.join("");
 }
+
+// the heading of a screen: title, one line of explanation, and the screen's main buttons on the right
+const head = (title, lead = "", actions = "") => `<div class="page-head"><div><h1>${title}</h1>${lead ? `<p>${lead}</p>` : ""}</div>${actions ? `<div class="actions">${actions}</div>` : ""}</div>`;
 
 // --- router -----------------------------------------------------------------------------------------------
 const routes = {};
@@ -58,6 +62,7 @@ async function render() {
   view.innerHTML = `<p class="muted">読み込み中…</p>`;
   try { await (routes[name] || routes[""])(arg ? decodeURIComponent(arg) : undefined); }
   catch (e) { view.innerHTML = `<div class="card error">表示できませんでした：${esc(e.message)}</div>`; }
+  window.scrollTo(0, 0);
   refreshAlerts().catch(() => {});
 }
 window.addEventListener("hashchange", render);
@@ -65,34 +70,34 @@ window.addEventListener("hashchange", render);
 // --- home -------------------------------------------------------------------------------------------------
 routes[""] = async () => {
   const [s, c] = await Promise.all([api("/api/status"), api("/api/calls")]);
-  view.innerHTML = `<div class="grid">
-    <section class="card"><h2>AI受付のオン・オフ</h2>
-      <p>オン・オフは、<b>NTTの転送の切り替え</b>で行います（このアプリからは変えられません）。</p>
-      <ul class="sub"><li>オン：転送先をAIの番号にする → このアプリに届いた電話は、すべてAIが受けます</li>
-        <li>オフ：転送先を担当者の携帯に戻す → 今まで通りで、このアプリには届きません</li></ul>
-      <p class="sub">092はボイスワープ（ひかり電話設定サイト）、0120はカスタマコントロールで切り替えます（契約の確認待ち）。</p></section>
-    <section class="card"><h2>AIが止まったときの扱い</h2><div class="big" id="homeFailure">${esc(s.ai_failure_label)}</div>
-      <p class="sub">設定の版 v${s.config_version}（${esc(fmt(s.config_meta.created_at))}・${esc(s.config_meta.created_by || "")}）</p>
-      <a href="#/mode"><button>基本設定を変える</button></a></section>
-    <section class="card"><h2>架空の着信で試す</h2><p class="sub">AIの受付・要約・通知のテストを行います。</p>
-      <a href="#/demo"><button class="primary">着信テストへ</button></a></section>
+  view.innerHTML = `${head("ホーム", "AIの電話受付の設定と、最近の受付の一覧です。",
+      `<a class="button" href="/lab/">会話試験</a><a class="button primary" href="#/demo">着信テスト</a>`)}
+  <div class="grid">
+    <section class="card stat"><span class="label">AI受付のオン・オフ</span><span class="value">NTTの転送の切り替えで行います</span>
+      <span class="sub">このアプリからは変えられません。</span>
+      <details class="fold"><summary>切り替え方</summary>
+        <ul class="sub"><li>オン：転送先をAIの番号にする。このアプリに届いた電話は、すべてAIが受けます。</li>
+          <li>オフ：転送先を担当者の携帯に戻す。今まで通りで、このアプリには届きません。</li></ul>
+        <p class="sub">092はボイスワープ（ひかり電話設定サイト）、0120はカスタマコントロールで切り替えます（契約の確認待ち）。</p></details></section>
+    <section class="card stat"><span class="label">AIが止まったときの扱い</span><span class="value" id="homeFailure">${esc(s.ai_failure_label)}</span>
+      <span class="sub">設定の版 v${s.config_version}（${esc(fmt(s.config_meta.created_at))}・${esc(s.config_meta.created_by || "")}）・<a href="#/mode">変える</a></span></section>
   </div>
-  <section class="card" style="margin-top:12px"><h2>最近の受付</h2>${callsTable(c.calls.slice(0, 5))}<a href="#/calls">すべて見る</a></section>`;
+  <section class="card"><div class="card-head"><h2>最近の受付</h2><a href="#/calls">すべて見る</a></div>${callsTable(c.calls.slice(0, 5))}</section>`;
 };
 
 // --- basic settings ---------------------------------------------------------------------------------------
 routes.mode = async () => {
   const c = await api("/api/config");
   const cfg = c.config;
-  view.innerHTML = `<section class="card"><h1>基本設定</h1>
-    <p class="sub">AI受付のオン・オフは、NTTの転送の切り替えで行います（この画面にはありません）。保存すると新しい版になり、<b>次の着信から</b>使われます。今の版：v${c.version}</p>
+  view.innerHTML = `${head("基本設定", `保存すると新しい版になり、<b>次の着信から</b>使われます。今の版は v${c.version} です。AI受付のオン・オフは、NTTの転送で切り替えます（この画面にはありません）。`)}
+    <section class="card">
     <label>AIが止まったとき（着信の時点でAIが使えないとき）の扱い
       <select id="failure">${Object.entries(c.labels.failure_actions).map(([k, l]) => `<option value="${k}" ${cfg.ai_failure_action === k ? "selected" : ""}>${esc(l)}</option>`).join("")}</select></label>
-    <p class="sub">AI受付をオンにしている間にAIが止まると、電話を取りこぼすおそれがあるため、どちらかを決めておきます。</p>
+    <p class="sub" style="margin:-6px 0 14px">AI受付をオンにしている間にAIが止まると、電話を取りこぼすおそれがあるため、どちらかを決めておきます。</p>
     <label>受付記録の保存期間（日。空欄は未設定）<input id="retention" type="number" min="1" value="${cfg.retention_days ?? ""}"></label>
     <label>変更のメモ（任意）<input id="note" maxlength="200"></label>
-    <div class="row"><button class="primary" id="saveMode">保存</button></div></section>
-    <section class="card" style="margin-top:12px"><h2>保存の履歴</h2><table class="stack"><thead><tr><th>版</th><th>日時</th><th>保存した人</th><th>メモ</th></tr></thead><tbody>
+    <div class="form-actions"><button class="primary" id="saveMode">保存</button></div></section>
+    <section class="card"><h2>保存の履歴</h2><table class="stack"><thead><tr><th>版</th><th>日時</th><th>保存した人</th><th>メモ</th></tr></thead><tbody>
     ${c.history.map((h) => `<tr><td data-label="版">v${h.id}</td><td data-label="日時">${esc(fmt(h.created_at))}</td><td data-label="保存した人">${esc(h.created_by)}</td><td data-label="メモ">${esc(h.note)}</td></tr>`).join("")}</tbody></table></section>`;
   document.getElementById("saveMode").addEventListener("click", () => guarded(async () => {
     const rd = document.getElementById("retention").value;
@@ -106,22 +111,20 @@ routes.mode = async () => {
 // --- FAQ --------------------------------------------------------------------------------------------------
 routes.faq = async () => {
   const { faqs } = await api("/api/faqs");
-  view.innerHTML = `<section class="card"><h1>FAQ</h1>
-    <p class="sub">有効なFAQだけを、AIが答える範囲に使います。変更・有効／無効は<b>次の会話から</b>反映されます（通話中の会話は、開始時のFAQのまま）。すべて未承認の推奨案・試作です。</p>
-    <details><summary>FAQを追加する</summary>
+  view.innerHTML = `${head("FAQ", "有効なFAQだけを、AIが答える範囲に使います。変更は<b>次の会話から</b>反映されます。すべて未承認の推奨案・試作です。")}
+    <section class="card"><details><summary>＋ FAQを追加する</summary>
       <label>質問の例 <input id="newQ"></label><label>回答 <textarea id="newA" rows="3"></textarea></label>
       <label>探すための語（読点・カンマ区切り）<input id="newK" placeholder="例：駐車場,車,ある|止め|置け"></label>
       <p class="sub">「いくら|料金|値段」のように「|」でつないだ語は、どれかが質問に入っていないと、そのFAQは選ばれません（「無煙ロースター」とだけ言った日程の質問に、料金の答えが返らないようにするため）。</p>
-      <button class="primary" id="addFaq">追加</button></details></section>
-    <div id="faqList">${faqs.map((f) => `<section class="card" style="margin-top:10px" data-id="${f.id}">
-      <div class="row"><b>${esc(f.code)}</b><span class="badge warn">${esc(f.approval)}</span>
-        <label class="inline"><input type="checkbox" data-toggle="${f.id}" ${f.enabled ? "checked" : ""}> 有効</label></div>
-      <div class="view-mode"><p><b>Q</b> ${esc(f.question)}</p><p><b>A</b> ${esc(f.answer)}</p><p class="sub">探す語：${esc(f.keywords)}</p>
-        <button class="small" data-edit="${f.id}">編集</button></div>
+      <div class="form-actions"><button class="primary" id="addFaq">追加</button></div></details></section>
+    <div id="faqList" class="stack-gap">${faqs.map((f) => `<section class="card" data-id="${f.id}">
+      <div class="card-head"><div class="row"><b>${esc(f.code)}</b><span class="badge warn">${esc(f.approval)}</span></div>
+        <div class="row"><label class="inline"><input type="checkbox" data-toggle="${f.id}" ${f.enabled ? "checked" : ""}> 有効</label><button class="small" data-edit="${f.id}">編集</button></div></div>
+      <div class="view-mode"><p><b>Q.</b> ${esc(f.question)}</p><p><b>A.</b> ${esc(f.answer)}</p><p class="sub">探す語：${esc(f.keywords)}</p></div>
       <div class="edit-mode hidden"><label>質問の例 <input data-f="question" value="${esc(f.question)}"></label>
         <label>回答 <textarea data-f="answer" rows="3">${esc(f.answer)}</textarea></label>
         <label>探す語 <input data-f="keywords" value="${esc(f.keywords)}"></label>
-        <button class="primary small" data-save="${f.id}">保存</button></div></section>`).join("")}</div>`;
+        <div class="form-actions"><button class="primary small" data-save="${f.id}">保存</button></div></div></section>`).join("")}</div>`;
   const byId = Object.fromEntries(faqs.map((f) => [String(f.id), f]));
   document.getElementById("addFaq").addEventListener("click", () => guarded(async () => {
     await api("/api/faqs", { question: document.getElementById("newQ").value, answer: document.getElementById("newA").value, keywords: document.getElementById("newK").value, enabled: true });
@@ -167,13 +170,12 @@ routes.voice = async () => {
         <td data-label=""><button class="small danger" data-del="${i}">削除</button></td></tr>`;
     }).join("");
   };
-  view.innerHTML = `<section class="card"><h1>音声設定</h1>
-    <p class="sub">複数の声を登録し、使う声を1つ選びます。<b>次の会話から</b>使われます。実際の声は、どれも業者に接続して確かめていません（「接続未確認」）。</p>
-    <table class="stack"><thead><tr><th>使う</th><th>表示名</th><th>接続候補</th><th>声（名前・ID）</th><th>状態</th><th></th></tr></thead><tbody id="voiceRows"></tbody></table>
-    <div class="row" style="margin-top:8px"><button class="small" id="addVoice">＋声を追加</button><button class="primary" id="saveVoices">保存</button></div></section>
-    <section class="card" style="margin-top:12px"><h2>接続候補と声の状態</h2><table class="stack"><thead><tr><th>候補</th><th>状態</th><th>声の候補</th><th>声の指定の方法</th><th>この画面の声の反映</th></tr></thead><tbody>
+  view.innerHTML = `${head("音声", "声を登録し、使う声を1つ選びます。<b>次の会話から</b>使われます。")}
+    <section class="card"><table class="stack"><thead><tr><th>使う</th><th>表示名</th><th>接続候補</th><th>声（名前・ID）</th><th>状態</th><th></th></tr></thead><tbody id="voiceRows"></tbody></table>
+    <div class="form-actions"><button id="addVoice">＋ 声を追加</button><button class="primary" id="saveVoices">保存</button></div></section>
+    <section class="card"><details><summary>接続候補と声の状態</summary><table class="stack"><thead><tr><th>候補</th><th>状態</th><th>声の候補</th><th>声の指定の方法</th><th>この画面の声の反映</th></tr></thead><tbody>
     ${offered.map((x) => `<tr><td data-label="候補">${esc(x.name)}</td><td data-label="状態">${statusBadge(x.status, x.status_label)}</td><td data-label="声の候補">${esc(x.voices.join("、") || "（業者の画面で選ぶ）")}</td><td data-label="指定の方法">${esc(x.how)}</td><td data-label="反映">${esc(x.apply_label)}</td></tr>`).join("")}
-    </tbody></table><p class="sub">「利用可能」はオフラインの模擬だけです（音声の評価には使えません）。鍵の値は表示しません（設定の有無だけ）。保留中の候補（ElevenLabs・Cartesia・GPT-Realtime-2.1）は表示していません。</p></section>`;
+    </tbody></table><p class="sub">「利用可能」はオフラインの模擬だけです（音声の評価には使えません）。鍵の値は表示しません（設定の有無だけ）。保留中の候補（ElevenLabs・Cartesia・GPT-Realtime-2.1）は表示していません。</p></details></section>`;
   draw();
   view.addEventListener("input", (e) => { const t = e.target; if (t.dataset.i !== undefined && t.dataset.k) voices[Number(t.dataset.i)][t.dataset.k] = t.value; });
   view.addEventListener("change", (e) => {
@@ -210,7 +212,7 @@ function callsTable(calls) {
 }
 routes.calls = async () => {
   const { calls } = await api("/api/calls");
-  view.innerHTML = `<section class="card"><h1>受付履歴</h1><p class="sub">架空の着信テストと、ブラウザー会話試験の記録です（会社回線の着信はありません）。</p>${callsTable(calls)}</section>`;
+  view.innerHTML = `${head("受付履歴", "着信テストと会話試験の記録です（会社の回線の着信はありません）。日時を押すと詳しく見られます。")}<section class="card">${callsTable(calls)}</section>`;
 };
 
 function eventText(e) {
@@ -269,22 +271,24 @@ routes.call = async (id) => {
   const c = await api(`/api/calls/${encodeURIComponent(id)}`);
   const ended = !!c.ended_at;
   const canCorrect = ended && !NO_INTAKE(c.route);
-  view.innerHTML = `<section class="card"><h1>受付 ${esc(c.id)}</h1>
-    <div class="row"><button class="small" id="saveText">記録をテキストで保存</button><span class="sub">この画面の内容（受付項目・要約・出来事の記録）を1つのファイルにします。開発の担当に送るときに使います。</span></div>
-    <dl class="kv"><dt>種類</dt><dd>${esc(c.source_label)}（デモ・架空のデータ）</dd><dt>開始・終了</dt><dd>${esc(fmt(c.started_at))} 〜 ${esc(fmt(c.ended_at) || "通話中")} ${esc(c.end_reason || "")}</dd>
+  view.innerHTML = `${head(`受付 ${esc(fmt(c.started_at))}`, `${esc(c.source_label)}・<code>${esc(c.id)}</code>`,
+      `<a class="button" href="#/calls">一覧へ</a><button id="saveText" title="受付項目・要約・出来事の記録を1つのファイルにします。開発の担当に送るときに使います">記録をテキストで保存</button>`)}
+  <div class="grid">
+    <section class="card"><h2>この通話</h2><dl class="kv"><dt>種類</dt><dd>${esc(c.source_label)}（デモ・架空のデータ）</dd><dt>開始・終了</dt><dd>${esc(fmt(c.started_at))} 〜 ${esc(fmt(c.ended_at) || "通話中")} ${esc(c.end_reason || "")}</dd>
     <dt>着信先</dt><dd>${esc(c.dialed)}</dd><dt>回線の番号</dt><dd>${esc(c.caller_id || "非通知・不明")}</dd>
     <dt>経路</dt><dd>${routeBadge(c.route, c.route_label)} ${esc(c.route_reason)}</dd>
     ${c.ai ? `<dt>AI</dt><dd>${esc(c.ai.name)}</dd>` : ""}
     <dt>この通話の設定</dt><dd>v${c.config_version}・声 ${esc(c.voice.label || c.voice.voice)}・有効だったFAQ ${esc(c.faq_codes.join(", "))}</dd>
     <dt>同意</dt><dd>録音 ${c.consent.recording === "allowed" ? "許可" : "拒否"}・AIでの処理 ${c.consent.ai_processing === "allowed" ? "許可" : "拒否"}</dd>
     ${c.emergency ? `<dt>緊急</dt><dd><span class="badge bad">${esc(c.emergency)}</span></dd>` : ""}
-    ${c.open_questions.length ? `<dt>確認事項</dt><dd>${c.open_questions.map(esc).join("／")}</dd>` : ""}
-    <dt>対応状態</dt><dd><select id="handled" class="inline" aria-label="対応状態">${["未対応", "対応中", "対応済み", "対応不要"].map((s) => `<option ${c.handled_status === s ? "selected" : ""}>${s}</option>`).join("")}</select>
+    ${c.open_questions.length ? `<dt>確認事項</dt><dd>${c.open_questions.map(esc).join("／")}</dd>` : ""}</dl></section>
+    <section class="card"><h2>対応</h2><dl class="kv"><dt>対応状態</dt><dd><select id="handled" class="inline" aria-label="対応状態">${["未対応", "対応中", "対応済み", "対応不要"].map((s) => `<option ${c.handled_status === s ? "selected" : ""}>${s}</option>`).join("")}</select>
       ${c.handled_status === "対応中" && c.handled_by && c.handled_by !== ME ? `<button class="small" id="takeover">担当を引き継ぐ</button>` : ""}</dd>
     <dt>担当</dt><dd id="handledBy">${c.handled_by ? `${esc(c.handled_by)}${c.handled_by === ME ? "（自分）" : ""}<span class="sub">（${esc(fmt(c.handled_at))}）</span>` : '<span class="muted">なし（「対応中」にした人が担当になります）</span>'}</dd></dl></section>
-  ${NO_INTAKE(c.route) ? `<section class="card" style="margin-top:12px"><h2>担当者へ回した通話</h2><p>AIの会話は始めていません。受付項目・要約・通知はありません（デモでは電話はかけません）。</p></section>` : `
-  <section class="card" style="margin-top:12px"><h2>受付項目</h2>
-    <p class="sub">「本人確認済み」は、復唱の後にお客様が明確に肯定した値だけです。担当者の補正は「担当者が補正」と表示し、本人確認済みにはしません。${canCorrect ? "" : "補正は通話の終了後にできます。"}</p>
+  </div>
+  ${NO_INTAKE(c.route) ? `<section class="card"><h2>担当者へ回した通話</h2><p>AIの会話は始めていません。受付項目・要約・通知はありません（デモでは電話はかけません）。</p></section>` : `
+  <section class="card"><h2>受付項目</h2>
+    <p class="sub">「本人確認済み」は、復唱の後にお客様がはっきり「はい」と答えた値だけです。担当者の補正は「担当者が補正」と表示し、本人確認済みにはしません。${canCorrect ? "" : "補正は通話の終了後にできます。"}</p>
     <table class="stack"><thead><tr><th>項目</th><th>値</th><th>状態</th><th>取得元</th><th></th></tr></thead><tbody>
     ${c.fields.map((f) => `<tr data-field="${f.name}"><td data-label="項目">${esc(f.label)}${f.storable ? "" : ` <span class="badge">保存しない設定</span>`}</td>
       <td data-label="値">${esc(f.display) || '<span class="muted">未取得</span>'}</td><td data-label="状態">${statusBadge(f.status, f.status_label)}</td>
@@ -295,14 +299,15 @@ routes.call = async (id) => {
     ${c.corrections.length ? `<h3>補正の記録（前と後）</h3><table class="stack"><thead><tr><th>日時</th><th>項目</th><th>前</th><th>後</th><th>理由</th><th>補正した人</th></tr></thead><tbody>
       ${c.corrections.map((x) => `<tr><td data-label="日時">${esc(fmt(x.at))}</td><td data-label="項目">${esc(x.field)}</td><td data-label="前">${esc(x.before_value || "（なし）")}（${esc(x.before_status)}）</td><td data-label="後">${esc(x.after_value)}（担当者が補正）</td><td data-label="理由">${esc(x.reason)}</td><td data-label="補正した人">${esc(x.by_user)}</td></tr>`).join("")}</tbody></table>` : ""}
   </section>
-  <section class="card" style="margin-top:12px"><h2>要約（固定の規則で作成）</h2>
+  <section class="card"><h2>要約（固定の規則で作成）</h2>
     ${c.summaries.length ? c.summaries.map((s) => `<h3>版${s.version}（${esc(s.reason)}・${esc(fmt(s.created_at))}）</h3><pre class="body">${esc(s.text)}</pre>`).join("") : `<p class="muted">通話の終了後に作ります。</p>`}
     <p class="sub">会話モデルの要約ではありません。本番の要約の品質を示すものではありません。</p></section>
-  <section class="card" style="margin-top:12px"><h2>通知</h2>
-    <div class="row"><button id="process">送信シミュレーションを実行（再試行待ちも今すぐ）</button><button id="renotify">通知イベントを再投入（重複しないことの確認）</button><button id="previewBtn">プレビュー</button></div>
+  <section class="card"><div class="card-head"><h2>通知（シミュレーション）</h2><div class="row"><button class="small" id="previewBtn">プレビュー</button>
+      <button class="small" id="process" title="再試行待ちも今すぐ送ります（外部へは送りません）">送信シミュレーションを実行</button>
+      <button class="small" id="renotify" title="同じ通知が二重に作られないことを確かめます">通知イベントを再投入</button></div></div>
     <div id="preview"></div>
     ${notificationsTable(c.notifications)}</section>`}
-  <section class="card" style="margin-top:12px"><details><summary>出来事の記録（${c.events.length}件）</summary>
+  <section class="card"><details><summary>出来事の記録（${c.events.length}件）</summary>
     <table class="stack"><tbody>${c.events.map((e) => `<tr><td data-label="時刻">${esc(fmt(e.at).slice(11))}</td><td data-label="内容">${esc(eventText(e))}</td></tr>`).join("")}</tbody></table></details></section>`;
   // the screen sends the version it read; if someone else changed the state meanwhile, the server refuses (409)
   const setHandled = async (status, done) => {
@@ -359,9 +364,9 @@ routes.notify = async () => {
   const [t, n, calls] = await Promise.all([api("/api/targets"), api("/api/notifications"), api("/api/calls")]);
   const opts = (obj, sel) => Object.entries(obj).map(([k, l]) => `<option value="${k}" ${k === sel ? "selected" : ""}>${esc(l)}</option>`).join("");
   const withSummary = calls.calls.filter((c) => c.summary_version);
-  view.innerHTML = `<section class="card"><h1>通知設定</h1>
-    <p class="sub">通知はすべて<b>シミュレーション</b>で、外部へは送りません。LINEは、送信先の登録・接続設定・送信の承認が済むまで送りません（公式のMessaging APIの候補構成。個人LINEの非公式な操作は使いません）。同じ受付の同じ版は、宛先ごとに1件しか作りません。</p>
-    <table class="stack"><thead><tr><th>有効</th><th>名前</th><th>経路</th><th>シミュレーションの結果</th><th></th></tr></thead><tbody>
+  view.innerHTML = `${head("通知", "通知はすべて<b>シミュレーション</b>で、外部へは送りません。LINEは、送信先の登録・接続設定・送信の承認が済むまで送りません（公式のMessaging APIの候補構成。個人LINEの非公式な操作は使いません）。",
+      `<button id="processAll" title="再試行待ちも今すぐ送ります（外部へは送りません）">送信シミュレーションを実行</button>`)}
+    <section class="card"><h2>宛先</h2><table class="stack"><thead><tr><th>有効</th><th>名前</th><th>経路</th><th>シミュレーションの結果</th><th></th></tr></thead><tbody>
     ${t.targets.map((x) => `<tr data-tid="${x.id}"><td data-label="有効"><input type="checkbox" data-k="enabled" ${x.enabled ? "checked" : ""} aria-label="有効"></td>
       <td data-label="名前"><input data-k="name" value="${esc(x.name)}"></td><td data-label="経路"><select data-k="channel">${opts(t.channels, x.channel)}</select></td>
       <td data-label="結果"><select data-k="simulate">${opts(t.simulate, x.simulate)}</select></td>
@@ -370,11 +375,11 @@ routes.notify = async () => {
       <td data-label="経路"><select data-k="channel">${opts(t.channels, "simulation")}</select></td><td data-label="結果"><select data-k="simulate">${opts(t.simulate, "success")}</select></td>
       <td data-label=""><button class="small" data-savet="new">追加</button></td></tr></tbody></table>
     ${t.problems.stopped_channels.map((c) => `<p class="error">経路「${esc(c.channel)}」が停止中：${esc(c.reason)} <button class="small" data-resume="${esc(c.channel)}">人が確認して再開</button></p>`).join("")}
-    <div class="row"><button id="processAll">送信シミュレーションを実行（再試行待ちも今すぐ）</button></div></section>
-  <section class="card" style="margin-top:12px"><h2>送信内容のプレビュー</h2>
-    <label>受付を選ぶ <select id="pvCall">${withSummary.map((c) => `<option value="${esc(c.id)}">${esc(fmt(c.started_at))} ${esc(c.shop.display)} ${esc(c.request.display)}</option>`).join("") || "<option value=''>（要約のある受付がありません）</option>"}</select></label>
-    <button id="pvBtn">プレビュー</button><div id="pvOut"></div></section>
-  <section class="card" style="margin-top:12px"><h2>最近の通知</h2><table class="stack"><thead><tr><th>受付</th><th>宛先</th><th>版</th><th>状態</th><th>試行</th><th>最後の結果</th></tr></thead><tbody>
+    <p class="sub">同じ受付の同じ版は、宛先ごとに1件しか作りません。</p></section>
+  <section class="card"><h2>送信内容のプレビュー</h2>
+    <div class="row"><select id="pvCall" aria-label="受付を選ぶ" style="flex:1 1 260px;width:auto">${withSummary.map((c) => `<option value="${esc(c.id)}">${esc(fmt(c.started_at))} ${esc(c.shop.display)} ${esc(c.request.display)}</option>`).join("") || "<option value=''>（要約のある受付がありません）</option>"}</select>
+    <button id="pvBtn">プレビュー</button></div><div id="pvOut"></div></section>
+  <section class="card"><h2>最近の通知</h2><table class="stack"><thead><tr><th>受付</th><th>宛先</th><th>版</th><th>状態</th><th>試行</th><th>最後の結果</th></tr></thead><tbody>
     ${n.notifications.map((x) => `<tr><td data-label="受付"><a href="#/call/${encodeURIComponent(x.call_id)}">${esc(x.call_id)}</a></td><td data-label="宛先">${esc(x.target_name)}</td><td data-label="版">${x.version}</td><td data-label="状態">${statusBadge(x.status, x.status_label)}</td><td data-label="試行">${x.attempts}</td><td data-label="最後の結果">${esc(x.last_error || "")}</td></tr>`).join("")}</tbody></table></section>`;
   view.addEventListener("click", (e) => {
     const b = e.target;
@@ -401,29 +406,29 @@ const QUICK = ["点検は無料ですか？", "駐車場はありますか？", 
 const demo = { call: null };
 routes.demo = async () => {
   const now = new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 16);
-  view.innerHTML = `<div class="demo-banner">着信テスト（デモ）：会社回線には未接続です。AIの代わりに、<b>固定の規則で動く試験用の応答</b>を使います。業務処理（FAQ・確認・保存・要約・通知）は本番と同じ処理です。実際の会話モデルの性能は示しません。</div>
-  <div class="grid" style="margin-top:12px">
+  view.innerHTML = `${head("着信テスト", "架空の着信で、受付・要約・通知の流れを確かめます。AIの代わりに<b>決まった規則で動く試験用の応答</b>を使うので、会話のAIの性能は分かりません（それは会話試験で見ます）。業務処理は本番と同じです。")}
+  <div class="grid">
     <section class="card"><h2>1. 架空の着信を入れる</h2>
       <label>着信先 <select id="dialed"><option>0120-77-3408</option><option>092-504-2185</option><option>不明</option></select></label>
       <label>回線の番号（架空）<input id="callerId" value="090-1111-2222"></label>
-      <label class="inline"><input type="checkbox" id="withheld"> 非通知</label>
+      <label class="check" style="margin:-4px 0 12px"><input type="checkbox" id="withheld"> 非通知</label>
       <label>通話の日時（日本時間。「明後日」などの日付の確認に使う）<input type="datetime-local" id="at" value="${now}"></label>
-      <label class="inline"><input type="checkbox" id="aiDown"> AIが止まっている状態（AIが止まったときの扱いを確認）</label>
-      <button class="primary" id="startCall">着信を入れる</button></section>
+      <label class="check" style="margin-bottom:14px"><input type="checkbox" id="aiDown"> AIが止まっている状態にする（止まったときの扱いを確かめる）</label>
+      <div class="form-actions"><button class="primary" id="startCall">着信を入れる</button></div></section>
     <section class="card"><h2>2. この通話</h2><div id="decision"><p class="muted">AI受付がオンのときに、この試作に届いた電話として扱います。</p></div></section>
   </div>
-  <div class="grid hidden" id="callArea" style="margin-top:12px">
+  <div class="grid hidden" id="callArea">
     <section class="card"><h2>3. 会話（お客様役として入力）</h2>
       <div class="chat" id="chat"></div>
       <div class="row" style="margin-top:8px"><input id="say" placeholder="お客様の発話を入力" aria-label="お客様の発話"><button class="primary" id="sayBtn">送る</button></div>
       <div class="quick" id="quick">${QUICK.map((q) => `<button data-q="${esc(q)}">${esc(q)}</button>`).join("")}</div>
-      <div class="row"><button id="runScript">例の会話を流す（番号・日時の訂正あり）</button><button id="interruptBtn" title="AIの発話（復唱など）がお客様に遮られた、と業者が知らせた想定。端末の音量ではなく、業者の通知だけを根拠にする">業者の割り込みの通知（模擬）</button><button class="danger" id="endCall">通話を終える</button></div>
+      <div class="row"><button class="small" id="runScript">例の会話を流す（番号・日時の訂正あり）</button><button class="small" id="interruptBtn" title="AIの発話（復唱など）がお客様に遮られた、と業者が知らせた想定。端末の音量ではなく、業者の通知だけを根拠にする">業者の割り込みの通知（模擬）</button><button class="small danger" id="endCall">通話を終える</button></div>
       <div id="dtmfArea" class="hidden"><h3>プッシュボタン（AIなしの経路）</h3><div class="row"><input id="digits" inputmode="numeric" placeholder="番号（#まで）"><button id="dtmfSend">#で確定</button></div>
         <div class="row" style="margin-top:6px"><button data-key="1">1（はい）</button><button data-key="2">2（入力し直す）</button><button id="dtmfTimeout">入力なし</button></div></div>
     </section>
     <section class="card"><h2>4. 受付項目と同意の状態</h2><div id="fields"></div></section>
   </div>
-  <section class="card hidden" id="resultArea" style="margin-top:12px"><h2>5. 要約と通知</h2><div id="result"></div></section>`;
+  <section class="card hidden" id="resultArea"><h2>5. 要約と通知</h2><div id="result"></div></section>`;
   document.getElementById("startCall").addEventListener("click", () => guarded(startDemo));
   document.getElementById("sayBtn").addEventListener("click", () => guarded(() => sendSay(document.getElementById("say").value)));
   document.getElementById("say").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.isComposing) guarded(() => sendSay(e.target.value)); });
@@ -526,18 +531,17 @@ const usd = (v) => `$${Number(v || 0).toFixed(4)}`;
 routes.ledger = async () => {
   const l = await api("/api/ledger");
   const rows = Object.entries(l.ledgers).filter(([, x]) => x.cap_usd !== 0 || x.requests || x.open_reservations);
-  view.innerHTML = `<section class="card"><h1>費用の台帳（ブラウザー会話試験）</h1>
-    <p class="sub">${esc(l.note)}</p>
-    <table class="stack"><thead><tr><th>台帳</th><th>会話の数</th><th>合計（推定・照合済み）</th><th>うち照合待ちの留保</th><th>照合待ち</th><th>上限</th></tr></thead><tbody>
+  view.innerHTML = `${head("費用の台帳", `会話試験の費用の見込みと実際の額です。${esc(l.note)}`)}
+    <section class="card"><table class="stack"><thead><tr><th>台帳</th><th>会話の数</th><th>合計（推定・照合済み）</th><th>うち照合待ちの留保</th><th>照合待ち</th><th>上限</th></tr></thead><tbody>
     ${rows.map(([v, x]) => `<tr><td data-label="台帳">${esc(v)}</td><td data-label="会話の数">${x.requests}</td><td data-label="合計">${usd(x.est_cost_usd)}</td><td data-label="留保">${usd(x.held_usd)}</td><td data-label="照合待ち">${x.open_reservations}件</td><td data-label="上限">${x.cap_usd == null ? "なし" : `$${x.cap_usd}`}</td></tr>`).join("")}
     </tbody></table></section>
-    <section class="card" style="margin-top:12px"><h2>照合待ちの留保</h2>
+    <section class="card"><h2>照合待ちの留保</h2>
     <p class="sub">業者の利用画面で、その会話の実際の額を確かめてから入力します。照合すると、台帳の合計がその額になり、留保が閉じます。同じ留保を別の額で照合し直すことはできません。</p>
     ${rows.some(([, x]) => x.open.length) ? `<table class="stack"><thead><tr><th>台帳</th><th>留保</th><th>会話</th><th>留保した額</th><th>利用画面の額（USD）</th><th>メモ</th><th></th></tr></thead><tbody>
     ${rows.flatMap(([v, x]) => x.open.map((r) => `<tr><td data-label="台帳">${esc(v)}</td><td data-label="留保"><code>${esc(r.rid)}</code><br><span class="sub">${esc(fmt(r.ts))}</span></td><td data-label="会話">${esc(r.operation)} ${esc(r.run_id)}</td><td data-label="留保した額">${usd(r.est_cost_usd)}</td>
       <td data-label="利用画面の額"><input inputmode="decimal" data-amount="${esc(r.rid)}" aria-label="利用画面の額"></td><td data-label="メモ"><input data-note="${esc(r.rid)}" placeholder="例：10/09 利用画面" aria-label="メモ"></td>
       <td data-label=""><button class="small primary" data-reconcile="${esc(r.rid)}" data-vendor="${esc(v)}">照合する</button></td></tr>`)).join("")}</tbody></table>` : `<p class="muted">照合待ちの留保はありません。</p>`}</section>
-    <section class="card" style="margin-top:12px"><h2>試験の会話（サーバーの記録）</h2>
+    <section class="card"><h2>試験の会話（サーバーの記録）</h2>
     <p class="sub">これまでの会話：${Object.entries(l.counts || {}).filter(([, n]) => n.sessions || n.mint_failures).map(([c, n]) => `${esc(c)} ${n.sessions}回`).join("、") || "0回"}（回数の上限なし）</p>
     ${l.sessions.length ? `<table class="stack"><thead><tr><th>開始</th><th>候補</th><th>状態</th><th>止めた理由</th><th>業者の終了</th><th>業務処理・裏方の応答</th></tr></thead><tbody>
     ${l.sessions.map((x) => `<tr><td data-label="開始">${esc(fmt(x.started_at))}</td><td data-label="候補">${esc(x.candidate)}</td><td data-label="状態">${esc(x.status_label || x.status)}<br><span class="sub">${esc(x.end_reason || "")}</span>${x.why_counted ? `<br><span class="sub">${esc(x.why_counted)}</span>` : ""}${x.releasable ? `<div class="row" style="margin-top:4px"><input data-relnote="${esc(x.id)}" placeholder="例：10/08 OpenAIの利用画面で0件・$0を確認" aria-label="確認した内容"><button class="small" data-release="${esc(x.id)}">費用から外す</button></div>` : ""}</td><td data-label="止めた理由">${esc(x.stop_reason || "—")}</td><td data-label="業者の終了">${x.close_confirmed ? "確認" : "未確認"}</td><td data-label="回数">${x.tool_calls}・${x.backend_responses}</td></tr>`).join("")}</tbody></table>
@@ -561,7 +565,7 @@ routes.ledger = async () => {
 // --- audit ------------------------------------------------------------------------------------------------
 routes.audit = async () => {
   const { audit } = await api("/api/audit");
-  view.innerHTML = `<section class="card"><h1>操作履歴</h1><table class="stack"><thead><tr><th>日時</th><th>人</th><th>操作</th><th>対象</th><th>内容</th></tr></thead><tbody>
+  view.innerHTML = `${head("操作履歴", "誰が、いつ、何を変えたかの記録です。")}<section class="card"><table class="stack"><thead><tr><th>日時</th><th>人</th><th>操作</th><th>対象</th><th>内容</th></tr></thead><tbody>
   ${audit.map((a) => `<tr><td data-label="日時">${esc(fmt(a.at))}</td><td data-label="人">${esc(a.user)}</td><td data-label="操作">${esc(a.action)}</td><td data-label="対象">${esc(a.target)}</td><td data-label="内容">${esc(a.detail)}</td></tr>`).join("")}</tbody></table></section>`;
 };
 

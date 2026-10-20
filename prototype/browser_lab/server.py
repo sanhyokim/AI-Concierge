@@ -586,15 +586,22 @@ def api_post(lab: Lab, path: str, body: dict) -> tuple[int, dict]:
         return HTTPStatus.BAD_GATEWAY, {"error": str(exc)}
 
 
+ADMIN_CSS = STATIC.parent.parent / "admin" / "static" / "app.css"   # the lab shares the admin app's look
+
+
 def static_file(rel: str) -> tuple[bytes, str] | None:
     rel = rel.split("?")[0]
     rel = "index.html" if rel in ("", "/") else rel.lstrip("/")
+    if rel == "static/app.css":   # run on its own, the lab serves the admin stylesheet at the same address
+        return ADMIN_CSS.read_bytes(), "text/css; charset=utf-8"
     target = (STATIC / rel).resolve()
     if not target.is_file() or STATIC not in target.parents:  # no path traversal out of static/
         return None
     ctype = mimetypes.guess_type(str(target))[0] or "application/octet-stream"
     if target.suffix == ".js":
         ctype = "text/javascript"
+    if target.suffix == ".css":   # a Windows registry entry can map .css to text/plain, which browsers then ignore
+        ctype = "text/css"
     return target.read_bytes(), ctype + ("; charset=utf-8" if ctype.startswith("text/") else "")
 
 

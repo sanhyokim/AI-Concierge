@@ -7,25 +7,35 @@
 <link rel="stylesheet" href="/static/app.css">
 </head>
 <body>
-<header class="top">
-  <div class="brand">AI受電 管理<span class="tag">試作</span></div>
-  <div class="who"><span id="who"></span> <button id="logoutBtn" class="small">ログアウト</button></div>
-</header>
-<div class="demo-banner" id="demoBanner">デモ・試作：会社の回線（0120-77-3408・092-504-2185）には接続していません。AI受付のオン・オフはNTTの転送の切り替えで行い、この画面からは変えられません。LINE等の実際の通知も送りません。</div>
-<div id="alerts"></div>
-<nav class="nav" id="nav">
-  <a href="#/">ホーム</a>
-  <a href="#/mode">基本設定</a>
-  <a href="#/faq">FAQ</a>
-  <a href="#/voice">音声</a>
-  <a href="#/calls">受付履歴</a>
-  <a href="#/notify">通知</a>
-  <a href="#/demo">着信テスト</a>
-  <a href="/lab/">会話試験</a>
-  <a href="#/ledger">費用の台帳</a>
-  <a href="#/audit">操作履歴</a>
-</nav>
-<main id="view" class="view" aria-live="polite"></main>
+<div class="shell">
+  <aside class="side"><div class="side-in">
+    <div class="brand"><span class="mark" aria-hidden="true">野</span>AI受電 管理<span class="tag">試作</span></div>
+    <nav class="nav" id="nav" aria-label="メニュー">
+      <div class="group">受付</div>
+      <a href="#/">ホーム</a>
+      <a href="#/calls">受付履歴</a>
+      <a href="#/notify">通知</a>
+      <div class="group">設定</div>
+      <a href="#/mode">基本設定</a>
+      <a href="#/faq">FAQ</a>
+      <a href="#/voice">音声</a>
+      <div class="group">試験</div>
+      <a href="#/demo">着信テスト</a>
+      <a href="/lab/">会話試験</a>
+      <a href="#/ledger">費用の台帳</a>
+      <div class="group">記録</div>
+      <a href="#/audit">操作履歴</a>
+    </nav>
+    <div class="side-foot">
+      <div class="who"><span id="who"></span><button id="logoutBtn" class="small ghost">ログアウト</button></div>
+      <p class="demo-note" id="demoBanner">試作です。会社の回線（0120-77-3408・092-504-2185）にはつながっていません。LINEなどの通知も実際には送りません。</p>
+    </div>
+  </div></aside>
+  <div class="main">
+    <div id="alerts"></div>
+    <main id="view" class="view" aria-live="polite"></main>
+  </div>
+</div>
 <div id="toast" class="toast" role="status"></div>
 <script src="/static/app.js"></script>
 </body>

@@ -556,18 +556,31 @@ async function save(auto) {
     : `保存しました：${r.saved}`;
 }
 
+// One scenario at a time: chips to choose, the chosen card, and that card's judgments.
 function renderStatic() {
-  $("cards").innerHTML = SCENARIOS.map((s, i) => `<label class="card"><input type="radio" name="sc" value="${s.id}" ${i === 0 ? "checked" : ""}>` +
-    `<b>${s.id} ${s.title}</b><ol class="lines">${s.lines.map((l) => `<li>${l}</li>`).join("")}</ol>` +
-    `<p>見ること：${s.check}</p></label>`).join("");
-  document.querySelectorAll("input[name=sc]").forEach((el) => el.addEventListener("change", () => { st.scenario = el.value; log("台本を切り替え", el.value); }));
+  $("cards").innerHTML = `<div class="chips" role="radiogroup" aria-label="台本">${SCENARIOS.map((s, i) =>
+    `<label class="chip" data-chip="${s.id}"><input type="radio" name="sc" value="${s.id}" ${i === 0 ? "checked" : ""}>${s.id} ${s.title}<span class="done" title="判定を記入済み"></span></label>`).join("")}</div>` +
+    SCENARIOS.map((s, i) => `<div class="scenario" data-sc="${s.id}" ${i === 0 ? "" : "hidden"}><h3>${s.id} ${s.title}</h3><p class="how">${s.how}</p>` +
+      `<ol>${s.lines.map((l) => `<li>${l}</li>`).join("")}</ol><p class="check"><b>見ること</b>　${s.check}</p></div>`).join("");
   const opts = (key) => key === "natural"
     ? `<option value="">—</option>${[1, 2, 3, 4, 5].map((n) => `<option>${n}</option>`).join("")}`
     : `<option value="">—</option><option value="yes">はい</option><option value="no">いいえ</option><option value="na">該当なし</option>`;
-  $("judge").style.gridTemplateColumns = `70px repeat(${JUDGE_ITEMS.length}, minmax(96px, 1fr))`;
-  $("judge").innerHTML = `<div></div>${JUDGE_AUDIO.map(() => "<div class='grp'>音声</div>").join("")}${JUDGE_LOGIC.map(() => "<div class='grp'>業務処理</div>").join("")}` +
-    `<div></div>${JUDGE_ITEMS.map(([, l]) => `<div><b>${l}</b></div>`).join("")}` +
-    SCENARIOS.map((s) => `<div><b>${s.id}</b></div>${JUDGE_ITEMS.map(([k]) => `<select id="j-${s.id}-${k}" aria-label="${s.id} ${k}">${opts(k)}</select>`).join("")}`).join("");
+  const rows = (s, items) => items.map(([k, l]) => `<label>${l}<select id="j-${s.id}-${k}" aria-label="${s.id} ${l}">${opts(k)}</select></label>`).join("");
+  $("judge").innerHTML = SCENARIOS.map((s, i) => `<div class="judge-set" data-sc="${s.id}" ${i === 0 ? "" : "hidden"}>` +
+    `<h3>${s.id}・声と話し方</h3><div class="judge-grid">${rows(s, JUDGE_AUDIO)}</div>` +
+    `<h3>${s.id}・受付の処理</h3><div class="judge-grid">${rows(s, JUDGE_LOGIC)}</div></div>`).join("");
+  const show = (id) => document.querySelectorAll("[data-sc]").forEach((el) => { el.hidden = el.dataset.sc !== id; });
+  document.querySelectorAll("input[name=sc]").forEach((el) => el.addEventListener("change", () => {
+    st.scenario = el.value; show(el.value); log("台本を切り替え", el.value);
+  }));
+  $("judge").addEventListener("change", (e) => {   // a dot on the chip once its scenario has a judgment
+    const set = e.target.closest(".judge-set");
+    const any = [...set.querySelectorAll("select")].some((x) => x.value);
+    document.querySelector(`[data-chip="${set.dataset.sc}"]`).classList.toggle("judged", any);
+  });
+  document.querySelectorAll(".tabs button").forEach((b) => b.addEventListener("click", () => {
+    document.querySelectorAll(".tabs button").forEach((x) => { x.classList.toggle("on", x === b); $(x.dataset.tab).hidden = x !== b; });
+  }));
 }
 
 function envHelp(c) {
@@ -575,7 +588,7 @@ function envHelp(c) {
   const items = c.missing_env.map((k) => `<li><code>${esc(k)}</code>：${esc(c.env_help[k] || "")}</li>`).join("");
   const unix = c.missing_env.map((k) => `export ${k}='（ここに値）'`).join("\n");
   const win = c.missing_env.map((k) => `$env:${k} = '（ここに値）'`).join("\n");
-  return `<details open><summary>この候補に必要な設定（この端末だけで行う）</summary><ul>${items}</ul>` +
+  return `<details open><summary>この候補に必要な設定（このパソコンだけで行う）</summary><ul>${items}</ul>` +
     `<p>mac・Linux（ターミナル）</p><pre>${esc(unix)}\npython3 -m prototype.browser_lab</pre>` +
     `<p>Windows（PowerShell）</p><pre>${esc(win)}\npython -m prototype.browser_lab</pre>` +
     "<p>鍵の値は、チャット・メール・ファイルに貼らず、この端末のターミナルにだけ入力します。設定したターミナルで試験のサーバーを起動し直します。</p></details>";
@@ -598,11 +611,11 @@ async function loadCandidates() {
     const c = st.candidates.find((x) => x.id === $("candidate").value);
     if (!c) { $("candNote").innerHTML = ""; $("limit").textContent = ""; return; }
     const n = c.counts || {};
-    $("candNote").innerHTML = (c.hold ? `<p><b>保留中：</b>${esc(c.hold)}</p>` : "") +
-      `<p>${c.verified ? "" : "接続未確認の構成です。"}業務処理の経路：${esc(c.logic_path)}。${esc(c.note || "")}</p>` +
-      `<p>管理画面の設定の反映：指示 ${esc(c.applies.instructions)}／声 ${esc(c.applies.voice)}</p>` +
-      (c.hold ? "" : `<p>これまでの会話：${n.sessions}回（回数の上限なし。1回の会話は${esc(String(c.max_session_min))}分で止まります）</p>`) +
-      envHelp(c);
+    // the short facts stay visible; the technical ones fold away
+    $("candNote").innerHTML = (c.hold ? `<p class="hold"><b>保留中：</b>${esc(c.hold)}</p>` : "") +
+      (c.hold ? "" : `<p>これまで${n.sessions}回・1回の会話は${esc(String(c.max_session_min))}分で止まります</p>`) + envHelp(c) +
+      `<details><summary>この候補について</summary><p>${c.verified ? "" : "接続未確認の構成です。"}業務処理の経路：${esc(c.logic_path)}。${esc(c.note || "")}</p>` +
+      `<p>管理画面の設定の反映：指示 ${esc(c.applies.instructions)}／声 ${esc(c.applies.voice)}</p></details>`;
     $("limit").textContent = `1回の会話は${c.max_session_min}分で自動的に止まります（画面を閉じても、サーバーが止めます）。AIが最後のあいさつの後に電話を切ります。切れないときや、途中でやめるときは「終える」を押してください。` +
       `費用は、会話ごとに台帳へ見込みを記録します（最大時間×$${c.upper_usd_per_min}/分。GPT-Liveは裏方のモデルの分を足す）。` +
       "回数と費用の上限はありません。業者側の予算の設定（OpenAIの月の予算など）は残しておいてください。";
@@ -617,9 +630,5 @@ $("saveBtn").addEventListener("click", () => save(false));
 $("refuseBtn").addEventListener("click", () => refuseAi().catch((e) => log("エラー", String(e.message || e))));
 renderStatic();
 loadCandidates();
-if (location.pathname.startsWith("/lab/")) {   // served by the admin app: link back to it
-  const a = document.createElement("a");
-  a.href = "../#/"; a.textContent = "← 管理画面へ";
-  document.querySelector("main").prepend(a);
-}
+if (location.pathname.startsWith("/lab/")) $("backLink").hidden = false;   // served by the admin app: link back to it
 window.__lab = st;   // for the automated smoke test

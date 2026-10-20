@@ -3,111 +3,148 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ブラウザー会話試験</title>
+<title>会話試験（AI受電）</title>
+<!-- the same look as the admin app: its stylesheet, plus the few pieces only this page has -->
+<link rel="stylesheet" href="../static/app.css">
 <style>
-  :root { --bg: #fafaf8; --fg: #1d1d1b; --muted: #66645f; --line: #d9d6cf; --card: #ffffff; --accent: #1f6feb;
-          --warn: #9a5b00; --bad: #b42318; --good: #1a7f37; --mic: #1f6feb; --ai: #8250df; }
-  @media (prefers-color-scheme: dark) {
-    :root { --bg: #161615; --fg: #ecebe8; --muted: #a3a19b; --line: #3a3935; --card: #1f1f1d; --accent: #58a6ff;
-            --warn: #e3a008; --bad: #f97066; --good: #3fb950; --mic: #58a6ff; --ai: #c297ff; }
+  .lab-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 24px; background: var(--surface); border-bottom: 1px solid var(--line); }
+  .lab-top .brand { padding: 0; }
+  .lab { max-width: 1240px; margin: 0 auto; padding: 22px 24px 48px; }
+  .lab > * + * { margin-top: 16px; }
+  .about { padding: 12px 18px; }
+  .about > summary { color: var(--muted); font-weight: 500; font-size: 13.5px; }
+  .about p, .about li { font-size: 13.5px; color: var(--muted); }
+  .lab-grid { display: grid; grid-template-columns: minmax(300px, 360px) minmax(0, 1fr); gap: 16px; align-items: start; }
+  .lab-side { display: grid; gap: 16px; }
+  .lab-main { display: grid; gap: 16px; min-width: 0; }
+  .callbox { border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface-2); padding: 12px; margin: 4px 0 12px; }
+  .callstate { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+  .status { font-weight: 700; font-size: 15px; overflow-wrap: anywhere; }
+  #timer { font: 600 20px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: var(--muted); }
+  .callbtns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .callbtns .primary { font-weight: 600; }
+  #refuseBtn { margin-top: 6px; width: 100%; }
+  .meter-row { display: grid; grid-template-columns: 4em 1fr 5.8em; gap: 8px; align-items: center; font-size: 12.5px; color: var(--muted); margin: 6px 0; }
+  .meter-row span:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+  .meter { height: 8px; background: var(--chip); border-radius: 4px; overflow: hidden; }
+  .meter > div { height: 100%; width: 0; transition: width .05s linear; }
+  #micBar { background: var(--accent); } #aiBar { background: #8250df; }
+  .cand-note { font-size: 13px; color: var(--muted); margin: -6px 0 12px; }
+  .cand-note p { margin: 4px 0; }
+  .cand-note .hold { color: var(--warn); }
+  .cand-note pre { white-space: pre-wrap; font-size: 12px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; }
+  #callInfo:empty, #limit:empty { display: none; }
+  #callInfo { font-size: 12px; overflow-wrap: anywhere; }
+  /* scenario chips: one card at a time */
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+  .chip { position: relative; display: inline-flex; align-items: center; gap: 6px; margin: 0; padding: 5px 12px; border: 1px solid var(--line-strong); border-radius: 999px;
+          font-size: 13.5px; font-weight: 500; cursor: pointer; background: var(--surface); }
+  .chip input { position: absolute; opacity: 0; pointer-events: none; }
+  .chip:has(input:checked) { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+  .chip:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .chip .done { width: 7px; height: 7px; border-radius: 50%; background: var(--good); display: none; }
+  .chip.judged .done { display: inline-block; }
+  .scenario h3 { font-size: 16px; margin: 0 0 2px; }
+  .scenario .how { color: var(--muted); font-size: 13.5px; margin: 0 0 10px; }
+  .scenario ol { margin: 0; padding-left: 1.6em; font-size: 15.5px; line-height: 1.75; }
+  .scenario li { margin: 4px 0; padding-left: 2px; }
+  .scenario li::marker { color: var(--faint); font-weight: 600; }
+  .scenario .check { margin: 14px 0 0; padding: 10px 12px; border-radius: var(--radius-sm); background: var(--accent-soft); font-size: 13.5px; }
+  .scenario .check b { color: var(--accent); }
+  /* judgments of the selected scenario */
+  .judge-set h3 { font-size: 13px; color: var(--muted); margin: 10px 0 6px; }
+  .judge-set h3:first-child { margin-top: 0; }
+  .judge-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 6px 16px; }
+  .judge-grid label { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0; font-weight: 400; font-size: 13.5px;
+                      padding: 6px 0; border-bottom: 1px dashed var(--line); }
+  .judge-grid select { width: 8.5em; flex: none; margin: 0; padding: 4px 8px; }
+  #saved { font-size: 12.5px; color: var(--muted); overflow-wrap: anywhere; }
+  /* records */
+  .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin: -4px 0 12px; }
+  .tabs button { border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: none; color: var(--muted); padding: 6px 10px; min-height: 0; }
+  .tabs button.on { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+  #log { height: 280px; overflow: auto; font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background: var(--surface-2);
+         border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 8px 10px; overflow-wrap: anywhere; }
+  #log:empty::before { content: "会話を始めると、ここに会話と業務処理が順に出ます。"; color: var(--faint); font-family: system-ui, sans-serif; }
+  #metrics td.flag { color: var(--warn); }
+  @media (max-width: 900px) {
+    .lab-grid { grid-template-columns: 1fr; }
+    .lab { padding: 14px 12px 40px; }
+    .lab-top { padding: 10px 12px; }
   }
-  * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.6 system-ui, "Hiragino Sans", "Yu Gothic UI", sans-serif; }
-  main { max-width: 1100px; margin: 0 auto; padding: 16px; }
-  h1 { font-size: 20px; margin: 4px 0 2px; }
-  h2 { font-size: 16px; margin: 0 0 8px; }
-  .sub { color: var(--muted); font-size: 13px; margin: 0 0 12px; }
-  .grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
-  section { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
-  label { display: block; margin: 6px 0; }
-  select, input[type=number], input[type=tel], textarea { width: 100%; font: inherit; color: inherit; background: var(--bg);
-           border: 1px solid var(--line); border-radius: 6px; padding: 6px; }
-  button { font: inherit; padding: 7px 14px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); cursor: pointer; }
-  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-  button:disabled { opacity: .5; cursor: default; }
-  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
-  .note { color: var(--warn); font-size: 13px; }
-  .status { font-weight: 600; }
-  .meter { height: 10px; background: var(--line); border-radius: 5px; overflow: hidden; margin: 2px 0 8px; }
-  .meter > div { height: 100%; width: 0; }
-  #micBar { background: var(--mic); } #aiBar { background: var(--ai); }
-  .cards { display: grid; gap: 8px; }
-  .card { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
-  .card input { margin-right: 6px; }
-  .card p { margin: 4px 0 0; font-size: 13px; color: var(--muted); }
-  .card .lines { margin: 6px 0 0 18px; padding: 0; font-size: 15px; line-height: 1.7; }
-  .card .lines li { margin: 2px 0; }
-  table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  th, td { border-bottom: 1px solid var(--line); padding: 4px 6px; text-align: left; vertical-align: top; }
-  #log { height: 220px; overflow: auto; font: 12px/1.5 ui-monospace, monospace; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 6px; }
-  .judge { display: grid; grid-template-columns: 70px repeat(6, minmax(96px, 1fr)); gap: 4px 8px; align-items: center; font-size: 13px; overflow-x: auto; }
-  .judge .grp { color: var(--muted); font-size: 12px; }
-  code { font-size: 12px; }
-  .judge select { padding: 2px; }
-  .flag { color: var(--warn); }
-  #candNote p { margin: 4px 0; }
-  pre { white-space: pre-wrap; font-size: 12px; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 6px; }
 </style>
 </head>
 <body>
-<main>
-  <h1>ブラウザー会話試験（AI受電）</h1>
-  <p class="sub">共通の受付業務と台本で、候補を切り替えて実際に話します。架空の情報だけを使ってください。計測は端末の音量で行います（2.5秒は目安で、合格の基準ではありません。実際に止まったかは耳で判定します）。業務処理（FAQ・確認・保存）は管理画面と同じ共通の処理で、FAQ・声は会話の開始時の設定を使います。</p>
-  <p class="note">まず各候補1〜2回の接続と短い会話だけを確かめ、動いた候補で詳しい比較（C1〜C7）へ進みます。音声だけの評価と、業務処理を含む評価は分けて記録します。</p>
+<header class="lab-top">
+  <div class="brand"><span class="mark" aria-hidden="true">野</span>会話試験<span class="tag">試作</span></div>
+  <a id="backLink" class="button" href="../#/" hidden>← 管理画面へ</a>
+</header>
+<main class="lab">
+  <div class="page-head"><div><h1>会話試験</h1><p>AIと実際に話して、受付の会話を確かめます。名前・番号などは、台本の架空のものを使ってください。</p></div></div>
 
-  <div class="grid">
-    <section>
-      <h2>1. 候補と条件</h2>
-      <label>候補（AIの接続先。台本のカードとは別に選ぶ） <select id="candidate"></select></label>
-      <div id="candNote" class="note"></div>
-      <label>音の出し方
-        <select id="output"><option value="headset">ヘッドセット（推奨）</option><option value="speaker">スピーカー</option></select></label>
-      <label><input type="checkbox" id="echo" checked> エコー抑制（ブラウザーの機能）</label>
-      <label>試験の回 <input type="number" id="round" value="1" min="1"></label>
-      <label>回線の番号（架空。電話でお客様の番号が届いた想定。空欄は非通知）
-        <input id="callerId" type="tel" placeholder="例 090-1111-2222" autocomplete="off"></label>
-      <div class="row">
-        <button class="primary" id="startBtn">会話を始める</button>
-        <button id="stopBtn" disabled>終える</button>
-        <button id="refuseBtn" disabled title="お客様がAIでの処理を拒否した想定。業者への接続を閉じ、以降の業務処理を拒否する">AIの拒否（模擬）</button>
-        <span class="status" id="status">待機中</span>
-        <span id="timer">0:00</span>
-      </div>
-      <p class="sub" id="limit"></p>
-      <p class="sub" id="callInfo"></p>
-      <div>マイク <span id="micDb"></span></div><div class="meter"><div id="micBar"></div></div>
-      <div>AIの音 <span id="aiDb"></span></div><div class="meter"><div id="aiBar"></div></div>
-      <details><summary>判定のしきい値</summary>
-        <label>マイクの発話とみなす音量（dBFS） <input type="number" id="micThr" value="-42"></label>
-        <label>AIの音とみなす音量（dBFS） <input type="number" id="aiThr" value="-50"></label>
-      </details>
-    </section>
+  <details class="card about"><summary>この画面について（計測・費用・進め方）</summary>
+    <ul>
+      <li>台本と業務処理（FAQ・確認・保存）は、どの候補でも同じです。FAQと声は、会話を始めたときの管理画面の設定を使います。</li>
+      <li>まず各候補で1〜2回、つながることと短い会話を確かめ、動いた候補で台本 C1〜C7 を比べます。</li>
+      <li>計測は、このパソコンの音量で行います。2.5秒は目安で、合格の基準ではありません。実際に止まったかは、耳で判定します。</li>
+      <li>判定は「声と話し方」（どの候補でも）と「受付の処理」（業務処理が届いた会話だけ）に分けて記録します。</li>
+    </ul>
+    <p id="limit"></p>
+  </details>
 
-    <section>
-      <h2>2. 台本（いま行うものを選び、番号の順に話す）</h2>
-      <p class="sub">「 」の中を、そのまま読み上げます（情報はすべて架空）。AIが別の順番で聞いてきたら、聞かれたことに合わせて答えます。</p>
-      <div class="cards" id="cards"></div>
-    </section>
+  <div class="lab-grid">
+    <aside class="lab-side">
+      <section class="card">
+        <h2>通話</h2>
+        <label>AI（候補） <select id="candidate"></select></label>
+        <div id="candNote" class="cand-note"></div>
+        <label>回線の番号（架空・空欄は非通知）
+          <input id="callerId" type="tel" placeholder="例 090-1111-2222" autocomplete="off"></label>
+        <div class="callbox">
+          <div class="callstate"><span class="status" id="status">待機中</span><span id="timer">0:00</span></div>
+          <div class="callbtns"><button class="primary" id="startBtn">会話を始める</button><button id="stopBtn" disabled>終える</button></div>
+          <button id="refuseBtn" class="small" disabled title="お客様がAIでの処理を断った想定。AIとの接続を閉じ、以降の業務処理を断る">AIの拒否（模擬）</button>
+        </div>
+        <div class="meter-row"><span>マイク</span><div class="meter"><div id="micBar"></div></div><span id="micDb"></span></div>
+        <div class="meter-row"><span>AIの声</span><div class="meter"><div id="aiBar"></div></div><span id="aiDb"></span></div>
+        <p class="sub" id="callInfo"></p>
+        <details class="fold"><summary>詳しい設定</summary>
+          <label>音の出し方
+            <select id="output"><option value="headset">ヘッドセット（推奨）</option><option value="speaker">スピーカー</option></select></label>
+          <label class="check" style="margin-bottom:12px"><input type="checkbox" id="echo" checked> エコー抑制（ブラウザーの機能）</label>
+          <label>試験の回 <input type="number" id="round" value="1" min="1"></label>
+          <label>マイクの発話とみなす音量（dBFS） <input type="number" id="micThr" value="-42"></label>
+          <label>AIの音とみなす音量（dBFS） <input type="number" id="aiThr" value="-50"></label>
+        </details>
+      </section>
+    </aside>
+
+    <div class="lab-main">
+      <section class="card">
+        <div class="card-head"><h2>台本</h2><span class="sub">「 」の中を、そのまま読みます。AIが別の順番で聞いてきたら、聞かれたことに答えます。</span></div>
+        <div id="cards"></div>
+      </section>
+
+      <section class="card">
+        <div class="card-head"><h2>判定</h2><span class="sub">いま選んでいる台本の判定です。会話の後に記入します。</span></div>
+        <div id="judge"></div>
+        <label style="margin-top:14px">メモ <textarea id="notes" rows="3" placeholder="気づいたこと（聞き取りにくい所、不自然な言い方など）"></textarea></label>
+        <div class="form-actions"><button class="primary" id="saveBtn" disabled>結果を保存</button><span id="saved"></span></div>
+      </section>
+
+      <section class="card">
+        <div class="tabs" role="tablist">
+          <button class="on" data-tab="logPane" role="tab">会話と業務処理の記録</button>
+          <button data-tab="metricsPane" role="tab">このパソコンでの計測</button>
+        </div>
+        <div id="logPane"><div id="log" aria-live="polite"></div></div>
+        <div id="metricsPane" hidden>
+          <table><thead><tr><th>台本</th><th>項目</th><th>値</th></tr></thead><tbody id="metrics"></tbody></table>
+          <p class="sub" id="summary" style="margin-top:8px"></p>
+        </div>
+      </section>
+    </div>
   </div>
-
-  <div class="grid" style="margin-top:12px">
-    <section>
-      <h2>3. 端末での計測</h2>
-      <table><thead><tr><th>台本</th><th>項目</th><th>値</th></tr></thead><tbody id="metrics"></tbody></table>
-      <p class="sub" id="summary"></p>
-    </section>
-    <section>
-      <h2>4. 会話と業務処理の記録</h2>
-      <div id="log" aria-live="polite"></div>
-    </section>
-  </div>
-
-  <section style="margin-top:12px">
-    <h2>5. 判定（試験者が記入）</h2>
-    <div class="judge" id="judge"></div>
-    <label>メモ <textarea id="notes" rows="3"></textarea></label>
-    <div class="row"><button class="primary" id="saveBtn" disabled>結果を保存</button><span id="saved"></span></div>
-  </section>
 </main>
 <script type="module" src="./lab.js"></script>
 </body>
