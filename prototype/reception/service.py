@@ -19,7 +19,7 @@ from dataclasses import asdict
 
 from ..concierge.call_flow import CallFlow, Consent
 from ..concierge.confirmation import FieldState, Status
-from ..concierge.prompts import BASE_INSTRUCTIONS, SPEECH_MANNERS, VOICE_RULES
+from ..concierge.prompts import BASE_INSTRUCTIONS, SPEECH_MANNERS, VOICE_RULES, for_speech
 from ..concierge.readings import digits_only
 from ..engines.tools import READBACK_FIELDS, ToolHandler
 from . import settings as S
@@ -292,7 +292,8 @@ class ReceptionService:
         else:
             parts = [VOICE_RULES.format(end="end_call を呼びます"), DIRECT_TOOL_RULES, line_block(has_line),
                      date_block(at, brief=True)]
-        return "\n".join(part.rstrip() for part in [preamble, *parts])
+        # the words the voice models misread are given in kana (2026-10-20: 「承りました」 said 「しょうりました」)
+        return for_speech("\n".join(part.rstrip() for part in [preamble, *parts]))
 
     def backend_instructions(self, call_id: str) -> str:
         """GPT-Live's backend (delegation) model: the procedures, the tools, the dates and this call's FAQ."""

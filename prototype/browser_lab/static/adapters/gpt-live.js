@@ -10,7 +10,8 @@
 // Ending: session.close, then up to 5 s for session.closed (and its usage, if any) before the connection is closed.
 // Written from the public docs (2026-10-07); the connection has not been confirmed with a real account.
 const CLOSE_WAIT_MS = 5000;
-const ICE_WAIT_MS = 10000;   // the official WebRTC guide waits for ICE gathering (10 s timeout) before sending the offer
+const ICE_WAIT_MS = 10000;
+const OPENING_WAIT_MS = 2500;   // the model has this long to start the opening by itself   // the official WebRTC guide waits for ICE gathering (10 s timeout) before sending the offer
 
 function iceGathered(pc) {
   if (pc.iceGatheringState === "complete") return Promise.resolve();
@@ -33,7 +34,7 @@ export async function connect(ctx) {
   pc.addTrack(ctx.micStream.getTracks()[0], ctx.micStream);
   const dc = pc.createDataChannel("oai-events");   // register before creating the offer
   const send = (ev) => dc.readyState === "open" && dc.send(JSON.stringify(ev));
-  let userBuf = "", aiBuf = "", closeWaiter = null;
+  let userBuf = "", aiBuf = "", closeWaiter = null, aiSpoke = false, callerSpoke = false;
   const flushUser = () => { const t = userBuf; userBuf = ""; return t ? ctx.onTranscript("user", t) : Promise.resolve(null); };
   const flushAi = () => { if (aiBuf) { ctx.onTranscript("ai", aiBuf); aiBuf = ""; } };
   const usageOf = (u) => u && {
@@ -45,15 +46,22 @@ export async function connect(ctx) {
     const inner = ev.type === "response.event" && ev.event ? ev.event : null;
     ctx.log("vendor_event", { type: ev.type, inner: inner && inner.type });
     if (ev.type === "session.started") {
-      // the opening (A-01) was asked for in session.input when the session was created (server side)
+      // the opening (A-01) was asked for in session.input when the session was created (server side). That "can
+      // improve greeting behavior" only, and on 2026-10-20 the model stayed silent; if it has not started after a
+      // moment, ask once more with session.commentary.append (spoken by the model, in its own voice)
+      setTimeout(() => {
+        if (aiSpoke || callerSpoke || !ctx.credentials.opening_request) return;
+        ctx.log("冒頭の案内", "AIが話し始めないので、もう一度頼みました（session.commentary.append）");
+        send({ type: "session.commentary.append", delegation_id: null, content: ctx.credentials.opening_request });
+      }, OPENING_WAIT_MS);
     } else if (ev.type === "session.closed") {
       if (closeWaiter) closeWaiter(ev);
     } else if (ev.type === "session.input_transcript.delta") {
-      flushAi(); userBuf += ev.delta || "";
+      flushAi(); callerSpoke = true; userBuf += ev.delta || "";
     } else if (ev.type === "session.input_transcript.done" || ev.type === "session.input_transcript.completed") {
       flushUser();
     } else if (ev.type === "session.output_transcript.delta") {
-      flushUser(); aiBuf += ev.delta || "";
+      flushUser(); aiSpoke = true; aiBuf += ev.delta || "";
     } else if (inner && inner.type === "response.created") {
       ctx.vendorEvent("backend_response");
     } else if (inner && ["response.completed", "response.done", "response.incomplete", "response.failed"].includes(inner.type)) {

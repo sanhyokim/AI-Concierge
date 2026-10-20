@@ -105,5 +105,20 @@ class LabTest(unittest.TestCase):
         self.assertEqual(out["invalidated"], ["callback_number"])     # not a number: the strict rule
 
 
+class SpeechKanaTest(unittest.TestCase):
+    """2026-10-20, Gemini: 「承りました」 was said 「しょうりました」."""
+
+    def test_misread_words_reach_the_voice_models_in_kana(self):
+        from prototype.concierge.prompts import for_speech
+        self.assertEqual(for_speech("ご用件を承り、AI受付が承りました。申し伝えます。お伺いします。承知いたしました。"),
+                         "ご用件をうけたまわり、AI受付がうけたまわりました。もうしつたえます。おうかがいします。承知いたしました。")
+        svc = ReceptionService(Store(":memory:"), env={})
+        cid = svc.start_call(at="2026-10-20T18:00")["id"]
+        for backend in (True, False):
+            text = svc.voice_instructions(cid, "", backend=backend)
+            self.assertIn("AI受付がうけたまわりました。失礼いたします。", text)
+            self.assertNotIn("承り", text)
+
+
 if __name__ == "__main__":
     unittest.main()

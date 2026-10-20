@@ -115,7 +115,8 @@ def mint(cfg: dict, env: dict, http: Http = http_json, instructions: str = LAB_I
         return {"ephemeral_key": data["value"], "calls_url": "https://api.openai.com/v1/realtime/calls",
                 "greeting": GREETING}
     if adapter == "gpt-live":
-        return {"sdp_exchange": "api/session/sdp"}   # the offer is exchanged server-side
+        # the offer is exchanged server-side; the page asks again for the opening if the model stays silent
+        return {"sdp_exchange": "api/session/sdp", "opening_request": OPENING_REQUEST}
     if adapter == "gemini-live":
         # one use, started within a minute, and no messages after the maximum session length (+1 minute)
         body = {"uses": 1, "expireTime": _iso(dt.timedelta(minutes=MAX_SESSION_MIN + 1)),

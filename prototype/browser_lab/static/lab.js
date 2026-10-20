@@ -243,6 +243,8 @@ function tick() {
 // end_call; after the wait (both sides quiet), the page plays the hang-up tone and ends the session.
 const GOODBYE_WORDS = /(はい|ええ|どうも|ありがとうございました|ありがとうございます|ありがとう|失礼いたします|失礼しま[ーっ]?す|失礼しました|よろしくお願いいたします|よろしくお願いします|お願いします|以上です|以上|分かりました|わかりました|了解です|では|じゃあ|はーい|[、。,.！!？?\s　])/g;
 
+const FINAL_WORDS = /(承|うけたまわ)りました。?\s*失礼いたします。?\s*$/;
+
 function scheduleHangup(waitMs) {
   if (st.closing || st.hangup) return;
   st.hangup = { waitMs: waitMs || 3000, quietSince: null };
@@ -364,6 +366,11 @@ function makeCtx(creds) {
       log(role === "user" ? "お客様" : "AI", text);
       if (role === "user") return st.session && !st.closing ? sendUtterance(text) : Promise.resolve(null);
       if (!st.session) return Promise.resolve(null);
+      // the AI said its last words but did not call end_call (2026-10-20, GPT-Live: the call never hung up)
+      if (FINAL_WORDS.test(text) && !st.hangup && !st.closing) {
+        log("最後のあいさつを聞き取りました", "AIが終話の処理を呼ばなかったので、画面が電話を切ります");
+        scheduleHangup(3000);
+      }
       st.aiPost = sendAiUtterance(text);
       return st.aiPost;
     },

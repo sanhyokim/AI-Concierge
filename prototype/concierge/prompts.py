@@ -105,9 +105,23 @@ OPENING_QUESTION = "それでは、どのようなご用件でしょうか。"
 # 2026-10-20 (Gemini): the caller's 「もしもし」 got no answer for 30 seconds: the AI was only told to wait
 OPENING_NOTE = ("【はじめ】通話の最初に、渡された案内を一字一句そのまま一度だけ話し、お客様のお話を待ちます。"
                 "「もしもし」だけなら「はい、株式会社野田でございます。」と応じます。")
+
+# Words the voice models misread, written in kana in what they are told to say (2026-10-20, Gemini: 「承りました」
+# was said 「しょうりました」). 承知 (しょうち) is read correctly and stays.
+SPEECH_KANA = (("承り", "うけたまわり"), ("承ります", "うけたまわります"), ("承る", "うけたまわる"),
+               ("申し伝え", "もうしつたえ"), ("伺", "うかが"))
+
+
+def for_speech(text: str) -> str:
+    """The text a voice model is given to say, with the misread words in kana."""
+    for word, kana in SPEECH_KANA:
+        text = text.replace(word, kana)
+    return text
+
+
 # sent to the model when the session starts (GPT-Live: a developer message in session.input; Gemini: a text turn)
-OPENING_REQUEST = ("通話がつながりました。最初に、次の案内を日本語で、一字一句変えずに話してください。話し終えたら、"
-                   "お客様のお話を待ちます。\n「" + OPENING_ANNOUNCEMENT + OPENING_QUESTION + "」")
+OPENING_REQUEST = for_speech("通話がつながりました。最初に、次の案内を日本語で、一字一句変えずに話してください。話し終えたら、"
+                             "お客様のお話を待ちます。\n「" + OPENING_ANNOUNCEMENT + OPENING_QUESTION + "」")
 
 # The AI's first words (the lab and the offline agent). Business phone manners: the company name with
 # 「でございます」, then that this is an AI reception (2026-10-13; the old 「AI受付です。ご用件をお伺いします。」 sounded abrupt).
