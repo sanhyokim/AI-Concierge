@@ -209,10 +209,11 @@ class ReceptionService:
         with self._lock:
             self._live[call_id] = sess
         if d.route == "ai":
-            self._event(call_id, "play", {"clip": "A-01", "text": "冒頭の案内（AIの受付であること・録音の告知）"})
+            # the AI says these in its own voice, not a recording (user decision 2026-10-20)
+            self._event(call_id, "say_ai", {"clip": "A-01", "intent": "冒頭の案内（AIの受付であること・録音の告知）"})
             if source != "browser_lab":
-                self._event(call_id, "play", {"clip": "A-04", "text": "担当者が出られないための案内"
-                                                                    "（ただいま担当者が電話に出られないため、AIがご用件を伺います）"})
+                self._event(call_id, "say_ai", {"clip": "A-04", "intent": "担当者が出られないための案内"
+                                                                      "（ただいま担当者が電話に出られないため、AIがご用件を伺います）"})
         elif d.route == "dtmf":
             with sess.lock:
                 self._apply(call_id, sess, flow.on_ai_failure())

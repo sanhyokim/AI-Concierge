@@ -95,16 +95,19 @@ VOICE_RULES = """\
   その後は話しません。お客様の話の途中で、締めの言葉を言いません。
 """
 
-# A-01 (spec 4-2): recorded and played as soon as the call is answered. The lab plays it with the browser's
-# Japanese speech, then asks for the request, so the company always speaks first (2026-10-20: the caller had to
-# speak first because GPT-Live did not greet on its own, and A-01 was only written to the record).
+# A-01 (spec 4-2): said as soon as the call is answered, then the question for the request, so the company always
+# speaks first (2026-10-20: the caller had to speak first because GPT-Live did not greet on its own). User decision
+# 2026-10-20: the AI says it in its own voice (「GPTでもGEMINIでもAIと同じ声質にしてほしい」), not a recording.
 OPENING_ANNOUNCEMENT = ("お電話ありがとうございます。株式会社野田でございます。こちらはAIによる受付でございます。"
                         "ご用件を承り、担当の者から折り返しご連絡いたします。通話は、内容確認のため録音いたします。"
                         "また、AIの処理には外部のサービスを利用しております。録音をご希望でない場合は、お申し付けください。")
 OPENING_QUESTION = "それでは、どのようなご用件でしょうか。"
 # 2026-10-20 (Gemini): the caller's 「もしもし」 got no answer for 30 seconds: the AI was only told to wait
-OPENING_NOTE = ("【はじめ】あいさつと「どのようなご用件でしょうか。」は録音で流れます。繰り返さず、お客様のお話を待ちます。"
+OPENING_NOTE = ("【はじめ】通話の最初に、渡された案内を一字一句そのまま一度だけ話し、お客様のお話を待ちます。"
                 "「もしもし」だけなら「はい、株式会社野田でございます。」と応じます。")
+# sent to the model when the session starts (GPT-Live: a developer message in session.input; Gemini: a text turn)
+OPENING_REQUEST = ("通話がつながりました。最初に、次の案内を日本語で、一字一句変えずに話してください。話し終えたら、"
+                   "お客様のお話を待ちます。\n「" + OPENING_ANNOUNCEMENT + OPENING_QUESTION + "」")
 
 # The AI's first words (the lab and the offline agent). Business phone manners: the company name with
 # 「でございます」, then that this is an AI reception (2026-10-13; the old 「AI受付です。ご用件をお伺いします。」 sounded abrupt).

@@ -45,7 +45,8 @@ export async function connect(ctx) {
       ctx.log("vendor_event", { type: "setupComplete" });
       capture = await startCapture(ac, ctx.micStream, 16000, (buf) =>
         send({ realtimeInput: { audio: { data: toBase64(buf), mimeType: "audio/pcm;rate=16000" } } }));
-      // no greeting from the model: the page plays the recorded opening (A-01) and the AI waits for the caller
+      // the opening (A-01) in the model's own voice (user decision 2026-10-20), then it waits for the caller
+      if (ctx.credentials.opening_request) send({ realtimeInput: { text: ctx.credentials.opening_request } });
       return;
     }
     const sc = ev.serverContent;

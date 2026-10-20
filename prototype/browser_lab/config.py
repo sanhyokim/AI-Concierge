@@ -12,8 +12,8 @@ it is a proposal for the browser stage (measurement plan v2), not an approved bu
 """
 from __future__ import annotations
 
-from ..concierge.prompts import (GREETING, OPENING_ANNOUNCEMENT, OPENING_NOTE, OPENING_QUESTION,  # noqa: F401
-                                  SPEECH_MANNERS)   # GREETING and the opening are used by vendors
+from ..concierge.prompts import (GREETING, OPENING_NOTE, OPENING_REQUEST,  # noqa: F401
+                                  SPEECH_MANNERS)   # GREETING and the opening request are used by vendors
 from ..reception.faq import TOOL_RULES
 from ..reception.tooldefs import RECEPTION_TOOLS as TOOLS
 from ..engines.budget import Limits
@@ -147,13 +147,11 @@ LAB_RULES = """\
 - 電話番号・日時は、区切りごとにはっきり復唱し、合っているかを確かめます。「はい、違います」は肯定ではありません。
 """
 # used only when no reception service is attached; the service builds the same blocks from the call's settings
-# The opening of the short prompts (GPT-Live 1, Gemini 3.8 Live; 2026-10-14). The page plays the opening (A-01).
+# The opening of the short prompts (GPT-Live 1, Gemini 3.8 Live; 2026-10-14). The AI says the opening (A-01).
 LAB_PERSONA = """\
 あなたは株式会社野田（飲食店の排煙ダクト・厨房換気設備の清掃と保守）の電話受付AIです。これは試験です。
 AIの受付として、ご用件を伺い、担当の者からの折り返しにお取り次ぎします。必ず日本語で話します。
 """ + OPENING_NOTE + "\n"
-# played by the page before the AI listens (A-01, then the question): the lab's stand-in for the recording
-LAB_OPENING = OPENING_ANNOUNCEMENT + OPENING_QUESTION
 
 LAB_INSTRUCTIONS = LAB_RULES + "\n" + SPEECH_MANNERS + "\n" + TOOL_RULES + "\n" + MOCK_FAQ
 

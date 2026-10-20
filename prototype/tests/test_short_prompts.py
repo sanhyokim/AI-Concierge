@@ -121,17 +121,29 @@ if __name__ == "__main__":
 
 
 class OpeningTest(unittest.TestCase):
-    """2026-10-20: the caller had to speak first (GPT-Live did not greet on its own; A-01 was only logged)."""
+    """2026-10-20: the caller had to speak first (GPT-Live did not greet on its own), and the browser voice that
+    then read A-01 was unusable: the user asked for the AI's own voice (「AIと同じ声質にしてほしい」)."""
 
-    def test_the_page_plays_the_recorded_opening_and_the_models_do_not_greet(self):
+    def test_both_models_are_asked_to_say_the_opening_in_their_own_voice(self):
         from prototype.browser_lab import config, vendors
-        from prototype.concierge.prompts import OPENING_ANNOUNCEMENT, OPENING_NOTE
-        creds = vendors.mint(config.CANDIDATES["gpt-live-1"], {"OPENAI_API_KEY": "k"})
-        self.assertTrue(creds["opening"].startswith(OPENING_ANNOUNCEMENT))
-        self.assertTrue(creds["opening"].endswith("どのようなご用件でしょうか。"))
-        self.assertIn("録音いたします", creds["opening"])                 # A-01 (spec 4-2)
-        self.assertIn(OPENING_NOTE, config.LAB_PERSONA)                     # the AI knows the opening was played
+        from prototype.concierge.prompts import OPENING_ANNOUNCEMENT, OPENING_NOTE, OPENING_REQUEST
+        self.assertIn(OPENING_ANNOUNCEMENT + "それでは、どのようなご用件でしょうか。", OPENING_REQUEST)
+        self.assertIn("録音いたします", OPENING_REQUEST)                    # A-01 (spec 4-2)
+        self.assertIn(OPENING_NOTE, config.LAB_PERSONA)
+        calls = []
+
+        def http(method, url, headers, body):
+            calls.append(body)
+            return 200, {"transport": {"sdp": "answer"}, "session": {"id": "ls_1"}}
+        vendors.exchange_live_sdp(config.CANDIDATES["gpt-live-1"], {"OPENAI_API_KEY": "k"}, "offer", http)
+        self.assertEqual(calls[0]["session"]["input"], [{"type": "message", "role": "developer",
+                                                         "content": [{"type": "input_text", "text": OPENING_REQUEST}]}])
+        gem = vendors.mint(config.CANDIDATES["gemini-3.8-live"], {"GEMINI_API_KEY": "g"},
+                           lambda *a: (200, {"name": "auth_tokens/x"}))
+        self.assertEqual(gem["opening_request"], OPENING_REQUEST)
         static = ROOT / "prototype" / "browser_lab" / "static"
-        for name in ("gpt-live.js", "gemini-live.js"):
-            self.assertNotIn("あいさつをしてください", (static / "adapters" / name).read_text(encoding="utf-8"))
-        self.assertIn("playOpening(st.session.credentials.opening)", (static / "lab.js").read_text(encoding="utf-8"))
+        self.assertIn("realtimeInput: { text: ctx.credentials.opening_request }",
+                      (static / "adapters" / "gemini-live.js").read_text(encoding="utf-8"))
+        lab = (static / "lab.js").read_text(encoding="utf-8")
+        self.assertNotIn("speechSynthesis", lab)                             # no browser voice any more
+        self.assertNotIn("openingBox", (static / "index.html").read_text(encoding="utf-8"))

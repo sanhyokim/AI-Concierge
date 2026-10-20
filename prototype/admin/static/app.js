@@ -223,7 +223,7 @@ function eventText(e) {
     case "ai_used": return `使ったAI：${d.name}・声 ${d.voice}${d.note ? `（${d.note}）` : ""}`;
     case "play": return `録音済みの案内 ${d.clip}：${d.text || ""}`;
     case "gather_dtmf": return "プッシュボタンの入力を待つ";
-    case "say_ai": return `AIが話す（意図：${d.intent}）`;
+    case "say_ai": return d.clip ? `AIが話す案内 ${d.clip}：${d.intent}（AIの声で）` : `AIが話す（意図：${d.intent}）`;
     case "ai_send_stopped": return d.text || "AIへの音声送信を停止";
     case "transcript_deleted": return `拒否より前の文字起こしを削除（${d.count}件）`;
     case "ai_send_blocked": return `AIへ送らなかった（${d.reason}）`;
@@ -475,7 +475,10 @@ async function startDemo() {
   document.getElementById("callArea").classList.remove("hidden");
   document.getElementById("resultArea").classList.add("hidden");
   document.getElementById("chat").innerHTML = "";
-  for (const e of r.call.events) if (e.kind === "play") chat("sys", `録音済みの案内 ${e.data.clip}：${e.data.text}`);
+  for (const e of r.call.events) {
+    if (e.kind === "play") chat("sys", `録音済みの案内 ${e.data.clip}：${e.data.text}`);
+    if (e.kind === "say_ai" && e.data.clip) chat("sys", `AIが話す案内 ${e.data.clip}：${e.data.intent}`);
+  }
   for (const line of r.say) chat("ai", line);
   if (r.call.route === "dtmf") chat("sys", "AIが使えないため、録音の案内とプッシュボタンで受け付けます");
   drawCall(r.call);

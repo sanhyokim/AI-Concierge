@@ -45,7 +45,7 @@ export async function connect(ctx) {
     const inner = ev.type === "response.event" && ev.event ? ev.event : null;
     ctx.log("vendor_event", { type: ev.type, inner: inner && inner.type });
     if (ev.type === "session.started") {
-      // no greeting from the model: the page plays the recorded opening (A-01); the instructions say so
+      // the opening (A-01) was asked for in session.input when the session was created (server side)
     } else if (ev.type === "session.closed") {
       if (closeWaiter) closeWaiter(ev);
     } else if (ev.type === "session.input_transcript.delta") {

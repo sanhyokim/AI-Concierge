@@ -61,9 +61,9 @@ class RoutingTest(unittest.TestCase):
         svc = service()
         for at in ("2026-10-05T10:00", "2026-10-05T20:00"):   # inside and outside the old 9-17 band alike
             call = svc.start_call(at=at)
-            plays = [e["data"] for e in call["events"] if e["kind"] == "play"]
-            self.assertEqual([p["clip"] for p in plays], ["A-01", "A-04"], at)
-            self.assertIn("担当者が電話に出られないため", plays[1]["text"])
+            said = [e["data"] for e in call["events"] if e["kind"] == "say_ai"]   # in the AI's voice (2026-10-20)
+            self.assertEqual([p["clip"] for p in said], ["A-01", "A-04"], at)
+            self.assertIn("担当者が電話に出られないため", said[1]["intent"])
 
     def test_hours_faq_is_ordinary_text(self):
         self.assertIn("9時から17時", S.HOURS_ANSWER)

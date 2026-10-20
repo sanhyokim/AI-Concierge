@@ -24,7 +24,6 @@ Session control:
 from __future__ import annotations
 
 import argparse
-import base64
 import datetime as dt
 import json
 import math
@@ -42,19 +41,13 @@ from ..concierge.readings import digits_only, is_valid_jp_number
 from ..reception.service import ReceptionService
 from ..reception.store import DEFAULT_DB, Store, dumps, iso, now_jst
 from . import vendors, wsclient
-from .config import (APPLY_LABELS, CANDIDATES, DELEGATION_PRICES, LAB_LIMITS, LAB_LIMITS_BY_STAGE, LAB_OPENING, LAB_PERSONA,
+from .config import (APPLY_LABELS, CANDIDATES, DELEGATION_PRICES, LAB_LIMITS, LAB_LIMITS_BY_STAGE, LAB_PERSONA,
                      LAB_RULES, LAB_STAGES, LOGIC_PATHS, MAX_BACKEND_RESPONSES, MAX_MINT_FAILURES, MAX_RESPONSE_CREATES,
                      MAX_SESSION_MIN, MAX_TOOL_CALLS, SESSION_GRACE_S, SESSIONS, apply_modes, delegation_model,
                      public_candidates, released, session_reserve_usd)
 
 STATIC = pathlib.Path(__file__).resolve().parent / "static"
 RESULTS = pathlib.Path(__file__).resolve().parents[1] / "results" / "browser-lab"
-# A-01 recorded on the lab page (or chosen from a file), kept with the records so the update keeps it
-OPENING_DIR = DEFAULT_DB.parent / "recordings"
-OPENING_TYPES = {"audio/webm": ".webm", "audio/ogg": ".ogg", "audio/mpeg": ".mp3", "audio/mp3": ".mp3",
-                 "audio/wav": ".wav", "audio/x-wav": ".wav", "audio/wave": ".wav", "audio/mp4": ".m4a",
-                 "audio/x-m4a": ".m4a", "audio/aac": ".aac"}
-OPENING_MAX_BYTES = 1_400_000   # about a minute of compressed audio; the request limit is 2 MB of base64
 PATH_TAG = "browser_lab"
 
 
@@ -91,14 +84,12 @@ class Lab:
 
     def __init__(self, env: dict | None = None, http=vendors.http_json, ledger_path: pathlib.Path = DEFAULT_LEDGER,
                  results_dir: pathlib.Path = RESULTS, service: ReceptionService | None = None,
-                 live_close=wsclient.close_live_session, clock=time.time, recover: bool = True,
-                 opening_dir: pathlib.Path = OPENING_DIR) -> None:
+                 live_close=wsclient.close_live_session, clock=time.time, recover: bool = True) -> None:
         self.env = dict(os.environ if env is None else env)
         self.http, self.ledger_path, self.results_dir = http, pathlib.Path(ledger_path), pathlib.Path(results_dir)
         self.service = service or ReceptionService(Store(":memory:"), env=self.env)
         self.store = self.service.store
         self.live_close, self.clock = live_close, clock
-        self.opening_dir = pathlib.Path(opening_dir)
         if self.env.get("LAB_STAGE") and self.env["LAB_STAGE"] not in LAB_LIMITS_BY_STAGE:
             raise ValueError(f"LAB_STAGE must be one of {', '.join(LAB_LIMITS_BY_STAGE)}")
         self.sessions: dict[str, dict] = {}   # runtime data of sessions started by this process
@@ -485,49 +476,6 @@ class Lab:
         self._watchdog = threading.Thread(target=loop, daemon=True)
         self._watchdog.start()
 
-    # --- the recorded opening (A-01) ---------------------------------------------------------------------
-    # 2026-10-20 (user): the browser's speech voice for A-01 was 「全く使い物にならない」. GPT-Live cannot read a
-    # script word for word, and A-01 is a recording in the real service too (spec 4-2), so the tester records it
-    # on the lab page (or picks an audio file); the page plays it before the AI listens.
-
-    def opening(self) -> dict:
-        meta_path = self.opening_dir / "A-01.json"
-        try:
-            meta = json.loads(meta_path.read_text(encoding="utf-8"))
-            data = (self.opening_dir / meta["file"]).read_bytes()
-        except (OSError, ValueError, KeyError):
-            return {"present": False, "text": LAB_OPENING}
-        return {"present": True, "text": LAB_OPENING, "mime": meta["mime"], "saved_at": meta.get("saved_at"), "source": meta.get("source"),
-                "seconds": meta.get("seconds"), "data": base64.b64encode(data).decode("ascii")}
-
-    def save_opening(self, body: dict) -> dict:
-        if body.get("delete"):
-            for f in self.opening_dir.glob("A-01.*"):
-                f.unlink()
-            return {"present": False, "text": LAB_OPENING}
-        mime = str(body.get("mime") or "").split(";")[0].strip().lower()
-        if mime not in OPENING_TYPES:
-            raise ValueError(f"この形式の音声は使えません（{mime or '不明'}）。mp3・wav・m4a・webm・ogg を選んでください")
-        try:
-            data = base64.b64decode(str(body.get("data") or ""), validate=True)
-        except ValueError:
-            raise ValueError("音声のデータが読めませんでした") from None
-        if not data:
-            raise ValueError("音声が空です")
-        if len(data) > OPENING_MAX_BYTES:
-            raise ValueError("音声が長すぎます（1分ほどまで）")
-        self.opening_dir.mkdir(parents=True, exist_ok=True)
-        for f in self.opening_dir.glob("A-01.*"):
-            f.unlink()
-        name = "A-01" + OPENING_TYPES[mime]
-        (self.opening_dir / name).write_bytes(data)
-        seconds = body.get("seconds")
-        meta = {"file": name, "mime": mime, "saved_at": iso(now_jst()),
-                "source": "file" if body.get("source") == "file" else "recorded",
-                "seconds": round(float(seconds), 1) if isinstance(seconds, (int, float)) else None}
-        (self.opening_dir / "A-01.json").write_text(json.dumps(meta, ensure_ascii=False), encoding="utf-8")
-        return self.opening()
-
     def save_results(self, payload: dict) -> str:
         self.results_dir.mkdir(parents=True, exist_ok=True)
         ts = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
@@ -596,8 +544,6 @@ def api_get(lab: Lab, path: str, csrf: str = "") -> dict | None:
         return lab.ledger_summary()
     if path == "/api/csrf":
         return {"csrf": csrf}
-    if path == "/api/opening":
-        return lab.opening()
     return None
 
 
@@ -629,8 +575,6 @@ def api_post(lab: Lab, path: str, body: dict) -> tuple[int, dict]:
             return 200, lab.consent(sid, body.get("kind", ""))
         if path == "/api/results":
             return 200, {"saved": lab.save_results(body)}
-        if path == "/api/opening":
-            return 200, lab.save_opening(body)
         return HTTPStatus.NOT_FOUND, {"error": "not found"}
     except BudgetExceeded as exc:
         return HTTPStatus.PAYMENT_REQUIRED, {"error": f"budget: {exc}"}

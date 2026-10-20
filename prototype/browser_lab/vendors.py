@@ -17,7 +17,7 @@ import urllib.request
 from typing import Callable
 
 from ..engines.budget import MAX_OUTPUT_TOKENS
-from .config import (GREETING, LAB_INSTRUCTIONS, LAB_OPENING, MAX_SESSION_MIN, delegation_model, gemini_function_declarations,
+from .config import (GREETING, LAB_INSTRUCTIONS, MAX_SESSION_MIN, OPENING_REQUEST, delegation_model, gemini_function_declarations,
                      openai_tools)
 
 Http = Callable[[str, str, dict, dict | None], tuple[int, dict | str]]
@@ -115,7 +115,7 @@ def mint(cfg: dict, env: dict, http: Http = http_json, instructions: str = LAB_I
         return {"ephemeral_key": data["value"], "calls_url": "https://api.openai.com/v1/realtime/calls",
                 "greeting": GREETING}
     if adapter == "gpt-live":
-        return {"sdp_exchange": "api/session/sdp", "opening": LAB_OPENING}   # the offer is exchanged server-side
+        return {"sdp_exchange": "api/session/sdp"}   # the offer is exchanged server-side
     if adapter == "gemini-live":
         # one use, started within a minute, and no messages after the maximum session length (+1 minute)
         body = {"uses": 1, "expireTime": _iso(dt.timedelta(minutes=MAX_SESSION_MIN + 1)),
@@ -145,7 +145,8 @@ def mint(cfg: dict, env: dict, http: Http = http_json, instructions: str = LAB_I
         return {"token": token,
                 "ws_url": "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta."
                           "GenerativeService.BidiGenerateContentConstrained",
-                "setup": {"setup": setup}, "opening": LAB_OPENING}
+                # the AI says the opening in its own voice (user decision 2026-10-20); the page sends it at setup
+                "setup": {"setup": setup}, "opening_request": OPENING_REQUEST}
     if adapter == "elevenlabs":
         url = ("https://api.elevenlabs.io/v1/convai/conversation/get-signed-url?agent_id="
                + urllib.request.quote(env["ELEVENLABS_AGENT_ID"]))
@@ -193,6 +194,10 @@ def exchange_live_sdp(cfg: dict, env: dict, offer_sdp: str, http: Http = http_js
                 "tool_choice": "auto", "parallel_tool_calls": False, "max_output_tokens": MAX_OUTPUT_TOKENS,
                 **({"reasoning": {"effort": cfg["delegation_reasoning_effort"]}}
                    if cfg.get("delegation_reasoning_effort") else {})}},
+            # speak first: the opening (A-01) in the model's own voice (user decision 2026-10-20). OpenAI's guide:
+            # a developer message in session.input at creation; it "can improve greeting behavior" only
+            "input": [{"type": "message", "role": "developer",
+                       "content": [{"type": "input_text", "text": OPENING_REQUEST}]}],
             "store": False},
             "transport": {"type": "webrtc", "sdp": offer_sdp}}
         return http("POST", "https://api.openai.com/v1/live/sessions",

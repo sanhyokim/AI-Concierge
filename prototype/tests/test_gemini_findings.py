@@ -1,12 +1,11 @@
 """The Gemini 3.8 Live tests of 2026-10-20: the call record named GPT-Live's voice, every early 「はい」 to a read-back
-was refused, the end-of-call save_fields reset the number, the announcement needed a real recording, and the
-caller's speech was transcribed in other languages."""
-import base64
+was refused, the end-of-call save_fields reset the number, and the caller's speech was transcribed in other
+languages."""
 import pathlib
 import tempfile
 import unittest
 
-from prototype.browser_lab.server import Lab, api_get, api_post
+from prototype.browser_lab.server import Lab, api_post
 from prototype.engines.tools import ToolHandler
 from prototype.reception.service import ReceptionService
 from prototype.reception.store import Store
@@ -79,8 +78,7 @@ class LabTest(unittest.TestCase):
         env = env or {"GEMINI_API_KEY": "g"}
         return Lab(env=env, http=FakeHttp({"auth_tokens": {"name": "auth_tokens/abc"}}),
                    ledger_path=self.dir / "ledger.jsonl", results_dir=self.dir / "results",
-                   service=ReceptionService(Store(self.dir / "lab.db"), env=env), clock=Clock(),
-                   opening_dir=self.dir / "recordings")
+                   service=ReceptionService(Store(self.dir / "lab.db"), env=env), clock=Clock())
 
     def test_the_call_record_names_the_ai_and_the_voice_really_used(self):
         lab = self.lab()
@@ -105,31 +103,6 @@ class LabTest(unittest.TestCase):
         self.assertEqual((status, out["invalidated"]), (200, []))
         _, out = api_post(lab, "/api/interrupted", {"session_id": sid, "source": "gemini", "unplayed_ms": "x"})
         self.assertEqual(out["invalidated"], ["callback_number"])     # not a number: the strict rule
-
-    def test_the_opening_recording_is_kept_played_back_and_deleted(self):
-        lab = self.lab()
-        got = api_get(lab, "/api/opening")
-        self.assertFalse(got["present"])
-        self.assertIn("株式会社野田", got["text"])
-        audio = b"OggS fake audio"
-        status, out = api_post(lab, "/api/opening", {"mime": "audio/webm;codecs=opus", "seconds": 12.34,
-                                                     "data": base64.b64encode(audio).decode()})
-        self.assertEqual((status, out["present"], out["seconds"], out["source"]), (200, True, 12.3, "recorded"))
-        self.assertEqual(base64.b64decode(api_get(lab, "/api/opening")["data"]), audio)
-        self.assertTrue((self.dir / "recordings" / "A-01.webm").is_file())
-        api_post(lab, "/api/opening", {"mime": "audio/mpeg", "source": "file", "data": base64.b64encode(b"ID3").decode()})
-        self.assertEqual(sorted(p.name for p in (self.dir / "recordings").iterdir()), ["A-01.json", "A-01.mp3"])
-        self.assertFalse(api_post(lab, "/api/opening", {"delete": True})[1]["present"])
-        self.assertEqual(list((self.dir / "recordings").iterdir()), [])
-
-    def test_the_opening_refuses_other_files(self):
-        lab = self.lab()
-        for body in ({"mime": "text/html", "data": "PGh0bWw+"}, {"mime": "audio/mpeg", "data": ""},
-                     {"mime": "audio/mpeg", "data": "not base64!"},
-                     {"mime": "audio/mpeg", "data": base64.b64encode(b"x" * 1_500_000).decode()}):
-            status, _ = api_post(lab, "/api/opening", body)
-            self.assertEqual(status, 400, body["mime"])
-        self.assertFalse(api_get(lab, "/api/opening")["present"])
 
 
 if __name__ == "__main__":

@@ -46,8 +46,6 @@ function fail(msg) { console.error("FAIL:", msg); process.exitCode = 1; }
   try {
     await page.goto(url + "/");
     await page.waitForFunction(() => document.querySelectorAll("#candidate option").length > 1);
-    await page.waitForFunction(() => document.getElementById("openingText").textContent.includes("株式会社野田"));
-    if (!(await page.textContent("#openingState")).length) fail("the opening recording box has no state");
     const options = await page.$$eval("#candidate option", (os) => os.map((o) => ({ v: o.value, d: o.disabled, t: o.textContent })));
     if (options.find((o) => o.v === "fake").d) fail("offline candidate should be ready");
     if (!options.filter((o) => o.v !== "fake").every((o) => o.d)) fail("vendor candidates must be disabled without keys");
