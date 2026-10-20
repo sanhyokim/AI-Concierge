@@ -14,7 +14,7 @@
 - **更新したら**
   - 必ずコミットして push し、ダウンロードURLを伝えます（利用者の依頼、2026-10-08）。
   - URL：https://github.com/sanhyokim/AI-Concierge/archive/refs/heads/claude/new-session-w4sjel.zip
-  - 入れ替えるとき（Windows）は、前のフォルダーを捨ててから展開してもらいます。パスワードは決め直しになることも伝えます。
+  - 入れ替えるとき（Windows、2026-10-20〜）は、デスクトップの「AI受付を起動」をダブルクリックするだけです。GitHub から最新版を自分でダウンロードして `%USERPROFILE%\AI-Concierge` に入れ、記録・パスワード・試験の結果を引き継ぎます（`prototype/update.py`。最初の1回だけ、ZIPを展開して `AI受付を起動_windows.bat` を開く）。利用者の「毎回ZIPを開くのが面倒」という要望から。
   - 入れ替えるとき（Mac、2026-10-13〜）は、ZIPをダウンロードしてから Dock（ホームフォルダー）の `AI受付を起動_mac.command` を開くだけです。`~/AI-Concierge` に入り、記録とパスワードは引き継ぎます。macOS の「開いていません」の確認は、このファイルを最初に開く1回だけです（ダウンロードのたびに出て困る、という利用者の要望）。
 - **ブランチ**
   - 作業するブランチは `claude/new-session-w4sjel` だけです。上のURLがこのブランチを指しているためです。
