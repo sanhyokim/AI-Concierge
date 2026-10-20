@@ -220,6 +220,7 @@ function eventText(e) {
     case "ai": return `AI：${d.text}`;
     case "tool": return `業務処理 ${d.name}(${JSON.stringify(d.args)}) → ${JSON.stringify(d.result)}`;
     case "route": return `経路：${d.label}（${d.reason}）`;
+    case "ai_used": return `使ったAI：${d.name}・声 ${d.voice}${d.note ? `（${d.note}）` : ""}`;
     case "play": return `録音済みの案内 ${d.clip}：${d.text || ""}`;
     case "gather_dtmf": return "プッシュボタンの入力を待つ";
     case "say_ai": return `AIが話す（意図：${d.intent}）`;
@@ -230,20 +231,50 @@ function eventText(e) {
     case "consent": return `同意の変更：${({ ai_refused: "AIの拒否", recording_refused: "録音の拒否", human_request: "人との会話の希望", human_request_answer: "短い受付への回答", ai_failure: "AIの障害" })[d.kind] || d.kind}（${({ speech: "発話から判定", operator: "操作", tester: "試験者" })[d.source] || d.source || ""}）`;
     case "recording_stopped": return "録音を停止（以降は録音しない）";
     case "recording_deleted": return d.why || "拒否より前の録音を削除";
-    case "vendor_interrupted": return `業者の割り込みの通知（${d.source}）：${(d.invalidated || []).length ? `返事の前に遮られた復唱 ${d.invalidated.join("・")} を確認済みにしない` : "無効にした復唱はない"}`;
+    case "vendor_interrupted": return `業者の割り込みの通知（${d.source}${d.unplayed_ms != null ? `・残りの音 ${(d.unplayed_ms / 1000).toFixed(1)}秒` : ""}）：${(d.invalidated || []).length ? `返事の前に遮られた復唱 ${d.invalidated.join("・")} を確認済みにしない` : "無効にした復唱はない"}`;
     case "read_back_mismatch": return `復唱の言い間違い（${d.field === "callback_number" ? "折り返し先" : d.field === "preferred_datetime" ? "希望日時" : d.field}）：AIは「${d.said}」と言った。保存した値と違うので、「はい」でも確認済みにしない`;
     case "forward_to_staff": return d.text || "担当者の携帯へ転送";
     default: return `${e.kind} ${d && Object.keys(d).length ? JSON.stringify(d) : ""}`;
   }
 }
+// The whole record as plain text (2026-10-20, user: copying the event list by hand to report a test was tedious)
+function callText(c) {
+  const lines = [`受付 ${c.id}`, `種類：${c.source_label}`, `開始・終了：${fmt(c.started_at)} 〜 ${fmt(c.ended_at) || "通話中"} ${c.end_reason || ""}`,
+    `着信先：${c.dialed}`, `回線の番号：${c.caller_id || "非通知・不明"}`, `経路：${c.route_label}（${c.route_reason}）`];
+  if (c.ai) lines.push(`AI：${c.ai.name}`);
+  lines.push(`この通話の設定：v${c.config_version}・声 ${c.voice.label || c.voice.voice}・有効だったFAQ ${c.faq_codes.join(", ")}`,
+    `同意：録音 ${c.consent.recording === "allowed" ? "許可" : "拒否"}・AIでの処理 ${c.consent.ai_processing === "allowed" ? "許可" : "拒否"}`);
+  if (c.emergency) lines.push(`緊急：${c.emergency}`);
+  if (c.open_questions.length) lines.push(`確認事項：${c.open_questions.join("／")}`);
+  if (c.fields && c.fields.length) {
+    lines.push("", "■ 受付項目");
+    for (const f of c.fields) lines.push(`${f.label}：${f.display || "未取得"}（${f.status_label}）`);
+  }
+  for (const sm of c.summaries || []) lines.push("", `■ 要約 版${sm.version}（${sm.reason}）`, sm.text);
+  lines.push("", `■ 出来事の記録（${c.events.length}件）`);
+  for (const e of c.events) lines.push(`${fmt(e.at).slice(11)}\t${eventText(e)}`);
+  return lines.join("\r\n") + "\r\n";
+}
+
+function downloadText(name, text) {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob(["\ufeff" + text], { type: "text/plain;charset=utf-8" }));
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+}
+
 routes.call = async (id) => {
   const c = await api(`/api/calls/${encodeURIComponent(id)}`);
   const ended = !!c.ended_at;
   const canCorrect = ended && !NO_INTAKE(c.route);
   view.innerHTML = `<section class="card"><h1>受付 ${esc(c.id)}</h1>
+    <div class="row"><button class="small" id="saveText">記録をテキストで保存</button><span class="sub">この画面の内容（受付項目・要約・出来事の記録）を1つのファイルにします。開発の担当に送るときに使います。</span></div>
     <dl class="kv"><dt>種類</dt><dd>${esc(c.source_label)}（デモ・架空のデータ）</dd><dt>開始・終了</dt><dd>${esc(fmt(c.started_at))} 〜 ${esc(fmt(c.ended_at) || "通話中")} ${esc(c.end_reason || "")}</dd>
     <dt>着信先</dt><dd>${esc(c.dialed)}</dd><dt>回線の番号</dt><dd>${esc(c.caller_id || "非通知・不明")}</dd>
     <dt>経路</dt><dd>${routeBadge(c.route, c.route_label)} ${esc(c.route_reason)}</dd>
+    ${c.ai ? `<dt>AI</dt><dd>${esc(c.ai.name)}</dd>` : ""}
     <dt>この通話の設定</dt><dd>v${c.config_version}・声 ${esc(c.voice.label || c.voice.voice)}・有効だったFAQ ${esc(c.faq_codes.join(", "))}</dd>
     <dt>同意</dt><dd>録音 ${c.consent.recording === "allowed" ? "許可" : "拒否"}・AIでの処理 ${c.consent.ai_processing === "allowed" ? "許可" : "拒否"}</dd>
     ${c.emergency ? `<dt>緊急</dt><dd><span class="badge bad">${esc(c.emergency)}</span></dd>` : ""}
@@ -288,6 +319,8 @@ routes.call = async (id) => {
   };
   document.getElementById("handled").addEventListener("change", (e) => setHandled(e.target.value, "対応状態を保存しました"));
   document.getElementById("takeover")?.addEventListener("click", () => setHandled("対応中", "担当を引き継ぎました"));
+  // an ASCII file name: Chromium saved a Japanese one as "download"
+  document.getElementById("saveText").addEventListener("click", () => downloadText(`call-${c.id}.txt`, callText(c)));
   if (NO_INTAKE(c.route)) return;
   view.addEventListener("click", (e) => {
     const t = e.target;
@@ -424,7 +457,7 @@ function drawCall(c) {
   demo.call = c;
   const d = document.getElementById("decision");
   d.innerHTML = `<div class="big" id="demoRoute">${routeBadge(c.route, c.route_label)}</div><p>${esc(c.route_reason)}</p>
-    <p class="sub">着信 ${esc(fmt(c.started_at))}・設定 v${c.config_version}・声 ${esc(c.voice.label || c.voice.voice)}・FAQ ${esc(c.faq_codes.join(", "))}</p>
+    <p class="sub">着信 ${esc(fmt(c.started_at))}${c.ai ? `・AI ${esc(c.ai.name)}` : ""}・設定 v${c.config_version}・声 ${esc(c.voice.label || c.voice.voice)}・FAQ ${esc(c.faq_codes.join(", "))}</p>
     <p class="sub">この通話は、開始時の設定のまま進みます。管理画面で設定を変えても、次の着信から反映されます。</p>
     ${NO_INTAKE(c.route) ? `<p><b>AIが止まっているため、担当者の携帯へ転送します。AIの会話は始めません</b>（デモでは電話はかけません）。発話を送っても、AIへは送りません。</p>` : ""}
     <p><a href="#/call/${encodeURIComponent(c.id)}">受付の詳細を開く</a></p>`;

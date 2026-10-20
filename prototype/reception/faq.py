@@ -80,7 +80,7 @@ DIRECT_TOOL_RULES = """\
 # GPT-Live: the voice model only decides when to hand work to its backend (delegation policy of OpenAI's guide).
 DELEGATION_POLICY = """\
 【裏方への頼み方】
-裏方（業務処理の担当）ができること：聞き取った内容の保存と、電話番号・日時の復唱の文づくり。料金・条件・対応地域の確認。
+裏方ができること：聞き取った内容の保存と、電話番号・日時の復唱の文づくり。料金・条件・対応地域の確認。
 日付と曜日の確認。回線の番号の確認。危険の訴えの記録。通話の終了。
 裏方に頼むとき：
 - お客様が店舗名・お名前・ご用件・電話番号・日時をおっしゃったとき、訂正されたとき

@@ -85,6 +85,12 @@ def _function_tools() -> list:
              "parameters": _strict(t["parameters"]), "strict": True} for t in openai_tools()]
 
 
+# Gemini Live voice activity detection (Live API reference, AutomaticActivityDetection); tuned by the lab tests
+GEMINI_ACTIVITY_DETECTION = {"startOfSpeechSensitivity": "START_SENSITIVITY_LOW",
+                             "endOfSpeechSensitivity": "END_SENSITIVITY_LOW",
+                             "prefixPaddingMs": 300, "silenceDurationMs": 800}
+
+
 def mint(cfg: dict, env: dict, http: Http = http_json, instructions: str = LAB_INSTRUCTIONS,
          voice: str | None = None, overrides: dict | None = None, script: list | None = None) -> dict:
     """Credentials and session settings for the page. Never returns a key from env.
@@ -127,7 +133,13 @@ def mint(cfg: dict, env: dict, http: Http = http_json, instructions: str = LAB_I
         setup = {"model": cfg["model"], "generationConfig": generation,
                  "systemInstruction": {"parts": [{"text": instructions}]},
                  "tools": [{"functionDeclarations": gemini_function_declarations()}],
-                 "inputAudioTranscription": {}, "outputAudioTranscription": {},
+                 # 2026-10-20: without a language hint the caller's 「はい」 came back as 「हां।」 and 「Oh.」
+                 "inputAudioTranscription": {"languageCodes": ["ja-JP"]},
+                 "outputAudioTranscription": {"languageCodes": ["ja-JP"]},
+                 # 2026-10-20 (user): the AI stopped short whenever a sound came while it spoke, and asked again
+                 # too often. The defaults are the most sensitive (HIGH): start on less, wait for real speech
+                 # (prefixPaddingMs), and let the caller pause (a number given in parts) before the turn ends.
+                 "realtimeInputConfig": {"automaticActivityDetection": GEMINI_ACTIVITY_DETECTION},
                  # the history is re-billed every turn (official best practices): cap it with a sliding window
                  "contextWindowCompression": {"slidingWindow": {}}}
         return {"token": token,

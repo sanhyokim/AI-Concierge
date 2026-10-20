@@ -174,12 +174,14 @@ class FieldState:
         if value != self.read_back_value or self.revision != self.read_back_revision:
             return False, "value differs from the value that was read back"
         if self.readback_interrupted:
-            return False, "the read-back was interrupted; read it back again and ask"
+            return False, ("the read-back was interrupted before the caller answered. Say 「念のため、もう一度復唱いたします。」 and read "
+                           "the same say once more; do not ask the caller to repeat")
         if self.readback_mismatch:
             return False, (f"your read-back said {self.readback_mismatch}, which is not the saved value; call "
                            "request_readback again and read read_this_clearly exactly, then ask again")
         if self.read_back_after_seq is not None and (reply_seq is None or reply_seq <= self.read_back_after_seq):
-            return False, "no caller reply after the read-back yet; wait for the reply"
+            return False, ("no caller reply after the read-back has reached the server yet. Wait for it without "
+                           "speaking, then call confirm_field again; do not ask the caller to repeat")
         if self.name == "callback_number" and _foreign_digits(last_caller_utterance, value):
             return False, "the reply contains a different number; save it and read it back again"
         reply = classify_reply(last_caller_utterance)

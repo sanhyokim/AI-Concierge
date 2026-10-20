@@ -17,6 +17,7 @@ from ..concierge.readings import date_phrase, datetime_phrase, digits_only, phon
 
 READBACK_FIELDS = ("callback_number", "preferred_datetime")   # read back digit by digit / with the weekday
 THEN_ASK = "こちらでお間違いないでしょうか。"
+READBACK_TAIL_MS = 2000   # about the time 「こちらでお間違いないでしょうか。」 takes to say
 
 
 class ToolHandler:
@@ -49,8 +50,15 @@ class ToolHandler:
         self._utt_text = text
         return True
 
-    def readback_interrupted(self, source: str = "") -> list[str]:
-        """The vendor reported that the AI was cut off. Invalidate only read-backs the caller has not answered yet."""
+    def readback_interrupted(self, source: str = "", unplayed_ms: int | None = None) -> list[str]:
+        """The vendor reported that the AI was cut off. Invalidate only read-backs the caller has not answered yet.
+
+        unplayed_ms: how much of the AI's audio had not been played yet (the page knows). When only the closing
+        question was left (READBACK_TAIL_MS), the caller heard the number or the date: the cut was the caller's
+        「はい」 itself, and it still answers the read-back (2026-10-20, Gemini: every 「はい」 said a little early
+        stopped the AI, the read-back was then refused, and the AI asked again)."""
+        if unplayed_ms is not None and 0 <= unplayed_ms <= READBACK_TAIL_MS:
+            return []
         out = []
         for name, f in self.store.fields.items():
             if f.status == Status.AWAITING and f.read_back_after_seq == self._utt_seq and f.interrupt_readback(source):
@@ -69,6 +77,12 @@ class ToolHandler:
         # The caller's 「はい」 answers what the AI just read back, not what was saved last: on 2026-10-19 the
         # number and the date were saved together, the AI read back the number, and the 「はい」 confirmed the date.
         spoken = [name for name, f in self.store.fields.items() if f.spoke_now]
+        for name in spoken:   # the AI read an interrupted read-back again by itself: the next reply answers it
+            f = self.store.fields[name]
+            if f.readback_interrupted:
+                f.read_back(f.value, t_ms=t_ms, after_seq=self._utt_seq)
+                f.readback_spoken_ok = True
+                f._log("read_back_again_by_ai", t_ms)
         if len(spoken) == 1:
             self._last_readback = spoken[0]
         elif spoken:      # both in one breath: one 「はい」 cannot tell which; the model confirms each itself
@@ -131,7 +145,9 @@ class ToolHandler:
         re-sends every value at the end of the call)."""
         state = self.store.get(field)
         value = self._normalize(field, value)
-        if state.status == Status.CONFIRMED and state.value == value:
+        # the same value again while it is read back or confirmed changes nothing (2026-10-20: save_fields at the
+        # end of the call turned the number back to "heard" and started its read-back over)
+        if state.status in (Status.CONFIRMED, Status.AWAITING) and state.value == value:
             return state.status.value
         return state.hear(value, source=source, t_ms=t_ms).value
 

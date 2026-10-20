@@ -12,7 +12,14 @@ export async function connect(ctx) {
   ctx.attachOutputNode(out);
   let player = createPlayer(ac, out, 24000);
   let capture = null, userBuf = "", aiBuf = "";
-  const flushUser = () => { const t = userBuf; userBuf = ""; return t ? ctx.onTranscript("user", t) : Promise.resolve(null); };
+  let toolsPending = 0, userTimer = null, generationDone = true;
+  const flushUser = () => {
+    clearTimeout(userTimer);
+    const t = userBuf; userBuf = "";
+    return t ? ctx.onTranscript("user", t) : Promise.resolve(null);
+  };
+  // the model's own transcript sometimes holds only a marker (「...」「<no speech>{pause}」「___」): not words
+  const spoken = (t) => t.replace(/<[^>]*>|\{[^}]*\}|[.…_\s。、]/g, "") ? t : "";
   const ws = new WebSocket(`${wsUrl}?access_token=${encodeURIComponent(token)}`);
   const send = (obj) => ws.readyState === WebSocket.OPEN && ws.send(JSON.stringify(obj));
 
@@ -46,24 +53,40 @@ export async function connect(ctx) {
           const m = /rate=(\d+)/.exec(d.mimeType || "");
           if (m && Number(m[1]) !== 24000) player = createPlayer(ac, out, Number(m[1]));
           player.enqueue(fromBase64(d.data));
+          generationDone = false;
         }
       }
-      if (sc.interrupted) { player.clear(); ctx.vendorInterrupted("gemini.serverContent.interrupted"); }
-      if (sc.inputTranscription && sc.inputTranscription.text) userBuf += sc.inputTranscription.text;
+      if (sc.generationComplete) generationDone = true;
+      if (sc.interrupted) {
+        // how much of the answer was not heard yet: only known once the whole answer has been generated
+        const unplayedMs = generationDone ? player.pendingSeconds() * 1000 : null;
+        player.clear();
+        ctx.vendorInterrupted("gemini.serverContent.interrupted", unplayedMs);
+      }
+      if (sc.inputTranscription && sc.inputTranscription.text) {
+        userBuf += sc.inputTranscription.text;
+        // the caller's words can arrive after the model's tool call (2026-10-20: a 「はい」 to the read-back
+        // reached the server only after confirm_field had been refused): send them while a tool call waits
+        if (toolsPending) { clearTimeout(userTimer); userTimer = setTimeout(flushUser, 500); }
+      }
       if (sc.outputTranscription && sc.outputTranscription.text) aiBuf += sc.outputTranscription.text;
       if (sc.turnComplete || sc.generationComplete) {
         flushUser();
-        if (aiBuf) { ctx.onTranscript("ai", aiBuf); aiBuf = ""; }
+        if (spoken(aiBuf)) ctx.onTranscript("ai", aiBuf);
+        aiBuf = "";
       }
     }
     if (ev.toolCall) {
       const responses = [];
       const heard = await flushUser();
       if (heard && heard.stop_ai) return;
-      for (const fc of ev.toolCall.functionCalls || []) {
-        const result = await ctx.toolCall(fc.name, fc.args || {});
-        responses.push({ id: fc.id, name: fc.name, response: { result } });
-      }
+      toolsPending++;
+      try {
+        for (const fc of ev.toolCall.functionCalls || []) {
+          const result = await ctx.toolCall(fc.name, fc.args || {});
+          responses.push({ id: fc.id, name: fc.name, response: { result } });
+        }
+      } finally { toolsPending--; }
       send({ toolResponse: { functionResponses: responses } });
     }
   };

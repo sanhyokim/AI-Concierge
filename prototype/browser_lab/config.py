@@ -150,7 +150,7 @@ LAB_RULES = """\
 # The opening of the short prompts (GPT-Live 1, Gemini 3.8 Live; 2026-10-14). The page plays the opening (A-01).
 LAB_PERSONA = """\
 あなたは株式会社野田（飲食店の排煙ダクト・厨房換気設備の清掃と保守）の電話受付AIです。これは試験です。
-AIによる受付として、ご用件を伺い、担当の者から折り返しお電話するようにお取り次ぎします。必ず日本語で話します。
+AIの受付として、ご用件を伺い、担当の者からの折り返しにお取り次ぎします。必ず日本語で話します。
 """ + OPENING_NOTE + "\n"
 # played by the page before the AI listens (A-01, then the question): the lab's stand-in for the recording
 LAB_OPENING = OPENING_ANNOUNCEMENT + OPENING_QUESTION

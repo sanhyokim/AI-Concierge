@@ -317,11 +317,12 @@ async function sendAiUtterance(text) {
   } catch (e) { log("ai_utterance_error", String(e.message || e)); return null; }
 }
 
-async function reportInterrupted(source) {
-  log("業者の割り込みの通知", source);
+async function reportInterrupted(source, unplayedMs) {
+  log("業者の割り込みの通知", unplayedMs != null ? `${source}（まだ流れていなかった音 ${(unplayedMs / 1000).toFixed(1)}秒）` : source);
   if (!st.session || st.aiStopped || st.closing) return null;
   try {
-    const r = await post("api/interrupted", { session_id: st.session.session_id, source });
+    const r = await post("api/interrupted", { session_id: st.session.session_id, source,
+      unplayed_ms: unplayedMs != null ? Math.round(unplayedMs) : undefined });
     if (r.invalidated && r.invalidated.length) log("復唱を無効にした（返事の前に遮られた）", r.invalidated);
     return r;
   } catch (e) { log("interrupted_error", String(e.message || e)); return null; }
@@ -364,7 +365,7 @@ function makeCtx(creds) {
       st.aiPost = sendAiUtterance(text);
       return st.aiPost;
     },
-    vendorInterrupted: (source) => reportInterrupted(source),
+    vendorInterrupted: (source, unplayedMs) => reportInterrupted(source, unplayedMs),
     // the vendor closed the connection or never answered the setup (2026-10-20: Gemini stayed silent): say why
     vendorClosed: async (why) => {
       if (st.closing || !st.session) return;
@@ -468,10 +469,31 @@ async function start() {
   }
 }
 
-// A-01 (spec 4-2) is a recording played as soon as the call is answered. The lab has no recording yet, so the
-// browser's Japanese voice reads it, followed by the question for the request: the company speaks first and the
-// AI waits for the caller (2026-10-20: the caller had to speak first). The voice differs from the AI's on purpose.
-function playOpening(text) {
+// A-01 (spec 4-2) is a recording played as soon as the call is answered, followed by the question for the
+// request: the company speaks first and the AI waits for the caller (2026-10-20: the caller had to speak first).
+// The tester records it on this page or picks a file (2026-10-20: the browser's voice was 「全く使い物にならない」);
+// without one, the browser's Japanese voice stands in. The microphone is not sent to the AI while it plays, so
+// the AI does not take the announcement for the caller.
+function micToAi(on) {
+  if (st.mic && !st.aiStopped && !st.closing) st.mic.getTracks().forEach((t) => { t.enabled = on; });
+}
+
+async function playOpening(text) {
+  const done = (what) => { micToAi(true); log(`${what}が終わりました`); };
+  if (st.opening && st.opening.present) {
+    try {
+      const buf = await st.ac.decodeAudioData(fromB64(st.opening.data));
+      const src = st.ac.createBufferSource();
+      src.buffer = buf;
+      src.connect(st.ac.destination);
+      src.onended = () => done("録音済みの案内 A-01");
+      st.openingSrc = src;
+      micToAi(false);
+      log("録音済みの案内 A-01（録音）", `${buf.duration.toFixed(1)}秒`);
+      src.start();
+      return;
+    } catch (e) { log("録音済みの案内 A-01", `録音を再生できなかったので、読み上げで代わりに流します（${e.message || e}）`); }
+  }
   const synth = window.speechSynthesis;
   if (!synth) { log("録音済みの案内 A-01", "このブラウザーは読み上げができないため、流していません"); return; }
   const u = new SpeechSynthesisUtterance(text);
@@ -479,15 +501,102 @@ function playOpening(text) {
   const ja = synth.getVoices().filter((v) => /^ja/i.test(v.lang));
   const voice = ja.find((v) => /Nanami|Google/i.test(v.name)) || ja[0];
   if (voice) u.voice = voice;
-  u.onend = () => log("録音済みの案内 A-01 が終わりました");
-  log("録音済みの案内 A-01（模擬：ブラウザーの読み上げ）", text);
+  u.onend = () => done("録音済みの案内 A-01（読み上げ）");
+  u.onerror = u.onend;
+  log("録音済みの案内 A-01（録音がないため、ブラウザーの読み上げ）", text);
+  micToAi(false);
   synth.cancel();
   synth.speak(u);
 }
 
+function fromB64(b64) {
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out.buffer;
+}
+
+function blobToB64(blob) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result).split(",")[1] || "");
+    r.onerror = () => reject(r.error);
+    r.readAsDataURL(blob);
+  });
+}
+
+function showOpening() {
+  const o = st.opening || {};
+  $("openingText").textContent = o.text || "";
+  $("openingState").textContent = o.present
+    ? `${o.source === "file" ? "ファイル" : "録音"}あり${o.seconds ? `（${o.seconds}秒）` : ""}・${fmtTime(o.saved_at)}`
+    : "なし（ブラウザーの読み上げで代わりに流す）";
+  $("openingPlay").disabled = !o.present;
+  $("openingDel").disabled = !o.present;
+}
+
+function fmtTime(iso) { return iso ? String(iso).replace("T", " ").slice(0, 16) : ""; }
+
+async function loadOpening() {
+  try { st.opening = await (await fetch("api/opening")).json(); } catch (e) { st.opening = null; }
+  showOpening();
+}
+
+async function saveOpening(blob, source, seconds) {
+  $("openingState").textContent = "保存しています";
+  try {
+    const ext = String(blob.name || "").split(".").pop().toLowerCase();   // some files come without a type
+    const mime = blob.type || { mp3: "audio/mpeg", wav: "audio/wav", m4a: "audio/mp4", webm: "audio/webm",
+      ogg: "audio/ogg", aac: "audio/aac" }[ext] || "";
+    st.opening = await post("api/opening", { mime, data: await blobToB64(blob), source, seconds });
+    showOpening();
+  } catch (e) { $("openingState").textContent = `保存できませんでした：${e.message || e}`; }
+}
+
+async function recordOpening() {
+  if (st.recorder) { st.recorder.stop(); return; }
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+  } catch (e) { $("openingState").textContent = `マイクを使えませんでした：${e.message || e}`; return; }
+  const rec = new MediaRecorder(stream);
+  const chunks = [];
+  const t0 = performance.now();
+  rec.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
+  rec.onstop = () => {
+    stream.getTracks().forEach((t) => t.stop());
+    clearTimeout(st.recLimit);
+    st.recorder = null;
+    $("openingRec").textContent = "録音する";
+    const blob = new Blob(chunks, { type: rec.mimeType || "audio/webm" });
+    saveOpening(blob, "recorded", (performance.now() - t0) / 1000);
+  };
+  st.recorder = rec;
+  rec.start();
+  st.recLimit = setTimeout(() => { if (st.recorder) st.recorder.stop(); }, 60000);
+  $("openingRec").textContent = "録音を止める";
+  $("openingState").textContent = "録音中（下の文を読み上げて「録音を止める」。60秒で止まります）";
+}
+
+$("openingRec").addEventListener("click", recordOpening);
+$("openingFile").addEventListener("change", (e) => {
+  const f = e.target.files && e.target.files[0];
+  if (f) saveOpening(f, "file", null);
+  e.target.value = "";
+});
+$("openingPlay").addEventListener("click", () => {
+  if (st.opening && st.opening.present) new Audio(`data:${st.opening.mime};base64,${st.opening.data}`).play();
+});
+$("openingDel").addEventListener("click", async () => {
+  try { st.opening = await post("api/opening", { delete: true }); showOpening(); }
+  catch (e) { $("openingState").textContent = `消せませんでした：${e.message || e}`; }
+});
+
 async function stop(reason) {
   if (st.closing) return;
   try { if (window.speechSynthesis) window.speechSynthesis.cancel(); } catch (e) { /* nothing playing */ }
+  try { if (st.openingSrc) st.openingSrc.stop(); } catch (e) { /* already ended */ }
+  st.openingSrc = null;
   st.closing = true;
   $("stopBtn").disabled = true;
   $("refuseBtn").disabled = true;
@@ -625,6 +734,7 @@ $("saveBtn").addEventListener("click", () => save(false));
 $("refuseBtn").addEventListener("click", () => refuseAi().catch((e) => log("エラー", String(e.message || e))));
 renderStatic();
 loadCandidates();
+loadOpening();
 if (location.pathname.startsWith("/lab/")) {   // served by the admin app: link back to it
   const a = document.createElement("a");
   a.href = "../#/"; a.textContent = "← 管理画面へ";

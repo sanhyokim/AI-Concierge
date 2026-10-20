@@ -166,6 +166,10 @@ const lastAi = (page) => page.$$eval("#chat .msg.ai", (els) => (els.at(-1) || {}
     // --- 6: retry, re-inject (no duplicates), correction --------------------------------------------------
     await page.goto(url + "/" + callHref);
     await page.waitForSelector("#renotify");
+    const [dl] = await Promise.all([page.waitForEvent("download"), page.click("#saveText")]);
+    const text = require("fs").readFileSync(await dl.path(), "utf8");
+    check("the record downloads as text", dl.suggestedFilename().endsWith(".txt") && text.includes("■ 出来事の記録") &&
+      text.includes("■ 受付項目") && text.includes("経路："), dl.suggestedFilename());
     const before = await page.locator("[data-label=宛先]").count();
     await page.click("#renotify");
     await toastSays(page, "新しく作った通知 0件");

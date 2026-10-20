@@ -47,7 +47,7 @@ class HandledConflict(Exception):
     """The handling state changed after the screen read it (someone else took or changed the call first)."""
 
 
-CONFIRM_WAIT_S = 1.5   # a reply transcript may arrive slightly after the model's confirm_field call
+CONFIRM_WAIT_S = 2.5   # a reply transcript may arrive after the model's confirm_field call (Gemini: 2026-10-20)
 
 
 class CallSession:
@@ -304,6 +304,21 @@ class ReceptionService:
     def snapshot(self, call_id: str) -> dict:
         return json.loads(self._call(call_id)["snapshot"])
 
+    def set_call_ai(self, call_id: str, candidate: str, name: str, voice: str | None, note: str = "") -> None:
+        """The browser lab: which AI took this call and the voice it really used. The snapshot's voice is the
+        admin's active voice at the start, which names another AI when the lab tests a different candidate
+        (2026-10-20: a Gemini call showed GPT-Live's harema)."""
+        with self.store.tx():
+            snap = self.snapshot(call_id)
+            known = next((v for v in snap["config"]["voices"] if v["candidate"] == candidate and v["voice"] == voice),
+                         None)
+            snap["ai"] = {"candidate": candidate, "name": name}
+            snap["voice"] = known or {"id": None, "candidate": candidate, "voice": voice or "",
+                                      "label": voice or "AIの会社の既定の声"}
+            self.store.x("UPDATE calls SET snapshot = ? WHERE id = ?", (dumps(snap), call_id))
+            self._event(call_id, "ai_used", {"candidate": candidate, "name": name, "voice": snap["voice"]["label"],
+                                        **({"note": note} if note else {})})
+
     def caller_utterance(self, call_id: str, text: str, utterance_id: str | int | None = None) -> dict:
         """A final caller transcript event. forward=False means: do not send it (or anything after it) to the AI.
 
@@ -342,12 +357,15 @@ class ReceptionService:
                     out["confirmed"] = confirmed
             return out
 
-    def ai_interrupted(self, call_id: str, source: str) -> dict:
-        """The vendor reported that the AI's speech was cut off (not a device-level observation)."""
+    def ai_interrupted(self, call_id: str, source: str, unplayed_ms: int | None = None) -> dict:
+        """The vendor reported that the AI's speech was cut off (not a device-level observation). unplayed_ms: the
+        AI audio not yet played at that moment, when the page knows it."""
         sess = self._session(call_id)
         with sess.lock:
-            invalidated = sess.tools.readback_interrupted(source)
-            self._event(call_id, "vendor_interrupted", {"source": source, "invalidated": invalidated})
+            invalidated = sess.tools.readback_interrupted(source, unplayed_ms)
+            self._event(call_id, "vendor_interrupted", {"source": source, "invalidated": invalidated,
+                                                        **({"unplayed_ms": unplayed_ms}
+                                                           if unplayed_ms is not None else {})})
             self._persist(call_id, sess)
             return {"invalidated": invalidated}
 
@@ -710,7 +728,7 @@ class ReceptionService:
             "started_at": call["started_at"], "ended_at": call["ended_at"], "end_reason": call["end_reason"],
             "dialed": call["dialed"], "caller_id": call["caller_id"], "route": call["route"],
             "route_label": snap["decision"]["route_label"], "route_reason": call["route_reason"],
-            "config_version": call["config_version"], "voice": snap["voice"],
+            "config_version": call["config_version"], "voice": snap["voice"], "ai": snap.get("ai"),
             "snapshot_failure_action": S.FAILURE_LABELS.get(snap["config"].get("ai_failure_action"), ""),
             "faq_codes": [f["code"] for f in snap["faqs"]],
             "state": flow["state"] if not call["ended_at"] else "ended", "consent": flow["consent"],

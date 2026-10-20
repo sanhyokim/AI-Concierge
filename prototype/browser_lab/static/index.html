@@ -66,6 +66,16 @@
       <label>試験の回 <input type="number" id="round" value="1" min="1"></label>
       <label>回線の番号（架空。電話でお客様の番号が届いた想定。空欄は非通知）
         <input id="callerId" type="tel" placeholder="例 090-1111-2222" autocomplete="off"></label>
+      <details id="openingBox"><summary>冒頭の案内（A-01）の録音：<span id="openingState">確かめています</span></summary>
+        <p class="sub">会話の始めに流す案内です。本番でも録音を流します。下の文を、録音するか、音声のファイル（mp3・wav・m4a など）を選びます。録音がないときは、ブラウザーの読み上げで代わりに流します。案内が流れている間、マイクの音はAIに送りません。</p>
+        <pre id="openingText"></pre>
+        <div class="row">
+          <button id="openingRec">録音する</button>
+          <label class="sub">ファイルから選ぶ <input type="file" id="openingFile" accept="audio/*"></label>
+          <button id="openingPlay" disabled>聞いてみる</button>
+          <button id="openingDel" disabled>消す</button>
+        </div>
+      </details>
       <div class="row">
         <button class="primary" id="startBtn">会話を始める</button>
         <button id="stopBtn" disabled>終える</button>
