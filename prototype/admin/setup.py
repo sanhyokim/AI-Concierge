@@ -1,8 +1,9 @@
 """Interactive start for people who do not use a terminal (start_windows.bat / --setup).
 
 - The admin password is chosen on the first start (typed twice, hidden). Forgotten: --reset-password.
-- API keys are typed (or pasted) into this window only. Nothing is shown on screen; the keys live in this
-  process's memory and are never written to a file. They are asked again at every start.
+- API keys are typed (or pasted) into this window only. Nothing is shown on screen. On Windows they are then
+  kept on the PC, encrypted for the signed-in Windows user (keystore.py, user decision 2026-10-20); elsewhere
+  they live in this process's memory only and are asked again at every start.
 Input functions are injectable so the prompts can be tested without a console.
 """
 from __future__ import annotations
@@ -75,19 +76,34 @@ def reset_password(store: Store, ask: Ask = getpass.getpass, say: Say = print) -
     return True
 
 
-def ask_keys(env: dict | None = None, ask: Ask = getpass.getpass, say: Say = print, tries: int = 3) -> dict:
-    """Ask for each key not already set. Empty input skips it (that candidate cannot be chosen)."""
+def ask_keys(env: dict | None = None, ask: Ask = getpass.getpass, say: Say = print, tries: int = 3,
+             saved: dict | None = None, keep: Callable[[dict], None] | None = None) -> dict:
+    """Ask for each key not already set. Empty input skips it (that candidate cannot be chosen).
+
+    saved / keep (Windows, user decision 2026-10-20): keys kept on this PC, encrypted for this Windows user
+    (keystore.py). Saved keys are used without asking; typed keys are saved for the next start."""
     env = os.environ if env is None else env
+    saved = saved or {}
     got = {}
     say("")
     say("【APIキー】キーを貼り付けて Enter を押します。貼り付けても画面には何も表示されませんが、入っています。")
-    say("  キーはこのPCのメモリーにだけ置き、ファイルには書きません（次に起動したときは、もう一度入力します）。")
+    if keep:
+        say("  入れたキーは、このPCに暗号化して保存します（このWindowsのユーザーだけが読めます）。次からは聞かれません。")
+    else:
+        say("  キーはこのPCのメモリーにだけ置き、ファイルには書きません（次に起動したときは、もう一度入力します）。")
     say("  まだキーがない・使わない場合は、何も入力せずに Enter を押してください（オフラインの模擬だけで動かせます）。")
     for name, label, prefixes in KEYS:
         shape = "・".join(prefixes)
         if env.get(name):
             say(f"- {label}：設定済み（このPCの環境変数）")
             got[name] = "env"
+            continue
+        value = saved.get(name, "")
+        prefix = next((p for p in prefixes if value.startswith(p)), None)
+        if prefix:
+            env[name] = value
+            got[name] = "saved"
+            say(f"- {label}：保存したキーを使います（{prefix} で始まる {len(value)} 文字）")
             continue
         for attempt in range(tries):
             value = _clean(ask(f"- {label}（{'… か '.join(prefixes)}… で始まる）："))
@@ -104,6 +120,12 @@ def ask_keys(env: dict | None = None, ask: Ask = getpass.getpass, say: Say = pri
             break
         else:
             say(f"  → {tries}回とも形が違ったため、この候補は選べません。キーを確かめて、起動し直してください。")
+    if keep and "typed" in got.values():
+        try:
+            keep({name: env[name] for name, how in got.items() if how in ("typed", "saved")})
+            say("  → このPCに暗号化して保存しました。キーを変えるときは、デスクトップの「APIキーを入れ直す」から起動します。")
+        except OSError as exc:   # the keys still work for this start
+            say(f"  → 保存できませんでした（{exc}）。今回は使えますが、次の起動でもう一度聞かれます。")
     return got
 
 

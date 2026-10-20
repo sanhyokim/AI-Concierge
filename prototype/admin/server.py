@@ -36,7 +36,7 @@ from ..reception.notify import CHANNELS, SIMULATE, STATUS_LABELS
 from ..reception.service import HandledConflict, ReceptionService
 from ..reception.store import DEFAULT_DB, Store, now_jst
 from ..reception.summary import build_summary, notification_body
-from . import setup
+from . import keystore, setup
 from .auth import COOKIE, SESSION_S, Auth
 
 STATIC = pathlib.Path(__file__).resolve().parent / "static"
@@ -445,7 +445,12 @@ def main() -> int:
     if args.setup:
         print("AI受電 管理画面（試作）を起動します。会社の回線にはつながりません。LINEへも送りません。", flush=True)
         setup.ensure_password(store, Auth(store))
-        setup.ask_keys(os.environ)
+        saved, keep = None, None
+        if keystore.available():   # Windows: keys kept encrypted for this Windows user (user decision 2026-10-20)
+            if os.environ.get("AI_CONCIERGE_FORGET_KEYS") == "1" and keystore.forget():
+                print("保存していたAPIキーを消しました。新しいキーを入れてください。", flush=True)
+            saved, keep = keystore.load(), keystore.save
+        setup.ask_keys(os.environ, saved=saved, keep=keep)
     app = AdminApp(store, ledger_path=pathlib.Path(args.ledger), results_dir=pathlib.Path(args.results_dir))
     generated = app.auth.ensure_admin(app.env.get("ADMIN_PASSWORD"))
     try:

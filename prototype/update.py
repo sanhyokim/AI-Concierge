@@ -9,6 +9,7 @@ results and setting the password again. This file does that work:
 - ``python update.py`` (from that desktop file) asks GitHub for the newest commit of the branch. When it is new,
   it downloads that commit's ZIP, puts it in place and keeps prototype\\data and prototype\\results. Without a
   network it starts the version already there.
+- ``python update.py --remove-from-pc`` deletes all of it from the PC (for the move to a server).
 
 It reads only this public repository and sends nothing else. Standard library only, and no imports from the
 program itself: the desktop file runs a copy of this file from outside the program folder, so that folder can
@@ -33,6 +34,7 @@ ZIP_URL = "https://github.com/" + REPO + "/archive/{sha}.zip"
 KEEP = ("prototype/data", "prototype/results")   # the records, the password and the test results
 STAMP = ".installed-from"
 LAUNCHER = "AI受付を起動.bat"
+REKEY = "APIキーを入れ直す.bat"   # starts the same way, after deleting the saved API keys (prototype/admin/keystore.py)
 
 
 def app_dir() -> pathlib.Path:
@@ -134,10 +136,10 @@ def put_in_place(src: pathlib.Path, app: pathlib.Path, sha: str, carry_from: pat
 LAUNCHER_TEXT = r"""@echo off
 chcp 65001 >nul
 set "PYTHONUTF8=1"
-title AI受電（試作）の起動
+title {title}
 cd /d "%USERPROFILE%"
 rem Brings the program in %USERPROFILE%\AI-Concierge up to date, then starts it. Made by prototype\update.py.
-set "PY="
+{extra}set "PY="
 py -3 -c "import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)" >nul 2>&1 && set "PY=py -3"
 if not defined PY python -c "import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)" >nul 2>&1 && set "PY=python"
 if not defined PY goto nopython
@@ -158,18 +160,47 @@ def write_launcher(app: pathlib.Path, tools: pathlib.Path, desktop: pathlib.Path
         tmp = tools / "update.py.tmp"
         tmp.write_bytes(me.read_bytes())
         os.replace(tmp, tool)
-    text = LAUNCHER_TEXT.replace("{tool}", str(tool)).replace("{app}", str(app)).replace("\n", "\r\n").encode("utf-8")
     if not desktop.is_dir():
         return None
-    target = desktop / LAUNCHER
-    if not target.is_file() or target.read_bytes() != text:
-        tmp = desktop / (LAUNCHER + ".tmp")
-        tmp.write_bytes(text)
-        os.replace(tmp, target)
-    return target
+    for name, title, extra in ((LAUNCHER, "AI受電（試作）の起動", ""),
+                               (REKEY, "APIキーを入れ直して起動", 'set "AI_CONCIERGE_FORGET_KEYS=1"\n')):
+        text = (LAUNCHER_TEXT.replace("{title}", title).replace("{extra}", extra).replace("{tool}", str(tool))
+                .replace("{app}", str(app)).replace("\n", "\r\n").encode("utf-8"))
+        target = desktop / name
+        if not target.is_file() or target.read_bytes() != text:
+            tmp = desktop / (name + ".tmp")
+            tmp.write_bytes(text)
+            os.replace(tmp, target)
+    return desktop / LAUNCHER
+
+
+def remove_from_pc(app: pathlib.Path, tools: pathlib.Path, desktop: pathlib.Path) -> list[str]:
+    """When the program moves to a server: delete what the test phase left on this PC (user decision 2026-10-20,
+    「サーバーに移すときは必ずPCに残った残骸は消してほしい」). The saved API keys go first; then the program with its
+    records and test results, this file's copy and the desktop files. Returns what was deleted."""
+    gone = []
+    keys = app / "prototype" / "data" / "api-keys.dpapi.json"
+    if keys.is_file():
+        keys.unlink()
+        gone.append(str(keys))
+    for folder in (app, app.with_name(app.name + ".new"), app.with_name(app.name + ".old"), tools):
+        if folder.exists():
+            shutil.rmtree(folder)
+            gone.append(str(folder))
+    for name in (LAUNCHER, REKEY):
+        if (desktop / name).is_file():
+            (desktop / name).unlink()
+            gone.append(str(desktop / name))
+    return gone
 
 
 def run(argv: list[str], get=fetch, here: pathlib.Path | None = None) -> int:
+    if "--remove-from-pc" in argv:
+        gone = remove_from_pc(app_dir(), tool_dir(), desktop_dir())
+        print("このPCから消しました：" if gone else "このPCに、消すものはありませんでした。")
+        for path in gone:
+            print(f"  {path}")
+        return 0
     install = "--install" in argv
     here = here or pathlib.Path(__file__).resolve().parents[1]    # the extracted folder, for --install
     app, tools, desktop = app_dir(), tool_dir(), desktop_dir()
@@ -201,6 +232,7 @@ def run(argv: list[str], get=fetch, here: pathlib.Path | None = None) -> int:
     made = write_launcher(app, tools, desktop)
     if install and made:
         print(f"デスクトップに「{LAUNCHER}」を作りました。次からは、これをダブルクリックするだけです（ZIP は要りません）。")
+        print(f"APIキーを変えるときは、デスクトップの「{REKEY}」から起動します。")
     print()
     return 0
 

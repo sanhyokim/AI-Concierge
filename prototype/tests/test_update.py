@@ -90,6 +90,10 @@ class UpdateTest(unittest.TestCase):
         line = next(l for l in text.splitlines() if "update.py" in l and "call" in l)
         self.assertTrue(line.rstrip().endswith("& exit /b"))   # the update may rewrite this file: nothing after it
         self.assertEqual((self.tools / "update.py").read_bytes(), (ROOT / "prototype" / "update.py").read_bytes())
+        rekey = (self.desktop / update.REKEY).read_bytes()   # deletes the saved API keys, then starts the same way
+        self.assertNotIn(b"\n", rekey.replace(b"\r\n", b""))
+        self.assertIn('set "AI_CONCIERGE_FORGET_KEYS=1"', rekey.decode("utf-8"))
+        self.assertNotIn("FORGET", text)
         self.assertFalse(self.app.with_name("AI-Concierge.new").exists())
         self.assertFalse(self.app.with_name("AI-Concierge.old").exists())
 
@@ -140,3 +144,18 @@ class FilesTest(unittest.TestCase):
         src = (ROOT / "prototype" / "update.py").read_text(encoding="utf-8")
         self.assertNotIn("from .", src)
         self.assertNotIn("import prototype", src)
+
+
+class RemoveFromPcTest(unittest.TestCase):
+    """2026-10-20: when the program moves to a server, nothing of the test phase may stay on the PC."""
+    setUp = UpdateTest.setUp
+
+    def test_everything_is_removed_keys_first(self):
+        update.run(["--install"], GitHub(), here=self.extracted)
+        keys = self.app / "prototype" / "data" / "api-keys.dpapi.json"
+        keys.write_text("{}", encoding="utf-8")
+        self.assertTrue((self.desktop / update.LAUNCHER).is_file())
+        self.assertEqual(update.run(["--remove-from-pc"], GitHub(error=AssertionError("no network needed"))), 0)
+        for path in (keys, self.app, self.tools, self.desktop / update.LAUNCHER, self.desktop / update.REKEY):
+            self.assertFalse(path.exists(), path)
+        self.assertEqual(update.remove_from_pc(self.app, self.tools, self.desktop), [])
