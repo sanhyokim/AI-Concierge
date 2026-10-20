@@ -16,19 +16,26 @@ export async function connect(ctx) {
   const ws = new WebSocket(`${wsUrl}?access_token=${encodeURIComponent(token)}`);
   const send = (obj) => ws.readyState === WebSocket.OPEN && ws.send(JSON.stringify(obj));
 
-  ws.onopen = () => send(setup);
+  let ready = false, closing = false;
+  ws.onopen = () => {
+    send(setup);
+    setTimeout(() => { if (!ready && !closing) ctx.vendorClosed("10秒たっても setupComplete が届かない"); }, 10000);
+  };
   ws.onerror = () => ctx.log("vendor_error", "websocket error");
-  ws.onclose = (e) => ctx.log("vendor_closed", { code: e.code, reason: e.reason });
+  ws.onclose = (e) => {
+    ctx.log("vendor_closed", { code: e.code, reason: e.reason });
+    if (!closing) ctx.vendorClosed(`code ${e.code}${e.reason ? "：" + e.reason : ""}`);
+  };
   ws.onmessage = async (msg) => {
     const text = typeof msg.data === "string" ? msg.data : await msg.data.text();
     let ev;
     try { ev = JSON.parse(text); } catch (e) { return; }
     if (ev.setupComplete) {
+      ready = true;
       ctx.log("vendor_event", { type: "setupComplete" });
       capture = await startCapture(ac, ctx.micStream, 16000, (buf) =>
         send({ realtimeInput: { audio: { data: toBase64(buf), mimeType: "audio/pcm;rate=16000" } } }));
-      // the short prompt (2026-10-14) has no greeting: the page asks for the exact words, as for GPT-Live
-      send({ realtimeInput: { text: `最初に日本語で次のあいさつをしてください：「${ctx.credentials.greeting}」` } });
+      // no greeting from the model: the page plays the recorded opening (A-01) and the AI waits for the caller
       return;
     }
     const sc = ev.serverContent;
@@ -62,6 +69,6 @@ export async function connect(ctx) {
   };
   return {
     mute() { out.gain.value = 0; player.clear(); },
-    async close() { if (capture) capture.stop(); player.clear(); ws.close(); },
+    async close() { closing = true; if (capture) capture.stop(); player.clear(); ws.close(); },
   };
 }

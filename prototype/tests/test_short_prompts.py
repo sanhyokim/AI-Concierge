@@ -17,6 +17,8 @@ from prototype.reception.store import Store
 from prototype.tests.test_browser_lab import FakeHttp
 from prototype.tests.test_manners import FORBIDDEN
 
+ROOT = pathlib.Path(__file__).resolve().parents[2]
+
 TOOL_NAMES = ("save_field", "save_fields", "request_readback", "confirm_field", "lookup_faq", "flag_emergency",
               "offer_line_number", "end_call")
 
@@ -116,3 +118,20 @@ class LabPromptTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class OpeningTest(unittest.TestCase):
+    """2026-10-20: the caller had to speak first (GPT-Live did not greet on its own; A-01 was only logged)."""
+
+    def test_the_page_plays_the_recorded_opening_and_the_models_do_not_greet(self):
+        from prototype.browser_lab import config, vendors
+        from prototype.concierge.prompts import OPENING_ANNOUNCEMENT, OPENING_NOTE
+        creds = vendors.mint(config.CANDIDATES["gpt-live-1"], {"OPENAI_API_KEY": "k"})
+        self.assertTrue(creds["opening"].startswith(OPENING_ANNOUNCEMENT))
+        self.assertTrue(creds["opening"].endswith("どのようなご用件でしょうか。"))
+        self.assertIn("録音いたします", creds["opening"])                 # A-01 (spec 4-2)
+        self.assertIn(OPENING_NOTE, config.LAB_PERSONA)                     # the AI knows the opening was played
+        static = ROOT / "prototype" / "browser_lab" / "static"
+        for name in ("gpt-live.js", "gemini-live.js"):
+            self.assertNotIn("あいさつをしてください", (static / "adapters" / name).read_text(encoding="utf-8"))
+        self.assertIn("playOpening(st.session.credentials.opening)", (static / "lab.js").read_text(encoding="utf-8"))

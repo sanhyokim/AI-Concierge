@@ -436,7 +436,7 @@ class LabSessionControlTest(unittest.TestCase):
         lab = self.lab(env, {**self.LIVE, "auth_tokens": {"name": "auth_tokens/abc"}})
         g1 = lab.start("gemini-3.8-live")
         setup1 = g1["credentials"]["setup"]["setup"]
-        self.assertEqual(setup1["speechConfig"]["voiceConfig"]["prebuiltVoiceConfig"]["voiceName"], "Kore")
+        self.assertEqual(setup1["generationConfig"]["speechConfig"]["voiceConfig"]["prebuiltVoiceConfig"]["voiceName"], "Kore")
         self.assertIn("Kore（管理画面の設定）", g1["applied"]["voice"])
         # the short prompt (2026-10-14): Gemini gets the FAQ of the call's snapshot through lookup_faq only
         self.assertNotIn("点検は無料です。", setup1["systemInstruction"]["parts"][0]["text"])
@@ -448,7 +448,7 @@ class LabSessionControlTest(unittest.TestCase):
         lab.service.save_faq({**faq, "enabled": False}, "tester", faq["id"])
         g2 = lab.start("gemini-3.8-live")
         setup2 = g2["credentials"]["setup"]["setup"]
-        self.assertEqual(setup2["speechConfig"]["voiceConfig"]["prebuiltVoiceConfig"]["voiceName"], "Aoede")
+        self.assertEqual(setup2["generationConfig"]["speechConfig"]["voiceConfig"]["prebuiltVoiceConfig"]["voiceName"], "Aoede")
         self.assertNotIn("FAQ-02", g2["faq_codes"])
         self.assertIn("FAQ-02", g1["faq_codes"])                     # the running call keeps its snapshot
         self.assertTrue(lab.tool(g1["session_id"], "lookup_faq", {"question": "ロースターの清掃の料金"})["found"])

@@ -365,6 +365,13 @@ function makeCtx(creds) {
       return st.aiPost;
     },
     vendorInterrupted: (source) => reportInterrupted(source),
+    // the vendor closed the connection or never answered the setup (2026-10-20: Gemini stayed silent): say why
+    vendorClosed: async (why) => {
+      if (st.closing || !st.session) return;
+      log("業者が接続を閉じた", why);
+      await stop(`業者が接続を閉じた（${why}）`);
+      $("status").textContent = `終了：AIの会社が接続を閉じました（${why}）。この文を開発の担当に送ってください`;
+    },
     vendorEvent: (kind, data) => reportVendorEvent(kind, data),
     attachOutputNode(node) { node.connect(st.aiAnalyser); node.connect(st.ac.destination); },
     attachOutputStream(stream) { st.ac.createMediaStreamSource(stream).connect(st.aiAnalyser); },
@@ -440,6 +447,7 @@ async function start() {
       appliedText(st.session.applied);
     const mod = await import(`./adapters/${st.session.adapter}.js`);
     st.conn = await mod.connect(makeCtx(st.session.credentials));
+    if (st.session.credentials.opening) playOpening(st.session.credentials.opening);
     st.loop = setInterval(tick, 20);
     heartbeat();
     const maxMs = st.session.max_session_min * 60 * 1000;
@@ -460,8 +468,26 @@ async function start() {
   }
 }
 
+// A-01 (spec 4-2) is a recording played as soon as the call is answered. The lab has no recording yet, so the
+// browser's Japanese voice reads it, followed by the question for the request: the company speaks first and the
+// AI waits for the caller (2026-10-20: the caller had to speak first). The voice differs from the AI's on purpose.
+function playOpening(text) {
+  const synth = window.speechSynthesis;
+  if (!synth) { log("録音済みの案内 A-01", "このブラウザーは読み上げができないため、流していません"); return; }
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = "ja-JP";
+  const ja = synth.getVoices().filter((v) => /^ja/i.test(v.lang));
+  const voice = ja.find((v) => /Nanami|Google/i.test(v.name)) || ja[0];
+  if (voice) u.voice = voice;
+  u.onend = () => log("録音済みの案内 A-01 が終わりました");
+  log("録音済みの案内 A-01（模擬：ブラウザーの読み上げ）", text);
+  synth.cancel();
+  synth.speak(u);
+}
+
 async function stop(reason) {
   if (st.closing) return;
+  try { if (window.speechSynthesis) window.speechSynthesis.cancel(); } catch (e) { /* nothing playing */ }
   st.closing = true;
   $("stopBtn").disabled = true;
   $("refuseBtn").disabled = true;

@@ -45,9 +45,7 @@ export async function connect(ctx) {
     const inner = ev.type === "response.event" && ev.event ? ev.event : null;
     ctx.log("vendor_event", { type: ev.type, inner: inner && inner.type });
     if (ev.type === "session.started") {
-      // no language field: Japanese and the first greeting are requested by instruction
-      send({ type: "session.instructions.append", delegation_id: null,
-             content: `最初に日本語で次のあいさつをしてください：「${ctx.credentials.greeting}」` });
+      // no greeting from the model: the page plays the recorded opening (A-01); the instructions say so
     } else if (ev.type === "session.closed") {
       if (closeWaiter) closeWaiter(ev);
     } else if (ev.type === "session.input_transcript.delta") {

@@ -17,7 +17,7 @@ import urllib.request
 from typing import Callable
 
 from ..engines.budget import MAX_OUTPUT_TOKENS
-from .config import (GREETING, LAB_INSTRUCTIONS, MAX_SESSION_MIN, delegation_model, gemini_function_declarations,
+from .config import (GREETING, LAB_INSTRUCTIONS, LAB_OPENING, MAX_SESSION_MIN, delegation_model, gemini_function_declarations,
                      openai_tools)
 
 Http = Callable[[str, str, dict, dict | None], tuple[int, dict | str]]
@@ -109,7 +109,7 @@ def mint(cfg: dict, env: dict, http: Http = http_json, instructions: str = LAB_I
         return {"ephemeral_key": data["value"], "calls_url": "https://api.openai.com/v1/realtime/calls",
                 "greeting": GREETING}
     if adapter == "gpt-live":
-        return {"sdp_exchange": "api/session/sdp", "greeting": GREETING}  # the offer is exchanged server-side
+        return {"sdp_exchange": "api/session/sdp", "opening": LAB_OPENING}   # the offer is exchanged server-side
     if adapter == "gemini-live":
         # one use, started within a minute, and no messages after the maximum session length (+1 minute)
         body = {"uses": 1, "expireTime": _iso(dt.timedelta(minutes=MAX_SESSION_MIN + 1)),
@@ -119,18 +119,21 @@ def mint(cfg: dict, env: dict, http: Http = http_json, instructions: str = LAB_I
         token = data.get("name") if isinstance(data, dict) else None
         if not token:
             raise VendorError("auth_tokens: no 'name' in the response")
-        setup = {"model": cfg["model"], "responseModalities": ["AUDIO"],
+        # responseModalities and speechConfig belong in generationConfig (Live API reference,
+        # BidiGenerateContentSetup); 2026-10-20 the first real Gemini session stayed silent with them at the top
+        generation = {"responseModalities": ["AUDIO"]}
+        if voice:
+            generation["speechConfig"] = {"voiceConfig": {"prebuiltVoiceConfig": {"voiceName": voice}}}
+        setup = {"model": cfg["model"], "generationConfig": generation,
                  "systemInstruction": {"parts": [{"text": instructions}]},
                  "tools": [{"functionDeclarations": gemini_function_declarations()}],
                  "inputAudioTranscription": {}, "outputAudioTranscription": {},
                  # the history is re-billed every turn (official best practices): cap it with a sliding window
                  "contextWindowCompression": {"slidingWindow": {}}}
-        if voice:
-            setup["speechConfig"] = {"voiceConfig": {"prebuiltVoiceConfig": {"voiceName": voice}}}
         return {"token": token,
                 "ws_url": "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta."
                           "GenerativeService.BidiGenerateContentConstrained",
-                "setup": {"setup": setup}, "greeting": GREETING}
+                "setup": {"setup": setup}, "opening": LAB_OPENING}
     if adapter == "elevenlabs":
         url = ("https://api.elevenlabs.io/v1/convai/conversation/get-signed-url?agent_id="
                + urllib.request.quote(env["ELEVENLABS_AGENT_ID"]))
