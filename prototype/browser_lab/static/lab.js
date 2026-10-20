@@ -246,6 +246,7 @@ const GOODBYE_WORDS = /(はい|ええ|どうも|ありがとうございまし�
 function scheduleHangup(waitMs) {
   if (st.closing || st.hangup) return;
   st.hangup = { waitMs: waitMs || 3000, quietSince: null };
+  try { if (st.conn && st.conn.holdNewSpeech) st.conn.holdNewSpeech(true); } catch (e) { /* not supported */ }
   log("終話の待ち", `AIが最後のあいさつを終えた。お客様が先に切るのを${(st.hangup.waitMs / 1000).toFixed(1)}秒待ってから、こちらで切る`);
 }
 
@@ -258,6 +259,7 @@ function closingReply(text) {
 function cancelHangup(text) {
   if (!st.hangup || closingReply(text)) return;
   st.hangup = null;
+  try { if (st.conn && st.conn.holdNewSpeech) st.conn.holdNewSpeech(false); } catch (e) { /* not supported */ }
   log("終話を取り消し", "お客様が続けて話したので、会話を続ける");
 }
 
@@ -531,6 +533,8 @@ function showOpening() {
   $("openingState").textContent = o.present
     ? `${o.source === "file" ? "ファイル" : "録音"}あり${o.seconds ? `（${o.seconds}秒）` : ""}・${fmtTime(o.saved_at)}`
     : "なし（ブラウザーの読み上げで代わりに流す）";
+  $("openingState").className = o.present ? "" : "flag";
+  if (!o.present && o.text) $("openingBox").open = true;   // 2026-10-20: the box went unnoticed; the browser voice played
   $("openingPlay").disabled = !o.present;
   $("openingDel").disabled = !o.present;
 }

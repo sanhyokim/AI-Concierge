@@ -13,6 +13,9 @@ export async function connect(ctx) {
   let player = createPlayer(ac, out, 24000);
   let capture = null, userBuf = "", aiBuf = "";
   let toolsPending = 0, userTimer = null, generationDone = true;
+  // after end_call: the closing words are already queued; anything the model says after the tool's answer is a
+  // repeat (2026-10-20: 「お電話ありがとうございました。…失礼いたします。」 was heard twice), so it is not played
+  let holding = false;
   const flushUser = () => {
     clearTimeout(userTimer);
     const t = userBuf; userBuf = "";
@@ -49,7 +52,7 @@ export async function connect(ctx) {
     if (sc) {
       for (const part of (sc.modelTurn && sc.modelTurn.parts) || []) {
         const d = part.inlineData;
-        if (d && d.data) {
+        if (d && d.data && !holding) {
           const m = /rate=(\d+)/.exec(d.mimeType || "");
           if (m && Number(m[1]) !== 24000) player = createPlayer(ac, out, Number(m[1]));
           player.enqueue(fromBase64(d.data));
@@ -92,6 +95,7 @@ export async function connect(ctx) {
   };
   return {
     mute() { out.gain.value = 0; player.clear(); },
+    holdNewSpeech(on) { holding = !!on; ctx.log("vendor_event", { type: on ? "hold_after_goodbye" : "resume_speech" }); },
     async close() { closing = true; if (capture) capture.stop(); player.clear(); ws.close(); },
   };
 }
