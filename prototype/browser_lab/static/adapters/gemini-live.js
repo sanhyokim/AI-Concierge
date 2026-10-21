@@ -5,17 +5,22 @@
 // Written from the public docs (2026-10-05); the connection has not been confirmed with a real account.
 import { createPlayer, fromBase64, startCapture, toBase64 } from "../pcm.js";
 
+const OPENING_WAIT_MS = 4000;   // the opening's voice has this long to arrive before it is asked for once more
+const MIC_WAIT_MS = 8000;       // the mic is sent once the opening is heard, or after this long at the latest
+
 export async function connect(ctx) {
   const { token, ws_url: wsUrl, setup } = ctx.credentials;
   const ac = ctx.audioContext;
   const out = ac.createGain();
   ctx.attachOutputNode(out);
-  let player = createPlayer(ac, out, 24000);
+  let player = createPlayer(ac, out, 24000), playerRate = 24000;
   let capture = null, userBuf = "", aiBuf = "";
   let toolsPending = 0, userTimer = null, generationDone = true;
   // after end_call: the closing words are already queued; anything the model says after the tool's answer is a
   // repeat (2026-10-20: 「お電話ありがとうございました。…失礼いたします。」 was heard twice), so it is not played
   let holding = false;
+  // 2026-10-21: the opening came back as words only (its transcript, no sound) and the caller heard nothing
+  let micStarted = false, openingAudio = false, openingRetried = false, turnAudioMs = 0, turnTextParts = 0, turnSpoke = false;
   const flushUser = () => {
     clearTimeout(userTimer);
     const t = userBuf; userBuf = "";
@@ -43,10 +48,13 @@ export async function connect(ctx) {
     if (ev.setupComplete) {
       ready = true;
       ctx.log("vendor_event", { type: "setupComplete" });
-      capture = await startCapture(ac, ctx.micStream, 16000, (buf) =>
-        send({ realtimeInput: { audio: { data: toBase64(buf), mimeType: "audio/pcm;rate=16000" } } }));
-      // the opening (A-01) in the model's own voice (user decision 2026-10-20), then it waits for the caller
-      if (ctx.credentials.opening_request) send({ realtimeInput: { text: ctx.credentials.opening_request } });
+      const opening = ctx.credentials.opening_request;
+      if (!opening) { await startMic(); return; }
+      // the opening (A-01) in the model's own voice (user decision 2026-10-20), then it waits for the caller.
+      // The mic waits until the opening is heard, so a sound in the room cannot end or cut the request.
+      send({ realtimeInput: { text: opening } });
+      setTimeout(() => askOpeningAgain("4秒たってもAIの声が届かない"), OPENING_WAIT_MS);
+      setTimeout(startMic, MIC_WAIT_MS);
       return;
     }
     const sc = ev.serverContent;
@@ -55,9 +63,15 @@ export async function connect(ctx) {
         const d = part.inlineData;
         if (d && d.data && !holding) {
           const m = /rate=(\d+)/.exec(d.mimeType || "");
-          if (m && Number(m[1]) !== 24000) player = createPlayer(ac, out, Number(m[1]));
-          player.enqueue(fromBase64(d.data));
+          const rate = m ? Number(m[1]) : 24000;
+          if (rate !== playerRate) { player = createPlayer(ac, out, rate); playerRate = rate; }
+          const buf = fromBase64(d.data);
+          player.enqueue(buf);
+          turnAudioMs += (buf.byteLength / 2) / rate * 1000;
           generationDone = false;
+          if (!openingAudio) { openingAudio = true; startMic(); }
+        } else if (part.text) {
+          turnTextParts++;
         }
       }
       if (sc.generationComplete) generationDone = true;
@@ -76,7 +90,12 @@ export async function connect(ctx) {
       if (sc.outputTranscription && sc.outputTranscription.text) aiBuf += sc.outputTranscription.text;
       if (sc.turnComplete || sc.generationComplete) {
         flushUser();
-        if (spoken(aiBuf)) ctx.onTranscript("ai", aiBuf);
+        if (spoken(aiBuf)) { ctx.onTranscript("ai", aiBuf); turnSpoke = true; }
+        if (sc.turnComplete) {
+          ctx.log("vendor_event", { type: "turnComplete", audio_ms: Math.round(turnAudioMs), text_parts: turnTextParts });
+          if (!openingAudio && turnSpoke) askOpeningAgain("AIの文字だけが届き、声が届かなかった");
+          turnAudioMs = 0; turnTextParts = 0; turnSpoke = false;
+        }
         aiBuf = "";
       }
     }
@@ -94,6 +113,19 @@ export async function connect(ctx) {
       send({ toolResponse: { functionResponses: responses } });
     }
   };
+  async function startMic() {
+    if (micStarted || closing) return;
+    micStarted = true;
+    capture = await startCapture(ac, ctx.micStream, 16000, (buf) =>
+      send({ realtimeInput: { audio: { data: toBase64(buf), mimeType: "audio/pcm;rate=16000" } } }));
+    if (closing) capture.stop();
+  }
+  function askOpeningAgain(why) {
+    if (openingAudio || openingRetried || closing) return;
+    openingRetried = true;
+    ctx.log("冒頭の案内", `${why}ので、もう一度頼みました`);
+    send({ realtimeInput: { text: ctx.credentials.opening_request } });
+  }
   return {
     mute() { out.gain.value = 0; player.clear(); },
     holdNewSpeech(on) { holding = !!on; ctx.log("vendor_event", { type: on ? "hold_after_goodbye" : "resume_speech" }); },

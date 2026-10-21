@@ -110,6 +110,7 @@
   - `node prototype/tests/admin_smoke.cjs docs/screenshots`（管理画面のブラウザー試験。画面の画像を撮り直す）
   - `node prototype/tests/browser_lab_smoke.cjs`（会話試験の画面）
   - `node prototype/tests/eleven_realtime_smoke.cjs`（Eleven Realtime のつなぎ口を、模擬の相手で確かめる）
+  - `node prototype/tests/gemini_live_smoke.cjs`（Gemini Live の冒頭の案内を、模擬の相手で確かめる）
 - **日本語の Windows**
   - 既定の文字コードが cp932 です。ファイルの読み書きには必ず `encoding="utf-8"` を付けます（`test_text_encoding.py` が検査します）。
   - Shift_JIS の環境でも試験を通します。手順：`localedef -i ja_JP -f SHIFT_JIS <フォルダー>/ja_JP.SJIS` で作り、`LOCPATH=<フォルダー> LC_ALL=ja_JP.SJIS python3 -m unittest discover -s prototype/tests -t .` で通します（`locale.getpreferredencoding()` が `SHIFT_JIS` になることを先に確かめる）。
