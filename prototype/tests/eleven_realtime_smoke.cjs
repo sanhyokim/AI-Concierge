@@ -25,7 +25,7 @@ const pcmB64 = (ms) => Buffer.alloc(Math.round(24000 * ms / 1000) * 2, 1).toStri
     "--autoplay-policy=no-user-gesture-required"] });
   const page = await browser.newPage();
   const errors = [], fromPage = [];
-  let protocols = null, wsUrl = null;
+  let wsUrl = null, opened = false;
   page.on("pageerror", (e) => errors.push(String(e)));
   await page.routeWebSocket(/api\.elevenlabs\.io/, (ws) => {
     wsUrl = ws.url();
@@ -33,8 +33,10 @@ const pcmB64 = (ms) => Buffer.alloc(Math.round(24000 * ms / 1000) * 2, 1).toStri
       const ev = JSON.parse(m);
       if (ev.type === "input_audio_buffer.append") return;
       fromPage.push(ev);
-      if (ev.type === "response.create" && ev.response && ev.response.instructions) {
+      if (ev.type === "response.create" && !opened) {
+        opened = true;
         // the opening, then the caller speaks over it, then a tool call after the caller's words
+        ws.send(JSON.stringify({ type: "response.created", response: {} }));
         ws.send(JSON.stringify({ type: "response.output_audio.delta", item_id: "item_1", delta: pcmB64(3000) }));
         ws.send(JSON.stringify({ type: "response.output_audio_transcript.done", transcript: "お電話ありがとうございます。" }));
         setTimeout(() => {
@@ -68,20 +70,28 @@ const pcmB64 = (ms) => Buffer.alloc(Math.round(24000 * ms / 1000) * 2, 1).toStri
         toolCall: async (name, args) => { order.push(`tool:${name}`); return { ok: true, answer: "目安です" }; },
       };
       const conn = await mod.connect(ctx);
-      await new Promise((r) => setTimeout(r, 2500));
+      await new Promise((r) => setTimeout(r, 3500));   // past the opening's wait: no second request
       await conn.close();
       return { order, log };
     });
     const order = out.order;
     if (!wsUrl.includes("model=eleven_realtime_v1_max")) fail(`model not in the URL: ${wsUrl}`);
     const types = fromPage.map((e) => e.type);
-    if (types[0] !== "response.create") fail(`the opening was not requested first: ${types}`);
+    // the opening is asked as a conversation item (2026-10-21: response.create with instructions was ignored)
+    const first = fromPage[0];
+    if (!(first && first.type === "conversation.item.create" && first.item.role === "user"
+          && first.item.content[0].text === "最初の案内") || types[1] !== "response.create") {
+      fail(`the opening was not requested first: ${types}`);
+    }
+    if (fromPage.some((e) => e.type === "response.create" && e.response && e.response.instructions)) {
+      fail("the second form of the opening request must not be sent when the AI has started");
+    }
     if (!order.some((o) => o.startsWith("interrupted:eleven.input_audio_buffer.speech_started:"))) fail(`no interruption: ${order}`);
     const trunc = fromPage.find((e) => e.type === "conversation.item.truncate");
     if (!trunc || trunc.item_id !== "item_1" || !(trunc.audio_end_ms < 3000)) fail(`truncate missing or wrong: ${JSON.stringify(trunc)}`);
     const iUser = order.indexOf("user:料金を教えてください"), iTool = order.indexOf("tool:lookup_faq");
     if (iUser < 0 || iTool < 0 || iUser > iTool) fail(`the caller's words must reach the server before the tool call: ${order}`);
-    const output = fromPage.find((e) => e.type === "conversation.item.create");
+    const output = fromPage.find((e) => e.type === "conversation.item.create" && e.item.type === "function_call_output");
     if (!output || output.item.call_id !== "c1" || !output.item.output.includes("目安です")) fail("tool output not sent back");
     if (types[types.length - 1] !== "response.create") fail("no response.create after the tool output");
     if (!order.includes("ai:お電話ありがとうございます。")) fail("AI transcript missing");
