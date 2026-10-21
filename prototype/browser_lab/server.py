@@ -44,7 +44,8 @@ from . import vendors, wsclient
 from .config import (APPLY_LABELS, CANDIDATES, DELEGATION_PRICES, LAB_LIMITS, LAB_LIMITS_BY_STAGE, LAB_PERSONA,
                      LAB_RULES, LAB_STAGES, LOGIC_PATHS, MAX_BACKEND_RESPONSES, MAX_MINT_FAILURES, MAX_RESPONSE_CREATES,
                      MAX_SESSION_MIN, MAX_TOOL_CALLS, SESSION_GRACE_S, SESSIONS, apply_modes, delegation_model,
-                     public_candidates, released, session_reserve_usd)
+                     public_candidates, released, session_reserve_usd, voice_applies)
+from ..reception.settings import VOICE_CATALOG
 
 STATIC = pathlib.Path(__file__).resolve().parent / "static"
 RESULTS = pathlib.Path(__file__).resolve().parents[1] / "results" / "browser-lab"
@@ -155,18 +156,45 @@ class Lab:
 
     # --- sessions ------------------------------------------------------------------------
 
-    def _applied(self, cfg: dict, candidate: str, call: dict) -> tuple[dict, str | None, dict | None]:
-        """What the admin settings change in this vendor session, and the voice / overrides to send."""
+    def voice_choices(self, candidate: str) -> dict:
+        """The voices the page offers under the chosen AI (user, 2026-10-21: pick the voice by its name after the
+        model). Registered voices first, by their display name; then the vendor's listed voices not registered
+        yet. key "" = the vendor's default voice."""
+        if candidate not in CANDIDATES or not voice_applies(candidate, self.env):
+            return {"choices": [], "default": ""}
+        _, cfg, _ = self.service.config()
+        mine = [v for v in cfg["voices"] if v["candidate"] == candidate]
+        out = [{"key": v["id"], "label": v["label"] or v["voice"], "voice": v["voice"]} for v in mine]
+        names = {v["voice"] for v in mine}
+        out += [{"key": f"catalog:{n}", "label": f"{n}（名前は未登録）", "voice": n}
+                for n in VOICE_CATALOG.get(candidate, {}).get("voices", []) if n not in names]
+        active = next((v["id"] for v in mine if v["id"] == cfg["active_voice"]), None)
+        return {"choices": out, "default": active or (out[0]["key"] if out else "")}
+
+    def _applied(self, cfg: dict, candidate: str, call: dict, voice_key: str | None = None
+                 ) -> tuple[dict, str | None, dict | None]:
+        """What the admin settings change in this vendor session, and the voice / overrides to send.
+        voice_key: the voice chosen on the page (a registered voice's id, "catalog:<name>", or "" for the
+        vendor's default); None = the admin's active voice, else the first registered for this AI."""
         modes = apply_modes(candidate, self.env)
         snap = self.service.snapshot(call["id"])
         voices = snap["config"]["voices"]
-        pick = snap["voice"] if snap["voice"]["candidate"] == candidate else \
-            next((v for v in voices if v["candidate"] == candidate), None)
+        if voice_key is not None:
+            if voice_key.startswith("catalog:") and voice_key[8:] in VOICE_CATALOG.get(candidate, {}).get("voices", []):
+                pick = {"voice": voice_key[8:]}
+            else:
+                pick = next((v for v in voices if v["id"] == voice_key and v["candidate"] == candidate), None)
+                if voice_key and pick is None:
+                    raise ValueError("選んだ声が、このAIの声の中にありません。画面を読み込み直してください")
+        else:
+            pick = snap["voice"] if snap["voice"]["candidate"] == candidate else \
+                next((v for v in voices if v["candidate"] == candidate), None)
         voice = pick["voice"] if pick and modes["voice"] in ("session", "override") else None
         applied = {"instructions": APPLY_LABELS[modes["instructions"]] +
                    ("（FAQ " + ", ".join(call["faq_codes"]) + "）" if modes["instructions"] in ("session", "override")
                     else ""),
-                   "voice": (f"{voice}（管理画面の設定）" if voice else
+                   "voice": (f"{voice}（{'この画面で選んだ声' if voice_key is not None else '管理画面の設定'}）" if voice else
+                             "業者の標準の声（この画面で選んだ）" if voice_key == "" else
                              APPLY_LABELS[modes["voice"]] if modes["voice"] in ("agent_fixed", "n/a") else
                              "業者の既定の声（管理画面に、この候補の声が登録されていない）"),
                    "faq": "業務処理 lookup_faq で、会話の開始時のFAQを使う（全候補）"}
@@ -190,13 +218,16 @@ class Lab:
             return self.service.voice_instructions(call["id"], LAB_PERSONA, backend=False), None
         return self.service.instructions(call["id"], preamble=LAB_RULES), None
 
-    def start(self, candidate: str, fake_script: str | None = None, caller_id: str | None = None) -> dict:
+    def start(self, candidate: str, fake_script: str | None = None, caller_id: str | None = None,
+              voice_key: str | None = None) -> dict:
         cfg = CANDIDATES.get(candidate)
         if cfg is None:
             raise ValueError(f"unknown candidate {candidate}")
         caller = digits_only(caller_id or "") or None   # a fictitious line number typed on the page (no phone line)
         if caller and not is_valid_jp_number(caller):
             raise ValueError("回線の番号は、0から始まる10桁か11桁の番号を入れてください（架空の番号。空欄は非通知）")
+        if voice_key and voice_key not in {c["key"] for c in self.voice_choices(candidate)["choices"]}:
+            raise ValueError("選んだ声が、このAIの声の中にありません。画面を読み込み直してください")
         if cfg.get("hold") and candidate not in released(self.env):
             raise SessionLimit(f"保留中の候補です：{cfg['hold']}（解除は利用者の承認の後、LAB_RELEASE_HOLD）")
         missing = [k for k in cfg["env"] if not self.env.get(k)]
@@ -233,7 +264,7 @@ class Lab:
                 raise
         call = self.service.start_call(dialed="browser-lab", source="browser_lab", force_ai=True, caller_id=caller)
         instructions, backend_instructions = self._instructions(cfg, call)
-        applied, voice, overrides = self._applied(cfg, candidate, call)
+        applied, voice, overrides = self._applied(cfg, candidate, call, voice_key)
         if cfg.get("prompt_style"):
             applied["instructions"] += (f"／短い指示：声のモデルへ{len(instructions):,}字" +
                                         (f"、裏方のモデルへ{len(backend_instructions):,}字（FAQを含む）"
@@ -540,6 +571,7 @@ def api_get(lab: Lab, path: str, csrf: str = "") -> dict | None:
         cands = [c for c in public_candidates(lab.env) if not c["hold"]]   # held candidates are not offered
         for c in cands:
             c["counts"] = lab.counts(c["id"])
+            c["voices"] = lab.voice_choices(c["id"])
         return {"candidates": cands, "stage": lab.stage, "stage_label": LAB_STAGES[lab.stage]}
     if path == "/api/sessions":
         return {"sessions": lab.sessions_view()}
@@ -555,7 +587,8 @@ def api_post(lab: Lab, path: str, body: dict) -> tuple[int, dict]:
     sid = body.get("session_id", "")
     try:
         if path == "/api/session/start":
-            return 200, lab.start(body.get("candidate", ""), body.get("fake_script"), body.get("caller_id"))
+            return 200, lab.start(body.get("candidate", ""), body.get("fake_script"), body.get("caller_id"),
+                                  body.get("voice_key"))
         if path == "/api/session/sdp":
             return 200, lab.sdp(sid, body.get("sdp", ""))
         if path == "/api/session/end":

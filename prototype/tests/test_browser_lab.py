@@ -10,7 +10,7 @@ import unittest
 from unittest import mock
 
 from prototype.browser_lab import config, vendors
-from prototype.browser_lab.server import Lab, serve
+from prototype.browser_lab.server import Lab, api_get, serve
 
 
 class FakeHttp:
@@ -100,6 +100,28 @@ class LabTest(unittest.TestCase):
         listed = {c["id"]: c for c in config.public_candidates(lab.env)}
         self.assertTrue(listed["eleven-realtime-mini"]["ready"])
         self.assertFalse(listed["elevenagents"]["ready"])          # the older ElevenAgents path stays held
+
+    def test_the_voice_is_chosen_on_the_page_by_its_name(self):
+        # 2026-10-21 (user): choose the voice by its display name under the chosen AI
+        lab = self.lab({"OPENAI_API_KEY": "k", "GEMINI_API_KEY": "g"},
+                       {"live/sessions": {"transport": {"sdp": "x"}}, "auth_tokens": {"name": "auth_tokens/a"}})
+        live = lab.voice_choices("gpt-live-1")
+        labels = {c["key"]: c["label"] for c in live["choices"]}
+        self.assertIn("shida", " ".join(labels.values()))
+        self.assertEqual(live["default"], "v1")                      # the admin's active voice
+        shida = next(c["key"] for c in live["choices"] if c["voice"] == "shida")
+        s = lab.start("gpt-live-1", voice_key=shida)
+        self.assertEqual(s["voice"], "shida")
+        self.assertIn("この画面で選んだ声", s["applied"]["voice"])
+        gem = lab.voice_choices("gemini-3.8-live")
+        self.assertIn("catalog:Puck", {c["key"] for c in gem["choices"]})   # listed by the vendor, not registered
+        s = lab.start("gemini-3.8-live", voice_key="catalog:Puck")
+        self.assertEqual(s["voice"], "Puck")
+        s = lab.start("gemini-3.8-live", voice_key="")                    # the vendor's default voice
+        self.assertIsNone(s["voice"])
+        with self.assertRaises(ValueError):
+            lab.start("gemini-3.8-live", voice_key="v1")                  # GPT-Live's voice, not Gemini's
+        self.assertIn("voices", next(c for c in api_get(lab, "/api/candidates")["candidates"] if c["id"] == "fake"))
 
     def test_eleven_realtime_retries_once_with_the_minimal_session(self):
         calls = []

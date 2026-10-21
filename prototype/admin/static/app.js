@@ -170,7 +170,7 @@ routes.voice = async () => {
         <td data-label=""><button class="small danger" data-del="${i}">削除</button></td></tr>`;
     }).join("");
   };
-  view.innerHTML = `${head("音声", "声を登録し、使う声を1つ選びます。<b>次の会話から</b>使われます。")}
+  view.innerHTML = `${head("音声", "声を登録し、表示名（例：女性）を付けます。会話試験では、AIを選んだ後に<b>この表示名で声を選べます</b>。「使う」は、着信テストと、会話試験の最初の選択の声です。")}
     <section class="card"><table class="stack"><thead><tr><th>使う</th><th>表示名</th><th>接続候補</th><th>声（名前・ID）</th><th>状態</th><th></th></tr></thead><tbody id="voiceRows"></tbody></table>
     <div class="form-actions"><button id="addVoice">＋ 声を追加</button><button class="primary" id="saveVoices">保存</button></div></section>
     <section class="card"><details><summary>接続候補と声の状態</summary><table class="stack"><thead><tr><th>候補</th><th>状態</th><th>声の候補</th><th>声の指定の方法</th><th>この画面の声の反映</th></tr></thead><tbody>

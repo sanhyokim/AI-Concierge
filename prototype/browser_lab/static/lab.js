@@ -444,7 +444,8 @@ async function start() {
     $("status").textContent = "接続中";
     const fakeScript = new URLSearchParams(location.search).get("fake_script") || undefined;
     st.session = await post("api/session/start", { candidate: cand.id, fake_script: fakeScript,
-      caller_id: $("callerId").value.trim() || undefined });
+      caller_id: $("callerId").value.trim() || undefined,
+      voice_key: $("voice").disabled ? undefined : $("voice").value });
     st.t0 = performance.now();
     log("session_start", { candidate: cand.id, verified: st.session.verified, call_id: st.session.call_id, voice: st.session.voice,
       line_number: st.session.caller_id || "非通知",
@@ -607,7 +608,21 @@ async function loadCandidates() {
   const first = st.candidates.find((c) => c.id === keep && c.ready) || st.candidates.find((c) => c.ready && c.id !== "fake")
     || st.candidates.find((c) => c.ready);
   if (first) $("candidate").value = first.id;
+  // the voice is chosen by its name under the AI (user, 2026-10-21); names are set on the admin 「音声」 page
+  const showVoices = () => {
+    const c = st.candidates.find((x) => x.id === $("candidate").value);
+    const v = (c && c.voices) || { choices: [], default: "" };
+    const sel = $("voice"), before = sel.dataset.for === (c && c.id) ? sel.value : null;
+    const opts = v.choices.map((x) => `<option value="${esc(x.key)}">${esc(x.label)}` +
+      `${x.label.includes(x.voice) ? "" : `（${esc(x.voice)}）`}</option>`);
+    if (c && c.id !== "fake") opts.push(`<option value="">AIの会社の標準の声</option>`);
+    sel.innerHTML = opts.join("") || `<option value="">（選べません）</option>`;
+    sel.disabled = !opts.length;
+    sel.value = before !== null && [...sel.options].some((o) => o.value === before) ? before : v.default;
+    sel.dataset.for = c ? c.id : "";
+  };
   const showNote = () => {
+    showVoices();
     const c = st.candidates.find((x) => x.id === $("candidate").value);
     if (!c) { $("candNote").innerHTML = ""; $("limit").textContent = ""; return; }
     const n = c.counts || {};
