@@ -213,7 +213,8 @@ def browser_stage_estimate() -> dict:
         ("Ctx_gem", "Gemini Liveの履歴の再計算", "会話が長いほど増える。接続の設定で履歴を短く保つ（contextWindowCompression）"),
         ("—", "Geminiの無料枠の上限", "回数・量の上限はAI Studioの画面だけに表示される"),
         ("Tok_erx・Tok_erm", "Eleven Realtime の文字の量の料金", "1通話のトークンの量が公式に書かれていない。"
-         "受付の指示の長さからの見込みは、3分で v1 Max 約10円・v1 Mini 約1円"),
+         "受付の指示の長さからの見込みは、3分で v1 Max 約10円・v1 Mini 約1円。ElevenLabsの画面の目安"
+         "（2026-10-21、利用者のアカウント）は、1分あたり v1 Max ~$0.0135・v1 Mini ~$0.0030（接続の$0.08とは別）"),
         ("—", "Eleven Realtime の日本語", "評価の数字（Big Bench Audio など）は英語。実際に話して確かめる"),
         ("—", "課金の集計の遅れ", "OpenAI：" + BILLING_DELAY["openai_lab"][0] + "。Google：" + BILLING_DELAY["google_lab"][0]),
         ("FX", "為替", f"1ドル＝{FX_ASSUMED:.0f}円の仮置き（140〜160円で変わる）"),
