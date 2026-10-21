@@ -10,6 +10,8 @@
 | --- | --- | --- | --- | --- | --- |
 | OpenAI GPT-Live 1 | 会話モデル（同時に聞いて話す） | 公式の言語の一覧はない。2026-10-16に日本語の声 harema（女性）と shida（男性）がAPIに追加された（会話試験の既定は harema）。言語は指示文で指定する | WebRTC。こちらのサーバーが鍵を使って POST /v1/live/sessions でSDPを交換する（ブラウザーに鍵を渡さない） | $0.05/分 | 初回（試験の対象） |
 | Google Gemini 3.8 Live | 会話モデル（音声） | Live APIの対応言語の表に日本語（ja）がある | 一時トークン（POST v1beta/auth_tokens、既定30分・1回）で、BidiGenerateContentConstrained のWebSocketにつなぐ | 音声入力 $0.005/分・出力 $0.018/分（目安） | 初回（試験の対象） |
+| ElevenLabs Eleven Realtime v1 Max | 会話モデル（音声） | モデルの資料は90以上の言語（Eleven v4の言語の表に日本語がある）。Realtimeでの日本語の明記はない | 一時の鍵（POST v1/convai/realtime/client_secrets）で、OpenAI互換のWebSocketにつなぐ（WebRTCはない） | $0.08/分 | 追加の試験（利用者の決定、2026-10-21） |
+| ElevenLabs Eleven Realtime v1 Mini | 会話モデル（音声） | モデルの資料は90以上の言語（Eleven v4の言語の表に日本語がある）。Realtimeでの日本語の明記はない | 一時の鍵（POST v1/convai/realtime/client_secrets）で、OpenAI互換のWebSocketにつなぐ（WebRTCはない） | $0.08/分 | 追加の試験（利用者の決定、2026-10-21） |
 | ElevenLabs ElevenAgents（Expressive mode） | 会話サービス | Expressive modeの資料が日本語を明記 | @elevenlabs/client。署名付きURL（15分）またはWebRTCのトークンをサーバーで発行 | $0.08/分（から） | 保留（費用が高い。性能に大差がなければ使わない） |
 | Cartesia Managed Agents（Ink-2＋LLM＋Sonic-3.6） | 会話サービス（部品統合） | Ink-2・Sonic-3.6のモデル資料に日本語（ja） | 一時トークン（POST /access-token）で wss://api.cartesia.ai/agents/stream/{agent_id}?access_token= につなぐ | $0.06/分 | 保留（費用が高い。性能に大差がなければ使わない） |
 | OpenAI GPT-Realtime-2.1（比較の基準） | 会話モデル（音声） | 日本語の試験は既存の計画で行う。自然さは未実測 | WebRTC（一時キー） | 旧費用表と同じトークン単価 | 基準（保留） |
@@ -44,6 +46,28 @@
 - 自社で作るもの：自社の中継・業務処理が要る
 - 位置づけの理由：日本語の明記があり、トークン単価が安い会話モデル。安い構成の代表として比べる
 - 出典：[1](https://ai.google.dev/gemini-api/docs/models/gemini-3.8-live)、[2](https://ai.google.dev/gemini-api/docs/live-api/capabilities)、[3](https://ai.google.dev/gemini-api/docs/ephemeral-tokens)、[4](https://ai.google.dev/gemini-api/docs/pricing)、[5](https://ai.google.dev/gemini-api/docs/models/gemini-3.8-live-extended-thinking)
+
+### ElevenLabs Eleven Realtime v1 Max（追加の試験（利用者の決定、2026-10-21））
+
+- モデル・構成：eleven_realtime_v1_max
+- 公式で確認：2026-10-20発表。音声から音声へ直接返すモデル（1つのモデルが聞く・考える・話す）／答える前に考える。業務処理を何段も続ける仕事向け／Artificial Analysisの測定：話し始め0.57秒、Big Bench Audio 98.8%、業務処理の成功率87.1%、会話の間合い94.1%／OpenAIのRealtime APIと互換（WebSocketだけ）／料金：接続1分$0.08＋トークン（入力100万あたり$1.80・出力$9.00）。同時通話の上限を超えた分は1分$0.16
+- 日本語：モデルの資料は90以上の言語（Eleven v4の言語の表に日本語がある）。Realtimeでの日本語の明記はない
+- 接続：ブラウザーは一時の鍵（POST v1/convai/realtime/client_secrets）で、OpenAI互換のWebSocketにつなぐ（WebRTCはない）。電話はElevenAgentsで電話（Twilio・SIPなど）。互換APIでは自社の中継
+- 未確認：日本語での正確さ・発音（Big Bench Audioは英語）／互換APIで日本語の文字起こし・声のIDの指定が通るか／1通話のトークンの量（記号 Tok_erx）／プランごとの含まれる分（無料のプランで約12分の表示。プランとの対応は未確認）
+- 自社で作るもの：自社の中継・業務処理が要る（Geminiと同じく、モデルが業務処理を直接呼ぶ）
+- 位置づけの理由：速さと正確さが評価表で最上位。Geminiと同じ1つのモデルの構成で、受付の業務処理の確実さを比べる
+- 出典：[1](https://elevenlabs.io/blog/realtime)、[2](https://elevenlabs.io/realtime)、[3](https://elevenlabs.io/pricing/api)、[4](https://elevenlabs.io/docs/overview/models)、[5](https://elevenlabs.io/docs/eleven-agents/guides/openai-realtime-compatibility)、[6](https://elevenlabs.io/docs/eleven-agents/customization/realtime-models)
+
+### ElevenLabs Eleven Realtime v1 Mini（追加の試験（利用者の決定、2026-10-21））
+
+- モデル・構成：eleven_realtime_v1_mini
+- 公式で確認：2026-10-20発表。v1 Maxと同じ作りの、速くて安いモデル／Artificial Analysisの測定：話し始め0.62秒、Big Bench Audio 75.9%、業務処理の成功率60.3%、会話の間合い95.8%／OpenAIのRealtime APIと互換（WebSocketだけ）／料金：接続1分$0.08＋トークン（入力100万あたり$0.20・出力$6.00）
+- 日本語：モデルの資料は90以上の言語（Eleven v4の言語の表に日本語がある）。Realtimeでの日本語の明記はない
+- 接続：ブラウザーは一時の鍵（POST v1/convai/realtime/client_secrets）で、OpenAI互換のWebSocketにつなぐ（WebRTCはない）。電話はElevenAgentsで電話（Twilio・SIPなど）。互換APIでは自社の中継
+- 未確認：日本語での正確さ・発音／1通話のトークンの量（記号 Tok_erm）／業務処理の成功率が受付に足りるか（60.3%）
+- 自社で作るもの：自社の中継・業務処理が要る（Geminiと同じく、モデルが業務処理を直接呼ぶ）
+- 位置づけの理由：会話の自然さ（相づち・割り込み）の比較用。業務処理の成功率が低く、受付の本命ではない
+- 出典：[1](https://elevenlabs.io/blog/realtime)、[2](https://elevenlabs.io/realtime)、[3](https://elevenlabs.io/pricing/api)、[4](https://elevenlabs.io/docs/overview/models)、[5](https://elevenlabs.io/docs/eleven-agents/guides/openai-realtime-compatibility)、[6](https://elevenlabs.io/docs/eleven-agents/customization/realtime-models)
 
 ### ElevenLabs ElevenAgents（Expressive mode）（保留（費用が高い。性能に大差がなければ使わない））
 
@@ -177,6 +201,8 @@
 | --- | --- | --- |
 | OpenAI GPT-Live 1 | 初回（試験の対象） | 同時に聞いて話す会話モデルの代表。相づち・訂正への対応を最初に確かめる |
 | Google Gemini 3.8 Live | 初回（試験の対象） | 日本語の明記があり、トークン単価が安い会話モデル。安い構成の代表として比べる |
+| ElevenLabs Eleven Realtime v1 Max | 追加の試験（利用者の決定、2026-10-21） | 速さと正確さが評価表で最上位。Geminiと同じ1つのモデルの構成で、受付の業務処理の確実さを比べる |
+| ElevenLabs Eleven Realtime v1 Mini | 追加の試験（利用者の決定、2026-10-21） | 会話の自然さ（相づち・割り込み）の比較用。業務処理の成功率が低く、受付の本命ではない |
 | ElevenLabs ElevenAgents（Expressive mode） | 保留（費用が高い。性能に大差がなければ使わない） | 独自の発話区切りのモデルと、会話向けの日本語の声を持つ会話サービスの代表 |
 | Cartesia Managed Agents（Ink-2＋LLM＋Sonic-3.6） | 保留（費用が高い。性能に大差がなければ使わない） | 費用面で有力な部品統合型。日本語のSTT・TTSを公式資料で確認できた |
 | OpenAI GPT-Realtime-2.1（比較の基準） | 基準（保留） | 比較の基準。GPT-Liveと同じ構成とはみなさない |
@@ -184,6 +210,7 @@
 | Alibaba Qwen3.8-Omni-Flash-Realtime | 次の候補（GPT-Live・Geminiがよくなかった場合） | 仕様は優先条件に合うが、処理の地域とデータの扱いの判断が先 |
 
 - 最初の接続の確認は GPT-Live 1 と Gemini 3.8 Live の2つだけで行う（2026-10-07）。保留の候補は、採用の候補からは外していない。
+- 2026-10-21、Eleven Realtime（v1 Max・v1 Mini）を試験に加えた（利用者の決定。ElevenLabsのアカウントを作る）。受付の本命は v1 Max（業務処理の成功率87.1%）。v1 Mini は会話の自然さの比較用。
 - GPT-Liveは、日本語の受付を最初に確かめる。業務処理を受け持つ裏方のモデル（delegation）も確かめる。
 - Inworldは、接続の調査を優先して進める（ブラウザーからは中継が要り、提供段階がResearch previewのため、会話試験は2回目）。
 - Grok・Deepgram・Retell・Vapiは、初回の結果と未確認の点の確認の後に比べる。

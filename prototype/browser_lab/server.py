@@ -254,6 +254,9 @@ class Lab:
             self.service.end_call(call["id"], "接続情報の発行に失敗")
             raise
         self._set(sid, status="active", rid=rid, call_id=call["id"], last_seen=iso(now_jst()))
+        if creds.get("session_fallback"):   # Eleven Realtime refused a field: the session runs on the minimal one
+            voice = None
+            applied["voice"] = "業者の既定の声（設定の一部が断られたため）"
         self.service.set_call_ai(call["id"], candidate, cfg["name"], voice)
         with self.lock:
             self.sessions[sid] = {"candidate": candidate, "cfg": cfg, "rid": rid, "started": now,

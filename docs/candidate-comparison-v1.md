@@ -4,7 +4,7 @@
 - **業者を使う実測は0件。** 金額は既知の単価と使用量の仮定に基づく概算で、記号の費用を含まない。品質の欄は空欄（未実測）。
 - **採用の決め方**：必要な会話条件を満たした候補の中から、コストと性能のバランスで選ぶ（利用者の決定）。配点や予算の上限は、利用者が決めない限り置かない。安くても必要な会話条件を満たさない候補は採用しない。
 - 旧費用表（案A・案B）の約37円・約50円などは、旧構成と旧仮定による概算。この表の比較には、同じ前提で計算し直した値を使う。
-- 最初の接続の試験は GPT-Live 1 と Gemini 3.8 Live の2つだけ（利用者の決定、2026-10-07）。ElevenLabs・Cartesia・GPT-Realtime-2.1 は保留で、Qwen は2つがよくなかった場合の次の候補。表には比較のため全候補を残す。
+- 最初の接続の試験は GPT-Live 1 と Gemini 3.8 Live の2つだけ（利用者の決定、2026-10-07）。2026-10-21 に Eleven Realtime（v1 Max・v1 Mini）を試験に加えた（利用者の決定）。ElevenAgents（Expressive mode）・Cartesia・GPT-Realtime-2.1 は保留で、Qwen は次の候補。表には比較のため全候補を残す。
 
 ## 1. そろえた前提
 
@@ -24,6 +24,8 @@
 | --- | --- | --- | --- | --- | --- | --- |
 | OpenAI GPT-Live 1 | 会話モデル（同時に聞いて話す） | $0.150 | $0.065 | 約35円 | L_live ＋ F | 単価は確認済み |
 | Google Gemini 3.8 Live | 会話モデル（音声） | $0.039 | $0.065 | 約17円 | Ctx_gem ＋ F | 単価は確認済み。入力音声は通話全体の3分、出力はAIが話す45%を公式の分あたりの目安で計算 |
+| ElevenLabs Eleven Realtime v1 Max | 会話モデル（音声） | $0.240 | $0.065 | 約50円 | Tok_erx ＋ F | 単価は確認済み。接続1分$0.08（プランの含まれる分を超えた分）。文字の量の料金は記号 |
+| ElevenLabs Eleven Realtime v1 Mini | 会話モデル（音声） | $0.240 | $0.065 | 約50円 | Tok_erm ＋ F | 単価は確認済み。接続1分$0.08（プランの含まれる分を超えた分）。文字の量の料金は記号 |
 | ElevenLabs ElevenAgents（Expressive mode） | 会話サービス | $0.240 | $0.065 | 約50円 | L_11 ＋ F | 「から」表記（プランで変わる）。月額 P_11 は3章 |
 | Cartesia Managed Agents（Ink-2＋LLM＋Sonic-3.6） | 会話サービス（部品統合） | $0.180 | $0.065 | 約40円 | L_cart ＋ F | 単価は確認済み |
 | OpenAI GPT-Realtime-2.1（比較の基準） | 会話モデル（音声） | $0.162（キャッシュ不成立 $0.755） | $0.065 | 約37円 | F | 単価は確認済み |
@@ -45,6 +47,8 @@
 | --- | --- | --- | --- | --- |
 | OpenAI GPT-Live 1 | 7,306円 | 25,850円 | 58,461円 | 150件×F ＋ 60×L_live ＋ B_fwd ＋ B_num ＋ 2×U_ntt ＋ S_srv ＋ R×17円 |
 | Google Gemini 3.8 Live | 6,210円 | 22,562円 | 49,693円 | 150件×F ＋ 60×Ctx_gem ＋ B_fwd ＋ B_num ＋ 2×U_ntt ＋ S_srv ＋ R×17円 |
+| ElevenLabs Eleven Realtime v1 Max | 8,197円 | 28,523円 | 65,589円 | 150件×F ＋ 60×Tok_erx ＋ B_fwd ＋ B_num ＋ 2×U_ntt ＋ S_srv ＋ R×17円 |
+| ElevenLabs Eleven Realtime v1 Mini | 8,197円 | 28,523円 | 65,589円 | 150件×F ＋ 60×Tok_erm ＋ B_fwd ＋ B_num ＋ 2×U_ntt ＋ S_srv ＋ R×17円 |
 | ElevenLabs ElevenAgents（Expressive mode） | 8,197円 | 28,523円 | 65,589円 | 150件×F ＋ 60×L_11 ＋ B_fwd ＋ B_num ＋ 2×U_ntt ＋ S_srv ＋ P_11 ＋ R×17円 |
 | Cartesia Managed Agents（Ink-2＋LLM＋Sonic-3.6） | 8,428円 | 27,566円 | 61,662円 | 150件×F ＋ 60×L_cart ＋ B_fwd ＋ B_num ＋ 2×U_ntt ＋ S_srv ＋ R×17円 |
 | OpenAI GPT-Realtime-2.1（比較の基準） | 7,425円 | 26,209円 | 59,417円 | 150件×F ＋ B_fwd ＋ B_num ＋ 2×U_ntt ＋ S_srv ＋ R×17円 |
@@ -65,6 +69,8 @@
 | --- | --- | --- | --- |
 | OpenAI GPT-Live 1 | 自社の中継・業務処理が要る（delegationの受け口） | D_dev（未見積もり） | M_ops（未見積もり） |
 | Google Gemini 3.8 Live | 自社の中継・業務処理が要る | D_dev（未見積もり） | M_ops（未見積もり） |
+| ElevenLabs Eleven Realtime v1 Max | 自社の中継・業務処理が要る（Geminiと同じく、モデルが業務処理を直接呼ぶ） | D_dev（未見積もり） | M_ops（未見積もり） |
+| ElevenLabs Eleven Realtime v1 Mini | 自社の中継・業務処理が要る（Geminiと同じく、モデルが業務処理を直接呼ぶ） | D_dev（未見積もり） | M_ops（未見積もり） |
 | ElevenLabs ElevenAgents（Expressive mode） | 業者側でエージェントを設定。自社は業務処理（ツール）と記録 | D_dev（未見積もり） | M_ops（未見積もり） |
 | Cartesia Managed Agents（Ink-2＋LLM＋Sonic-3.6） | 業者側でエージェントを設定 | D_dev（未見積もり） | M_ops（未見積もり） |
 | OpenAI GPT-Realtime-2.1（比較の基準） | 自社の中継・業務処理が要る（既存の試作がある） | D_dev（未見積もり） | M_ops（未見積もり） |
@@ -88,6 +94,8 @@
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | OpenAI GPT-Live 1 | 未実測 | 未実測 | 未実測 | 未実測 | 未実測 | 未実測 | 未実測 | 月額 ÷（件数 × 成功率） |
 | Google Gemini 3.8 Live | 未実測 | 未実測 | 未実測 | 未実測 | 未実測 | 未実測 | 未実測 | 月額 ÷（件数 × 成功率） |
+| ElevenLabs Eleven Realtime v1 Max | 未実測 | 未実測 | 未実測 | 未実測 | 未実測 | 未実測 | 未実測 | 月額 ÷（件数 × 成功率） |
+| ElevenLabs Eleven Realtime v1 Mini | 未実測 | 未実測 | 未実測 | 未実測 | 未実測 | 未実測 | 未実測 | 月額 ÷（件数 × 成功率） |
 | ElevenLabs ElevenAgents（Expressive mode） | 未実測 | 未実測 | 未実測 | 未実測 | 未実測 | 未実測 | 未実測 | 月額 ÷（件数 × 成功率） |
 | Cartesia Managed Agents（Ink-2＋LLM＋Sonic-3.6） | 未実測 | 未実測 | 未実測 | 未実測 | 未実測 | 未実測 | 未実測 | 月額 ÷（件数 × 成功率） |
 | OpenAI GPT-Realtime-2.1（比較の基準） | 未実測 | 未実測 | 未実測 | 未実測 | 未実測 | 未実測 | 未実測 | 月額 ÷（件数 × 成功率） |
@@ -135,6 +143,8 @@
 | --- | --- | --- | --- | --- |
 | OpenAI GPT-Live 1 | 2,909円 | 12,659円 | 23,284円 | 60×L_live ＋ 60件×ΔF ＋ S_srv ＋ R×17円 |
 | Google Gemini 3.8 Live | 1,813円 | 9,371円 | 14,517円 | 60×Ctx_gem ＋ 60件×ΔF ＋ S_srv ＋ R×17円 |
+| ElevenLabs Eleven Realtime v1 Max | 3,800円 | 15,332円 | 30,412円 | 60×Tok_erx ＋ 60件×ΔF ＋ S_srv ＋ R×17円 |
+| ElevenLabs Eleven Realtime v1 Mini | 3,800円 | 15,332円 | 30,412円 | 60×Tok_erm ＋ 60件×ΔF ＋ S_srv ＋ R×17円 |
 | ［参考］OpenAI GPT-Realtime-2.1（比較の基準） | 3,028円 | 13,017円 | 24,240円 | 60件×ΔF ＋ S_srv ＋ R×17円 |
 | ［参考］ElevenLabs ElevenAgents（Expressive mode） | 3,800円 | 15,332円 | 30,412円 | 60×L_11 ＋ 60件×ΔF ＋ S_srv ＋ P_11 ＋ R×17円 |
 | ［参考］Cartesia Managed Agents（Ink-2＋LLM＋Sonic-3.6） | 4,031円 | 14,375円 | 26,485円 | 60×L_cart ＋ 60件×ΔF ＋ S_srv ＋ R×17円 |
@@ -161,6 +171,10 @@
 | OpenAI GPT-Live 1 | 回線案2 | 2,909円 | 12,659円 | 23,284円 | 人が受ける通話は今のまま。AIの通話の転送料の差 ΔF だけが増減する |
 | Google Gemini 3.8 Live | 回線案1 | 6,210円 | 22,562円 | 49,693円 | 人が受ける通話もクラウドを通る（Twilioの着信と、かけ直し）。NTTの転送料 F・追加番号 B_num・U_ntt が別に増える |
 | Google Gemini 3.8 Live | 回線案2 | 1,813円 | 9,371円 | 14,517円 | 人が受ける通話は今のまま。AIの通話の転送料の差 ΔF だけが増減する |
+| ElevenLabs Eleven Realtime v1 Max | 回線案1 | 8,197円 | 28,523円 | 65,589円 | 人が受ける通話もクラウドを通る（Twilioの着信と、かけ直し）。NTTの転送料 F・追加番号 B_num・U_ntt が別に増える |
+| ElevenLabs Eleven Realtime v1 Max | 回線案2 | 3,800円 | 15,332円 | 30,412円 | 人が受ける通話は今のまま。AIの通話の転送料の差 ΔF だけが増減する |
+| ElevenLabs Eleven Realtime v1 Mini | 回線案1 | 8,197円 | 28,523円 | 65,589円 | 人が受ける通話もクラウドを通る（Twilioの着信と、かけ直し）。NTTの転送料 F・追加番号 B_num・U_ntt が別に増える |
+| ElevenLabs Eleven Realtime v1 Mini | 回線案2 | 3,800円 | 15,332円 | 30,412円 | 人が受ける通話は今のまま。AIの通話の転送料の差 ΔF だけが増減する |
 
 - 回線案1の額は3章の前提（人が受ける通話は事務所の電話へかけ直すH1）。今の運用のように携帯へかけ直す場合の単価は未確認。
 - どちらの案も、記号で残した費用（転送料、サーバー、録音の保存、未確認のAIの費用）を含みません。

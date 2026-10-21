@@ -148,6 +148,8 @@ def mint(cfg: dict, env: dict, http: Http = http_json, instructions: str = LAB_I
                           "GenerativeService.BidiGenerateContentConstrained",
                 # the AI says the opening in its own voice (user decision 2026-10-20); the page sends it at setup
                 "setup": {"setup": setup}, "opening_request": OPENING_REQUEST}
+    if adapter == "eleven-realtime":
+        return mint_eleven_realtime(cfg, env, http, instructions, voice)
     if adapter == "elevenlabs":
         url = ("https://api.elevenlabs.io/v1/convai/conversation/get-signed-url?agent_id="
                + urllib.request.quote(env["ELEVENLABS_AGENT_ID"]))
@@ -172,6 +174,59 @@ def mint(cfg: dict, env: dict, http: Http = http_json, instructions: str = LAB_I
                 "ws_url": f"wss://api.cartesia.ai/v1/agents/websocket/{urllib.request.quote(env['CARTESIA_AGENT_ID'])}",
                 "start": {"type": "session_create", "audio": {"input_format": "pcm_16000"}}}
     raise VendorError(f"unknown adapter {adapter}")
+
+
+ELEVEN_REALTIME_URL = "wss://api.elevenlabs.io/v1/convai/realtime"
+
+
+def eleven_realtime_session(cfg: dict, instructions: str, voice: str | None, minimal: bool = False) -> dict:
+    """The session for Eleven Realtime's OpenAI-compatible API (ElevenLabs docs, 2026-10-21). The settings minted
+    with the client secret are the session's initial settings. minimal=True keeps only what the reception needs
+    (instructions and tools), for when the vendor refuses one of the other fields."""
+    audio_in = {"format": {"type": "audio/pcm", "rate": 24000}}
+    audio_out = {"format": {"type": "audio/pcm"}}
+    session = {"type": "realtime", "model": cfg["model"], "instructions": instructions,
+               "output_modalities": ["audio"], "audio": {"input": audio_in, "output": audio_out},
+               "tools": openai_tools(), "tool_choice": "auto"}
+    if minimal:
+        return session
+    # the caller's words must reach the server (the confirmation guard); a number given in parts needs the
+    # caller's pauses (2026-10-20, Gemini: the AI cut in): the least eager end-of-turn
+    audio_in["transcription"] = {"language": "ja"}
+    audio_in["turn_detection"] = {"type": "semantic_vad", "eagerness": "low"}
+    if voice:
+        audio_out["voice"] = voice
+    session["max_duration_seconds"] = int(MAX_SESSION_MIN * 60 + 30)
+    return session
+
+
+def mint_eleven_realtime(cfg: dict, env: dict, http: Http, instructions: str, voice: str | None) -> dict:
+    """A client secret (60 s to connect) from POST /v1/convai/realtime/client_secrets. If the vendor refuses the
+    session (4xx: a field it does not take), ask once more with the minimal session and say so on the page."""
+    def post(session: dict):
+        return http("POST", "https://api.elevenlabs.io/v1/convai/realtime/client_secrets",
+                    {"xi-api-key": env["ELEVENLABS_API_KEY"], "Content-Type": "application/json"},
+                    {"expires_after": {"anchor": "created_at", "seconds": 60}, "session": session})
+
+    fallback = None
+    try:
+        _, data = post(eleven_realtime_session(cfg, instructions, voice))
+    except VendorError as exc:
+        if not exc.rejected:
+            raise
+        try:
+            _, data = post(eleven_realtime_session(cfg, instructions, voice, minimal=True))
+        except VendorError as again:
+            raise VendorError(f"{again}（最小の設定でも試しました。最初の返事：{exc}）"[:1400], again.status,
+                              again.unreached, again.certificate) from None
+        fallback = {"dropped": "文字起こし（日本語）・発話の区切り（low）・声・最長時間", "reason": str(exc)[:600]}
+    if not isinstance(data, dict) or "value" not in data:
+        raise VendorError("realtime/client_secrets: no 'value' in the response")
+    out = {"client_secret": data["value"], "ws_url": ELEVEN_REALTIME_URL, "model": cfg["model"],
+           "opening_request": OPENING_REQUEST}
+    if fallback:
+        out["session_fallback"] = fallback
+    return out
 
 
 def exchange_live_sdp(cfg: dict, env: dict, offer_sdp: str, http: Http = http_json,

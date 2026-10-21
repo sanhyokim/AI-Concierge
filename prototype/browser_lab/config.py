@@ -44,6 +44,22 @@ CANDIDATES = {
         "model": "models/gemini-3.8-live", "upper_usd_per_min": 0.06, "increment_s": 60, "verified": False,
         "logic_path": "function_call", "applies": {"instructions": "session", "voice": "session"},
         "prompt_style": "short"},   # short prompt; the steps are in the tool descriptions and results (2026-10-14)
+    # Eleven Realtime (2026-10-20): one speech-to-speech model that calls the tools itself, like Gemini. The user
+    # chose to try it (2026-10-21). OpenAI-compatible Realtime API over WebSocket only (no WebRTC).
+    "eleven-realtime-max": {
+        "name": "ElevenLabs Eleven Realtime v1 Max", "adapter": "eleven-realtime", "env": ["ELEVENLABS_API_KEY"],
+        "vendor": "elevenlabs_lab", "model": "eleven_realtime_v1_max", "upper_usd_per_min": 0.20, "increment_s": 60,
+        "verified": False, "logic_path": "function_call", "applies": {"instructions": "session", "voice": "session"},
+        "prompt_style": "short",
+        "note": "答える前に考える上位のモデル。業務処理の成功率は公式で87.1%。料金は接続1分$0.08＋文字の量"
+                "（入力100万あたり$1.80・出力$9.00）。日本語の会話は未確認"},
+    "eleven-realtime-mini": {
+        "name": "ElevenLabs Eleven Realtime v1 Mini", "adapter": "eleven-realtime", "env": ["ELEVENLABS_API_KEY"],
+        "vendor": "elevenlabs_lab", "model": "eleven_realtime_v1_mini", "upper_usd_per_min": 0.20, "increment_s": 60,
+        "verified": False, "logic_path": "function_call", "applies": {"instructions": "session", "voice": "session"},
+        "prompt_style": "short",
+        "note": "速くて安いモデル。業務処理の成功率は公式で60.3%（受付には低い）。会話の自然さの比較用。"
+                "料金は接続1分$0.08＋文字の量（入力100万あたり$0.20・出力$6.00）"},
     "elevenagents": {
         "name": "ElevenLabs ElevenAgents（Expressive mode）", "adapter": "elevenlabs",
         "env": ["ELEVENLABS_API_KEY", "ELEVENLABS_AGENT_ID"], "vendor": "elevenlabs_lab",
@@ -107,14 +123,13 @@ def delegation_model(cfg: dict, env: dict) -> str:
 
 # Sessions allowed per candidate and stage. None = no count limit: the user removed the limits for the two tested
 # candidates (2026-10-08); sessions are still counted for the record. Held candidates get none until released.
-SESSIONS = {"connection": {"gpt-live-1": None, "gemini-3.8-live": None, "elevenagents": 0, "cartesia-agents": 0,
-                           "gpt-realtime-2.1": 0},
-            "detailed": {"gpt-live-1": None, "gemini-3.8-live": None, "elevenagents": 0, "cartesia-agents": 0,
-                         "gpt-realtime-2.1": 0}}
+SESSIONS = {stage: {"gpt-live-1": None, "gemini-3.8-live": None, "eleven-realtime-max": None,
+                    "eleven-realtime-mini": None, "elevenagents": 0, "cartesia-agents": 0, "gpt-realtime-2.1": 0}
+            for stage in ("connection", "detailed")}   # Eleven Realtime: no limit, like the two others (2026-10-21)
 _NO_CAP = Limits(max_requests=None, max_audio_seconds=None, max_cost_usd=None)   # user decision 2026-10-08
 _HELD = Limits(max_requests=0, max_audio_seconds=0, max_cost_usd=0.0)
 LAB_LIMITS_BY_STAGE = {   # the ledger still records every session and its reservation; it no longer refuses
-    stage: {"openai_lab": _NO_CAP, "google_lab": _NO_CAP, "elevenlabs_lab": _HELD, "cartesia_lab": _HELD}
+    stage: {"openai_lab": _NO_CAP, "google_lab": _NO_CAP, "elevenlabs_lab": _NO_CAP, "cartesia_lab": _HELD}
     for stage in ("connection", "detailed")
 }
 LAB_STAGES = {"connection": "接続の予備試験", "detailed": "詳しい会話比較"}
@@ -123,6 +138,7 @@ LAB_LIMITS = LAB_LIMITS_BY_STAGE["detailed"]   # overall caps (kept for the budg
 ENV_SETUP = {   # shown on the lab page: how to set a variable on the tester's PC (never paste a key into chat)
     "OPENAI_API_KEY": "OpenAIの管理画面（Platform）で作るAPIキー。試験専用のプロジェクトで作る",
     "GEMINI_API_KEY": "Google AI Studio で作るAPIキー",
+    "ELEVENLABS_API_KEY": "ElevenLabs の画面（Developers → API Keys）で作るAPIキー。ElevenAgents の権限を付ける",
     "GPT_LIVE_DELEGATION_MODEL": "任意。GPT-Liveの裏方のモデル（既定 gpt-6-luna）",
 }
 

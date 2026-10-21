@@ -120,7 +120,8 @@ def phone_stage_estimate() -> dict:
 
 
 # --- browser conversation stage (measurement plan v2.2; a proposal, not an approved budget) ---------------
-TESTED = ("gpt-live-1", "gemini-3.8-live")                        # user decision 2026-10-07
+TESTED = ("gpt-live-1", "gemini-3.8-live",                        # user decision 2026-10-07
+          "eleven-realtime-max", "eleven-realtime-mini")             # added by the user, 2026-10-21
 HELD = ("gpt-realtime-2.1", "elevenagents", "cartesia-agents")    # kept as candidates, no sessions planned
 BROWSER_CONFIGS = TESTED + HELD
 BROWSER_AVG_MIN = 3.0                       # expected length; the page and the server stop at MAX_SESSION_MIN
@@ -151,6 +152,16 @@ PLANS = {
         "tax": "消費税10%（日本の顧客。価格は税抜）",
         "sources": ["https://ai.google.dev/gemini-api/docs/pricing", "https://ai.google.dev/gemini-api/terms",
                     BILLING_DELAY["google_lab"][1], "https://ai.google.dev/gemini-api/docs/live-api/best-practices"]},
+    # Eleven Realtime, added by the user on 2026-10-21 (official pricing page read that day)
+    "elevenlabs_lab": {
+        "vendor": "ElevenLabs（Eleven Realtime）", "plan": "無料（従量）または月額のプラン（Starter $6／Creator $22 など）",
+        "quota": "プランごとに含まれる分（料金表で v1 Max 約12・59・216分…。プランとの対応は表に書かれていない＝未確認）",
+        "free_condition": "無料のプランでRealtimeが使えるかは明記がない（未確認）。架空のデータだけで話す",
+        "overage": "接続1分$0.08＋トークン（v1 Max：入力$1.80・出力$9.00、v1 Mini：$0.20・$6.00／1Mトークン）。"
+                   "同時通話の上限を超えた分は1分$0.16",
+        "expiry": "集計の遅れ・残高での停止の記載は未確認",
+        "tax": "価格は税抜（消費税の扱いは未確認）",
+        "sources": ["https://elevenlabs.io/pricing/api", "https://elevenlabs.io/docs/eleven-agents/customization/realtime-models"]},
 }
 HELD_NOTE = {   # reference only: no sessions are planned until the user releases them
     "gpt-realtime-2.1": "保留（再開すると同じOpenAIの前払いから引かれる。$0.30/分を上限に留保）",
@@ -193,13 +204,17 @@ def browser_stage_estimate() -> dict:
                      "symbols": sorted(cc.ai_part(cand[cid]).terms)})
     caps = {v: lim.max_cost_usd for v, lim in lc.LAB_LIMITS_BY_STAGE["connection"].items()}
     payments = [("OpenAI 前払い（残高がなければ。最低額）", 5.0),
-                ("Google 無料枠（架空のデータだけ）。有料枠を選ぶ場合は前払い$5から", 0.0)]
+                ("Google 無料枠（架空のデータだけ）。有料枠を選ぶ場合は前払い$5から", 0.0),
+                ("ElevenLabs 無料のプランから（含まれる分を超えるなら Starter $6/月など。利用者が選ぶ）", 0.0)]
     unconfirmed = [
         ("L_live", "GPT-Liveの裏方のモデルに渡る量", "入力は指示文（最大16,384トークン）と会話の履歴。渡る量が公式に書かれていないため、"
          "典型と厳しめの仮定を並べるだけで、上限は確定しない"),
         ("—", "GPT-Liveの日本語", "公式の言語の一覧がない。声の追加の表は英語・ポルトガル語だけ。実際に話して確かめる"),
         ("Ctx_gem", "Gemini Liveの履歴の再計算", "会話が長いほど増える。接続の設定で履歴を短く保つ（contextWindowCompression）"),
         ("—", "Geminiの無料枠の上限", "回数・量の上限はAI Studioの画面だけに表示される"),
+        ("Tok_erx・Tok_erm", "Eleven Realtime の文字の量の料金", "1通話のトークンの量が公式に書かれていない。"
+         "受付の指示の長さからの見込みは、3分で v1 Max 約10円・v1 Mini 約1円"),
+        ("—", "Eleven Realtime の日本語", "評価の数字（Big Bench Audio など）は英語。実際に話して確かめる"),
         ("—", "課金の集計の遅れ", "OpenAI：" + BILLING_DELAY["openai_lab"][0] + "。Google：" + BILLING_DELAY["google_lab"][0]),
         ("FX", "為替", f"1ドル＝{FX_ASSUMED:.0f}円の仮置き（140〜160円で変わる）"),
     ]

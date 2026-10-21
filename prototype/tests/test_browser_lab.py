@@ -77,6 +77,51 @@ class LabTest(unittest.TestCase):
         self.assertEqual(t["open_reservations"], 0)
         self.assertAlmostEqual(t["est_cost_usd"], 0.03)
 
+    def test_eleven_realtime_mints_a_client_secret_with_the_reception_session(self):
+        # 2026-10-21 (user: try ElevenLabs): OpenAI-compatible API, WebSocket only; tools are called by the model
+        lab = self.lab({"ELEVENLABS_API_KEY": "sk_secret"},
+                       {"realtime/client_secrets": {"value": "ek_123", "expires_at": 0}})
+        s = lab.start("eleven-realtime-max")
+        self.assertNotIn("sk_secret", json.dumps(s))
+        creds = s["credentials"]
+        self.assertEqual((creds["client_secret"], creds["model"]), ("ek_123", "eleven_realtime_v1_max"))
+        self.assertTrue(creds["ws_url"].startswith("wss://api.elevenlabs.io/"))
+        self.assertTrue(creds["opening_request"])          # the AI says the opening in its own voice
+        call = lab.http.calls[0]
+        self.assertEqual(call["headers"]["xi-api-key"], "sk_secret")
+        session = call["body"]["session"]
+        self.assertEqual(session["model"], "eleven_realtime_v1_max")
+        self.assertEqual({t["name"] for t in session["tools"]}, {t["name"] for t in config.TOOLS})
+        self.assertEqual(session["audio"]["input"]["transcription"], {"language": "ja"})
+        self.assertEqual(session["audio"]["input"]["turn_detection"]["eagerness"], "low")
+        self.assertLessEqual(call["body"]["expires_after"]["seconds"], 60)
+        self.assertIn("lookup_faq", s["applied"]["instructions"])   # the short prompt; the FAQ comes from the tool
+        self.assertIsNotNone(lab.ledger("elevenlabs_lab").totals()["held_usd"])
+        listed = {c["id"]: c for c in config.public_candidates(lab.env)}
+        self.assertTrue(listed["eleven-realtime-mini"]["ready"])
+        self.assertFalse(listed["elevenagents"]["ready"])          # the older ElevenAgents path stays held
+
+    def test_eleven_realtime_retries_once_with_the_minimal_session(self):
+        calls = []
+
+        def http(method, url, headers, body=None):
+            calls.append(body)
+            if len(calls) == 1:
+                raise vendors.VendorError(f"{url}: HTTP 422 unknown field transcription", 422)
+            return 200, {"value": "ek_2"}
+        cfg = config.CANDIDATES["eleven-realtime-mini"]
+        out = vendors.mint(cfg, {"ELEVENLABS_API_KEY": "sk_x"}, http, instructions="指示", voice="voice123")
+        self.assertEqual(out["client_secret"], "ek_2")
+        self.assertIn("422", out["session_fallback"]["reason"])
+        second = calls[1]["session"]
+        self.assertNotIn("transcription", second["audio"]["input"])
+        self.assertNotIn("voice", second["audio"]["output"])
+        self.assertEqual(second["instructions"], "指示")
+        self.assertTrue(second["tools"])
+        with self.assertRaises(vendors.VendorError):        # a network failure is not retried
+            vendors.mint(cfg, {"ELEVENLABS_API_KEY": "sk_x"},
+                         lambda *a, **k: (_ for _ in ()).throw(vendors.VendorError("timeout")), instructions="x")
+
     def test_mint_failure_releases_the_reservation(self):
         lab = self.lab({"GEMINI_API_KEY": "k"}, {"auth_tokens": vendors.VendorError("HTTP 401")})
         with self.assertRaises(vendors.VendorError):

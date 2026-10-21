@@ -130,6 +130,9 @@ VOICE_CATALOG = {
                           "（2026-10-16 にAPIへ追加）。marin は業者の既定の声（日本語の声ではない）"},
     "gemini-3.8-live": {"voices": ["Kore", "Aoede", "Leda", "Puck", "Charon", "Orus"],
                         "how": "接続のときに prebuiltVoiceConfig で指定する（3.8で同じ名前が使えるかは未確認）"},
+    "eleven-realtime-max": {"voices": [], "how": "ElevenLabsの声の一覧（Voice Library）で日本語の声を選び、声のIDを入力して登録する。"
+                                                 "接続のときにサーバーが audio.output.voice で指定する（IDで通るかは未確認。断られたら業者の既定の声）"},
+    "eleven-realtime-mini": {"voices": [], "how": "v1 Max と同じ。声のIDを入力して登録する"},
     "elevenagents": {"voices": [], "how": "ElevenLabsの画面でエージェントの声を選ぶ。声のIDを入力して登録（上書きの許可が要る）"},
     "cartesia-agents": {"voices": [], "how": "Cartesiaの画面でエージェントの声を選ぶ。声のIDを入力して記録する"},
 }

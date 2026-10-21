@@ -18,10 +18,11 @@ from .auth import hash_password
 from ..reception.store import Store
 
 MIN_PASSWORD = 8
-KEYS = (   # only the two candidates of the first connection check (user decision 2026-10-07)
+KEYS = (   # the two candidates of the first connection check (user decision 2026-10-07) and Eleven Realtime (2026-10-21)
     ("OPENAI_API_KEY", "OpenAI（GPT-Live 1）のAPIキー", ("sk-",)),
     # AI Studio has made "auth keys" (AQ.…) since 2026-05-28; keys made before that start with AIza
     ("GEMINI_API_KEY", "Google AI Studio（Gemini 3.8 Live）のAPIキー", ("AQ.", "AIza")),
+    ("ELEVENLABS_API_KEY", "ElevenLabs（Eleven Realtime）のAPIキー", ("sk_",)),
 )
 
 Ask = Callable[[str], str]

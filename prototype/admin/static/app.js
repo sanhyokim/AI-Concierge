@@ -175,7 +175,7 @@ routes.voice = async () => {
     <div class="form-actions"><button id="addVoice">＋ 声を追加</button><button class="primary" id="saveVoices">保存</button></div></section>
     <section class="card"><details><summary>接続候補と声の状態</summary><table class="stack"><thead><tr><th>候補</th><th>状態</th><th>声の候補</th><th>声の指定の方法</th><th>この画面の声の反映</th></tr></thead><tbody>
     ${offered.map((x) => `<tr><td data-label="候補">${esc(x.name)}</td><td data-label="状態">${statusBadge(x.status, x.status_label)}</td><td data-label="声の候補">${esc(x.voices.join("、") || "（業者の画面で選ぶ）")}</td><td data-label="指定の方法">${esc(x.how)}</td><td data-label="反映">${esc(x.apply_label)}</td></tr>`).join("")}
-    </tbody></table><p class="sub">「利用可能」はオフラインの模擬だけです（音声の評価には使えません）。鍵の値は表示しません（設定の有無だけ）。保留中の候補（ElevenLabs・Cartesia・GPT-Realtime-2.1）は表示していません。</p></details></section>`;
+    </tbody></table><p class="sub">「利用可能」はオフラインの模擬だけです（音声の評価には使えません）。鍵の値は表示しません（設定の有無だけ）。保留中の候補（ElevenAgents・Cartesia・GPT-Realtime-2.1）は表示していません。</p></details></section>`;
   draw();
   view.addEventListener("input", (e) => { const t = e.target; if (t.dataset.i !== undefined && t.dataset.k) voices[Number(t.dataset.i)][t.dataset.k] = t.value; });
   view.addEventListener("change", (e) => {

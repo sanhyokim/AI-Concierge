@@ -18,6 +18,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 UTF8_PATHS = sys.getfilesystemencoding().lower().replace("-", "") == "utf8"
 OPENAI = "sk-proj-" + "a" * 40
 GEMINI = "AIza" + "b" * 35
+ELEVEN = "sk_" + "e" * 48
 
 
 def scripted(*answers):
@@ -63,7 +64,7 @@ class SetupPromptTest(unittest.TestCase):
 
     def test_keys_are_checked_kept_in_memory_and_can_be_skipped(self):
         env = {}
-        got = setup.ask_keys(env, scripted("  'sk-short' ", f' "{OPENAI}" ', ""), self.said.append)
+        got = setup.ask_keys(env, scripted("  'sk-short' ", f' "{OPENAI}" ', "", ""), self.said.append)
         self.assertEqual(env, {"OPENAI_API_KEY": OPENAI})      # quotes and spaces removed; Gemini skipped
         self.assertEqual(got, {"OPENAI_API_KEY": "typed"})
         text = "\n".join(self.said)
@@ -71,19 +72,29 @@ class SetupPromptTest(unittest.TestCase):
         self.assertIn("sk- で始まる 48 文字", text)
         self.assertNotIn(OPENAI, text)                          # the key is never shown
         env2 = {"GEMINI_API_KEY": GEMINI}
-        setup.ask_keys(env2, scripted("x", "y", "z"), self.said.append)
+        setup.ask_keys(env2, scripted("x", "y", "z", ""), self.said.append)
         self.assertNotIn("OPENAI_API_KEY", env2)                 # three wrong shapes: not set
         self.assertIn("設定済み", "\n".join(self.said))
+
+    def test_elevenlabs_key_shape(self):
+        # ElevenLabs keys start with sk_ (2026-10-21); an OpenAI key (sk-) pasted here is refused
+        env = {"OPENAI_API_KEY": OPENAI, "GEMINI_API_KEY": GEMINI}
+        setup.ask_keys(env, scripted(OPENAI, ELEVEN), self.said.append)
+        self.assertEqual(env["ELEVENLABS_API_KEY"], ELEVEN)
+        text = "\n".join(self.said)
+        self.assertIn("形が違うようです", text)
+        self.assertIn("sk_ で始まる 51 文字", text)
+        self.assertNotIn(ELEVEN, text)
 
     def test_both_shapes_of_google_key_are_accepted(self):
         # AI Studio has made "auth keys" starting with AQ. since 2026-05-28 (2026-10-14: the user is about to make one)
         for prefix, key in (("AQ.", "AQ." + "c" * 50), ("AIza", GEMINI)):
             env, said = {"OPENAI_API_KEY": OPENAI}, []
-            setup.ask_keys(env, scripted(key), said.append)
+            setup.ask_keys(env, scripted(key, ""), said.append)
             self.assertEqual(env["GEMINI_API_KEY"], key)
             self.assertIn(f"{prefix} で始まる {len(key)} 文字", "\n".join(said))
         env = {"OPENAI_API_KEY": OPENAI}
-        setup.ask_keys(env, scripted("AQ", "AQ.short", "Aiza" + "d" * 35), self.said.append)
+        setup.ask_keys(env, scripted("AQ", "AQ.short", "Aiza" + "d" * 35, ""), self.said.append)
         self.assertNotIn("GEMINI_API_KEY", env)
         self.assertIn("AQ.・AIza で始まり", "\n".join(self.said))
 
@@ -113,7 +124,8 @@ class InteractiveStartTest(unittest.TestCase):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         d = pathlib.Path(tmp.name)
-        env = {k: v for k, v in os.environ.items() if k not in ("OPENAI_API_KEY", "GEMINI_API_KEY")}
+        env = {k: v for k, v in os.environ.items() if k not in ("OPENAI_API_KEY", "GEMINI_API_KEY",
+                                                                     "ELEVENLABS_API_KEY")}
         env["BROWSER"] = "true"          # webbrowser runs `true` instead of opening a browser
         master, slave = pty.openpty()
         proc = subprocess.Popen([sys.executable, "-m", "prototype.admin", "--setup", "--port", "0", "--db",
@@ -140,7 +152,8 @@ class InteractiveStartTest(unittest.TestCase):
             self.fail(f"did not see {pattern!r} in:\n{out.decode(enc, errors='replace')}")
 
         for prompt, answer in (("パスワードを決めて入力", "pass-for-test-1"), ("同じパスワード", "pass-for-test-1"),
-                               ("GPT-Live 1", OPENAI), ("Gemini 3.8 Live", "")):
+                               ("GPT-Live 1", OPENAI), ("Gemini 3.8 Live", ""),
+                               ("Eleven Realtime", "")):
             until(prompt)
             os.write(master, answer.encode(enc) + b"\r")
         until("準備ができました")

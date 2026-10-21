@@ -7,7 +7,7 @@
 
 **v2.2で変えたこと**
 
-- 試験の候補：利用者の決定（2026-10-07）で、**GPT-Live 1 と Gemini 3.8 Live の2つだけ**にしました。
+- 試験の候補：利用者の決定（2026-10-07）で、**GPT-Live 1 と Gemini 3.8 Live の2つだけ**にしました。2026-10-21 に、利用者の決定で **Eleven Realtime（v1 Max・v1 Mini）** を加えました。
 - 保留：基準のGPT-Realtime-2.1、ElevenLabs、Cartesia。採用の候補からは外していません。試験のサーバーでは、開始の回数が0回で、画面でも選べません。
 - 前払いの残高を費用の上限とみなす前の版の説明は、**撤回**します。停止と集計の遅れで、残高を超えて使われることがあります（5章①）。
 - 予算は、支払い額・既知の費目の試算・未確認の費用・アプリ内の制限の4つに分けて示します。
@@ -93,6 +93,7 @@
 | --- | --- |
 | OpenAI 前払い（残高がなければ。最低額） | $5 |
 | Google 無料枠（架空のデータだけ）。有料枠を選ぶ場合は前払い$5から | $0 |
+| ElevenLabs 無料のプランから（含まれる分を超えるなら Starter $6/月など。利用者が選ぶ） | $0 |
 
 - 前払いの残高は、**費用の上限ではありません**。停止と集計の遅れで、残高を超えて使われることがあります（OpenAI：残高がマイナスになり、次の購入から引かれる。Google：集計に約10分の遅れ）。出典は下の固定費の表。
 - **業者側の予算（OpenAIのプロジェクトの月の予算と通知など）は設定したままにします。** このアプリの回数と費用の上限は、利用者の決定で外しました（2026-10-08）。
@@ -107,6 +108,8 @@ GPT-Liveの裏方のモデル（gpt-6-luna）は、典型（10応答×入力6,00
 | --- | --- | --- | --- | --- | --- |
 | OpenAI GPT-Live 1 | 約$0.158（声 $0.150＋裏方 $0.007） | $0.528 | 約$1.58／$5.28 | 約$4.73／$15.84 | L_live |
 | Google Gemini 3.8 Live | 約$0.039（声 $0.039） | $0.300 | 約$0.39／$3.00 | 約$1.18／$9.00 | Ctx_gem |
+| ElevenLabs Eleven Realtime v1 Max | 約$0.240（声 $0.240） | $1.000 | 約$2.40／$10.00 | 約$7.20／$30.00 | Tok_erx |
+| ElevenLabs Eleven Realtime v1 Mini | 約$0.240（声 $0.240） | $1.000 | 約$2.40／$10.00 | 約$7.20／$30.00 | Tok_erm |
 
 回数の例は目安です。回数の上限はありません。
 保留の候補（開始できない。参考）：OpenAI GPT-Realtime-2.1（比較の基準）：保留（再開すると同じOpenAIの前払いから引かれる。$0.30/分を上限に留保）／ElevenLabs ElevenAgents（Expressive mode）：保留。Free 15分／Starter $6/月（75分）。超過$0.08/分、LLMは別料金（L_11）／Cartesia Managed Agents：保留。Free $1／Pro $5/月。$0.06/分、LLMの単価は未確認（L_cart）。
@@ -119,6 +122,8 @@ GPT-Liveの裏方のモデル（gpt-6-luna）は、典型（10応答×入力6,00
 | — | GPT-Liveの日本語 | 公式の言語の一覧がない。声の追加の表は英語・ポルトガル語だけ。実際に話して確かめる |
 | Ctx_gem | Gemini Liveの履歴の再計算 | 会話が長いほど増える。接続の設定で履歴を短く保つ（contextWindowCompression） |
 | — | Geminiの無料枠の上限 | 回数・量の上限はAI Studioの画面だけに表示される |
+| Tok_erx・Tok_erm | Eleven Realtime の文字の量の料金 | 1通話のトークンの量が公式に書かれていない。受付の指示の長さからの見込みは、3分で v1 Max 約10円・v1 Mini 約1円 |
+| — | Eleven Realtime の日本語 | 評価の数字（Big Bench Audio など）は英語。実際に話して確かめる |
 | — | 課金の集計の遅れ | OpenAI：集計の遅れの間の利用は、残高のマイナスとして次の購入から引かれる。前払いの残高を即時の停止に頼らない、との記載。Google：課金の集計に約10分の遅れがあり、その間は残高を超えて使われることがある（マイナスは次の購入から引かれる）。残高0でHTTP 402 |
 | FX | 為替 | 1ドル＝150円の仮置き（140〜160円で変わる） |
 
@@ -142,6 +147,7 @@ GPT-Liveの裏方のモデル（gpt-6-luna）は、典型（10応答×入力6,00
 | --- | --- | --- | --- | --- | --- | --- |
 | OpenAI（GPT-Live 1） | プランなし（従量）。前払いクレジット（最低$5） | なし（GPT-Liveに無料枠はない） | 無料枠なし | 従量。GPT-Live $0.05/分（秒単位）。裏方のモデル（delegation）は別料金（トークン単価） | 前払いクレジットは1年で失効・返金なし。集計の遅れの間の利用は、残高のマイナスとして次の購入から引かれる。前払いの残高を即時の停止に頼らない、との記載。消費税10%（直接契約の日本の顧客） | [1](https://developers.openai.com/api/docs/models/gpt-live-1) [2](https://help.openai.com/en/articles/8264644-setting-up-and-managing-prepaid-api-billing) [3](https://help.openai.com/en/articles/10242647-the-japanese-consumption-tax-on-your-openai-invoices) |
 | Google（Gemini 3.8 Live） | 無料枠、または有料枠（Cloud Billing＋前払い$5から） | 無料枠：入出力とも無料（回数・量の上限はAI Studioの画面だけに表示＝未確認） | 無料枠の入出力は、Googleの製品の改善に使われ、人が読むことがある。有料枠では使われない | 有料枠：音声入力$3・出力$12（1Mトークン）。履歴はターンごとに再計算されて課金（記号 Ctx_gem） | 前払いは12か月で失効・返金なし。課金の集計に約10分の遅れがあり、その間は残高を超えて使われることがある（マイナスは次の購入から引かれる）。残高0でHTTP 402。消費税10%（日本の顧客。価格は税抜） | [1](https://ai.google.dev/gemini-api/docs/pricing) [2](https://ai.google.dev/gemini-api/terms) [3](https://ai.google.dev/gemini-api/docs/billing) [4](https://ai.google.dev/gemini-api/docs/live-api/best-practices) |
+| ElevenLabs（Eleven Realtime） | 無料（従量）または月額のプラン（Starter $6／Creator $22 など） | プランごとに含まれる分（料金表で v1 Max 約12・59・216分…。プランとの対応は表に書かれていない＝未確認） | 無料のプランでRealtimeが使えるかは明記がない（未確認）。架空のデータだけで話す | 接続1分$0.08＋トークン（v1 Max：入力$1.80・出力$9.00、v1 Mini：$0.20・$6.00／1Mトークン）。同時通話の上限を超えた分は1分$0.16 | 集計の遅れ・残高での停止の記載は未確認。価格は税抜（消費税の扱いは未確認） | [1](https://elevenlabs.io/pricing/api) [2](https://elevenlabs.io/docs/eleven-agents/customization/realtime-models) |
 
 ## 6. 実行側の制限と台帳
 
@@ -207,6 +213,6 @@ GPT-Liveの裏方のモデル（gpt-6-luna）は、典型（10応答×入力6,00
 | 初回の構成 | GPT-Live 1 と Gemini 3.8 Live の2つ（決定済み。2026-10-07） |
 | 接続の予備試験の費用 | OpenAIの前払い$5（残高がなければ。税抜）。Geminiは無料枠（架空のデータだけ。無料枠の入出力はGoogleの改善に使われる条件）か、有料枠の前払い$5 |
 | 詳しい会話比較の費用 | 予備試験の結果を見てから判断（追加の前払い：OpenAI $5、Geminiの有料枠 $5。税抜） |
-| アカウント | 当面は OpenAI と Google AI Studio の2つだけ。ElevenLabs・Cartesiaは後回し |
+| アカウント | OpenAI と Google AI Studio。2026-10-21 から ElevenLabs（Eleven Realtime）も（利用者の決定）。Cartesiaは後回し |
 | 鍵の置き場所 | 試験をする人のPCの環境変数（サーバー側）。チャットやリポジトリには置かない |
 | 試験をする人とPC | 自分のPCで管理画面のサーバーを動かし（Windowsは `start_windows` をダブルクリック。[はじめての起動](./start-windows.md)）、`/lab/` で話す。ヘッドセットの用意 |
