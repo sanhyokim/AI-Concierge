@@ -130,6 +130,11 @@ class ToolHandler:
                 return value
         return value
 
+    def reading(self, field: str) -> str:
+        """How a saved value is said (the summary at the end of the call)."""
+        state = self.store.fields.get(field)
+        return self._reading(field, state.value) if state and state.value else ""
+
     def start_readback(self, field: str, t_ms: int | None = None) -> dict:
         """Mark the read-back of a saved value and return the exact words to say. The caller's next reply is the
         answer to it."""

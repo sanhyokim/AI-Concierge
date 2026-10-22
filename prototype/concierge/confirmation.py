@@ -54,6 +54,10 @@ _AFFIRMATIVE = ("合って", "あって", "そうです", "その通り", "そ�
 _CORRECTION_WORDS = ("末尾", "最後は", "最後の", "下4桁", "下四桁", "変更", "訂正", "変えて", "けど", "けれど", "ですが",
                      "ただし")
 _CORRECTION_LEADS = re.compile(r"(^|[、。,.!?！？])(でも|ただ|だけど|しかし)")
+# A question back is not a yes (2026-10-21, Eleven Realtime: 「の三時ぐらいで大丈夫ですか？」 to the date's read-back
+# confirmed the date): only a reply that opens with an affirmation counts when it also asks something.
+_QUESTION = re.compile(r"(か|かね|かな|でしょう)[?？。]?$|[?？]")
+_YES_LEADS = ("はい", "ええ", "うん", "そうです", "合って", "あって", "その通り", "そのとおり", "間違いない", "間違いありません")
 
 
 def _norm(text: str) -> str:
@@ -68,6 +72,8 @@ def classify_reply(text: str) -> Reply:
             t, affirm_phrase = t.replace(p, "〇"), True
     if any(p in t for p in _NEGATIVE) or any(p in t for p in _CORRECTION_WORDS) or _CORRECTION_LEADS.search(t):
         return Reply.NEGATIVE
+    if _QUESTION.search(t) and not t.startswith(_YES_LEADS):
+        return Reply.UNCLEAR
     if affirm_phrase or any(p in t for p in _AFFIRMATIVE):
         return Reply.AFFIRMATIVE
     return Reply.UNCLEAR

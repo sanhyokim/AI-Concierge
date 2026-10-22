@@ -38,7 +38,7 @@ const pcmB64 = (ms) => Buffer.alloc(Math.round(24000 * ms / 1000) * 2, 1).toStri
         // the opening, then the caller speaks over it, then a tool call after the caller's words
         ws.send(JSON.stringify({ type: "response.created", response: {} }));
         ws.send(JSON.stringify({ type: "response.output_audio.delta", item_id: "item_1", delta: pcmB64(3000) }));
-        ws.send(JSON.stringify({ type: "response.output_audio_transcript.done", transcript: "お電話ありがとうございます。" }));
+        ws.send(JSON.stringify({ type: "response.output_audio_transcript.done", transcript: "[calm] お電話ありがとうございます。" }));
         setTimeout(() => {
           ws.send(JSON.stringify({ type: "input_audio_buffer.speech_started" }));
           ws.send(JSON.stringify({ type: "input_audio_buffer.speech_stopped" }));

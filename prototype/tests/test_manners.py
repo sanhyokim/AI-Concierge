@@ -103,9 +103,46 @@ class FixedPhrasesTest(unittest.TestCase):
 
     def test_greeting_names_the_company_and_the_ai(self):
         self.assertTrue(GREETING.startswith("お電話ありがとうございます。株式会社野田でございます。"))
-        self.assertIn("AIによる受付", GREETING)
+        self.assertIn("AIの受付", GREETING)
         self.assertEqual(lab.GREETING, GREETING)
 
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SummaryTest(unittest.TestCase):
+    """2026-10-22 (user): every AI closes with the same correct Japanese, made by the server (request_summary)."""
+
+    def test_the_summary_asks_for_what_is_missing_first(self):
+        svc = service()
+        cid = svc.start_call(at="2026-10-21T13:00")["id"]
+        svc.tool(cid, "save_fields", {"request": "無煙ロースターの清掃"})
+        res = svc.tool(cid, "request_summary", {})
+        self.assertFalse(res["ok"])
+        self.assertEqual(res["missing"], ["店舗名", "お名前", "折り返し先"])
+        self.assertIn("店舗名とお名前を", res["say"])
+
+    def test_the_summary_and_the_closing_words(self):
+        svc = service()
+        cid = svc.start_call(at="2026-10-21T13:00")["id"]
+        res = svc.tool(cid, "save_fields", {"shop_name": "焼肉ほのか博多店", "caller_name": "田中",
+                                            "request": "無煙ロースターの清掃", "callback_number": "080-5644-2050",
+                                            "preferred_datetime": "2026-10-23T15:00"})
+        self.assertEqual(res["do_not_ask_again"], ["店舗名", "お名前", "折り返し先", "用件", "希望日時"])
+        self.assertNotIn("still_to_ask", res)
+        say = svc.tool(cid, "request_summary", {})["say"]
+        self.assertTrue(say.startswith("それでは、ご用件を確認いたします。焼肉ほのか博多店の田中様。ご用件は、無煙ロースターの清掃。"
+                                       "ご希望のにちじは、10月23日、金曜日の、午後3時。"), say)
+        self.assertIn("担当のものにもうしつたえ", say)
+        self.assertTrue(say.endswith("ほかにご用件はございますでしょうか。"))
+        for word in FORBIDDEN + ("担当の者", "担当の方", "0805"):
+            self.assertNotIn(word, say)
+
+    def test_a_question_back_is_not_a_yes(self):
+        from prototype.concierge.confirmation import Reply, classify_reply
+        # 2026-10-21 (Eleven Realtime): this confirmed the date before any time was given
+        self.assertEqual(classify_reply("の三時ぐらいで大丈夫ですか？"), Reply.UNCLEAR)
+        self.assertEqual(classify_reply("それでいいですか？"), Reply.UNCLEAR)
+        for yes in ("はい", "大丈夫です", "はい、それで大丈夫ですか？", "はい。それでお願いします。"):
+            self.assertEqual(classify_reply(yes), Reply.AFFIRMATIVE, yes)

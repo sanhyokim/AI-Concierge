@@ -44,6 +44,16 @@ RECEPTION_TOOLS = TOOLS + [
     },
     {
         "type": "function",
+        "name": "request_summary",
+        "description": ("伺うことがそろったら、締めの前に呼ぶ。ご用件のまとめと締めの言葉（say）が返るので、一字一句そのまま読む。"
+                        "足りない項目があれば ok=false と、次に伺う言葉（say）が返る。"),
+        # one property: an object without properties may be refused by some vendors' schema checks
+        "parameters": {"type": "object",
+                       "properties": {"reason": {"type": "string", "description": "任意。空文字でよい"}},
+                       "required": []},
+    },
+    {
+        "type": "function",
         "name": "end_call",
         "description": ("最後のあいさつ（「お電話ありがとうございました。失礼いたします。」）を言い終えた後に呼ぶ。"
                         "これ以上は話さない。お客様が先に切るのを少し待ってから、こちらで電話を切る。"),

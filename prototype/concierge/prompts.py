@@ -78,38 +78,59 @@ VOICE_RULES = """\
 - 聞き取れないとき：「恐れ入ります。お電話が少し遠いようでございます。もう一度お聞かせいただけますでしょうか。」
   聞き取れた所は受けて、足りない所だけ伺います。相づちや雑音だけなら、聞き返さずに待ちます。
 - 分からないこと：「その点は、担当の者が確認のうえ、折り返しご連絡いたします。」
-- 自社の担当の者に「様」「さん」を付けません。折り返しの時期は約束しません。
-【伺うこと】まだ伺っていないものだけを、次の順に伺います。
-1. ご用件：「どのようなご用件でしょうか。」
-2. 店舗名とお名前：「恐れ入りますが、店舗名とお名前をお伺いしてもよろしいでしょうか。」
-3. 折り返しのお電話番号：「担当の者から折り返しお電話いたしますので、ご連絡先のお電話番号をお伺いしてもよろしいでしょうか。」
-4. ご希望の日時：「ご希望の日時はございますか。」
+- 自社の人は「担当の者」と言います（「担当の方」「担当者様」「担当さん」とは言いません）。折り返しの時期は約束しません。
+【伺うこと】まだ伺っていないものだけを、次の順に、この言葉で伺います。お客様が先におっしゃった項目は伺いません。
+1. ご用件：「{ask_request}」
+2. 店舗名とお名前：「{ask_shop}」
+3. 折り返しのお電話番号：「{ask_number}」
+4. ご希望の日時：「{ask_date}」（ご希望がなければ、伺い直さずに進みます）
 【守ること】
 - 料金・条件は、確かめた答えの範囲だけでお伝えします。訪問や日時を約束しません。
 - 担当の者へはおつなぎできないので、担当の者からの折り返しをご案内します。
 - 電話番号と日時は、自分で読み上げません。渡された復唱の文を、一字一句そのまま読みます。
 【終わり方】
-- 伺い終えたら、ご用件を短くまとめて確かめ（確認済みの電話番号は繰り返しません）、
-  「承りました内容は担当の者に申し伝え、担当の者から折り返しお電話いたします。」「ほかにご用件はございますでしょうか。」と伺います。
-- ないと言われたら、「お電話ありがとうございました。株式会社野田、AI受付が承りました。失礼いたします。」と言い、{end}。
+- 伺い終えたら、{summary}（ご用件のまとめと締めの言葉。自分で言い換えません）。
+- ないと言われたら、「{goodbye}」と言い、{end}。
   その後は話しません。お客様の話の途中で、締めの言葉を言いません。
 """
 
 # A-01 (spec 4-2): said as soon as the call is answered, then the question for the request, so the company always
 # speaks first (2026-10-20: the caller had to speak first because GPT-Live did not greet on its own). User decision
 # 2026-10-20: the AI says it in its own voice (「GPTでもGEMINIでもAIと同じ声質にしてほしい」), not a recording.
-OPENING_ANNOUNCEMENT = ("お電話ありがとうございます。株式会社野田でございます。こちらはAIによる受付でございます。"
-                        "ご用件を承り、担当の者から折り返しご連絡いたします。通話は、内容確認のため録音いたします。"
-                        "また、AIの処理には外部のサービスを利用しております。録音をご希望でない場合は、お申し付けください。")
-OPENING_QUESTION = "それでは、どのようなご用件でしょうか。"
+# 2026-10-22 (user): the first wording used 「ございます」 four times and sounded long and stiff
+OPENING_ANNOUNCEMENT = ("お電話ありがとうございます。株式会社野田でございます。こちらはAIの受付です。"
+                        "ご用件を承り、担当の者から折り返しご連絡いたします。通話は内容確認のため録音し、"
+                        "AIの処理には外部のサービスを使います。録音をご希望でない場合は、お申し付けください。")
+OPENING_QUESTION = "どのようなご用件でしょうか。"
+
+# The fixed questions and closing words every AI says (2026-10-22, user: 「GeminiとElevenLabsが設計上同じならAIの
+# セリフや対応も統一できますよね？」「とにかく正しい日本語を使ってほしい」). The server's request_summary uses them too.
+ASK_FOR = {"request": "どのようなご用件でしょうか。",
+           "shop_name": "恐れ入りますが、店舗名とお名前をお伺いしてもよろしいでしょうか。",
+           "caller_name": "恐れ入りますが、お名前をお伺いしてもよろしいでしょうか。",
+           "callback_number": "担当の者から折り返しお電話いたしますので、ご連絡先のお電話番号をお伺いしてもよろしいでしょうか。",
+           "preferred_datetime": "ご希望の日時はございますか。"}
+CLOSING_WORDS = "承りました内容は担当の者に申し伝え、担当の者から折り返しお電話いたします。ほかにご用件はございますでしょうか。"
+GOODBYE = "お電話ありがとうございました。株式会社野田、AI受付が承りました。失礼いたします。"
+
+
+def voice_rules(end: str, summary: str) -> str:
+    """VOICE_RULES with how the call ends and how the summary is got (Gemini and Eleven Realtime call the tools
+    themselves; GPT-Live asks its backend)."""
+    return VOICE_RULES.format(end=end, summary=summary, ask_request=ASK_FOR["request"], ask_shop=ASK_FOR["shop_name"],
+                              ask_number=ASK_FOR["callback_number"], ask_date=ASK_FOR["preferred_datetime"],
+                              goodbye=GOODBYE)
 # 2026-10-20 (Gemini): the caller's 「もしもし」 got no answer for 30 seconds: the AI was only told to wait
 OPENING_NOTE = ("【はじめ】通話の最初に、渡された案内を一字一句そのまま一度だけ話し、お客様のお話を待ちます。"
                 "「もしもし」だけなら「はい、株式会社野田でございます。」と応じます。")
 
 # Words the voice models misread, written in kana in what they are told to say (2026-10-20, Gemini: 「承りました」
 # was said 「しょうりました」). 承知 (しょうち) is read correctly and stays.
+# 2026-10-22 (user: 「担当の方」ではなく「担当の者」, 「いまだに漢字間違えがある」): 者 and the other words of the
+# fixed phrases that a voice model can read two ways.
 SPEECH_KANA = (("承り", "うけたまわり"), ("承ります", "うけたまわります"), ("承る", "うけたまわる"),
-               ("申し伝え", "もうしつたえ"), ("伺", "うかが"))
+               ("申し伝え", "もうしつたえ"), ("伺", "うかが"), ("担当の者", "担当のもの"), ("申し付け", "もうしつけ"),
+               ("恐れ入", "おそれい"), ("日時", "にちじ"), ("お間違い", "おまちがい"), ("弊社", "へいしゃ"))
 
 
 def for_speech(text: str) -> str:
@@ -125,7 +146,7 @@ OPENING_REQUEST = for_speech("通話がつながりました。最初に、次�
 
 # The AI's first words (the lab and the offline agent). Business phone manners: the company name with
 # 「でございます」, then that this is an AI reception (2026-10-13; the old 「AI受付です。ご用件をお伺いします。」 sounded abrupt).
-GREETING = "お電話ありがとうございます。株式会社野田でございます。こちらはAIによる受付でございます。どのようなご用件でしょうか。"
+GREETING = "お電話ありがとうございます。株式会社野田でございます。こちらはAIの受付です。どのようなご用件でしょうか。"
 # A-07 (spec 4-2): the last words of a call taken by the offline agent
 CLOSING = ("承りました内容は担当の者に申し伝え、担当の者から折り返しお電話いたします。"
            "お電話ありがとうございました。失礼いたします。")

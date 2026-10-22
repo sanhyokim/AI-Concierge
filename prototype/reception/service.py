@@ -19,7 +19,7 @@ from dataclasses import asdict
 
 from ..concierge.call_flow import CallFlow, Consent
 from ..concierge.confirmation import FieldState, Status
-from ..concierge.prompts import BASE_INSTRUCTIONS, SPEECH_MANNERS, VOICE_RULES, for_speech
+from ..concierge.prompts import ASK_FOR, BASE_INSTRUCTIONS, CLOSING_WORDS, SPEECH_MANNERS, for_speech, voice_rules
 from ..concierge.readings import digits_only
 from ..engines.tools import READBACK_FIELDS, ToolHandler
 from . import settings as S
@@ -287,10 +287,12 @@ class ReceptionService:
         at = parse_at(json.loads(call["snapshot"])["decision"]["at_jst"])
         has_line = bool(call["caller_id"])
         if backend:
-            parts = [VOICE_RULES.format(end="裏方に、最後のあいさつを言い終えたことを伝えます"), DELEGATION_POLICY,
+            parts = [voice_rules(end="裏方に、最後のあいさつを言い終えたことを伝えます",
+                                 summary="裏方にまとめを頼み、返ってきた文を一字一句そのまま読みます"), DELEGATION_POLICY,
                      voice_line_hint(has_line), today_line(at) + "。日付や曜日は自分で計算せず、裏方に確かめます。"]
         else:
-            parts = [VOICE_RULES.format(end="end_call を呼びます"), DIRECT_TOOL_RULES, line_block(has_line),
+            parts = [voice_rules(end="end_call を呼びます",
+                                 summary="request_summary を呼び、返ってきた say を一字一句そのまま読みます"), DIRECT_TOOL_RULES, line_block(has_line),
                      date_block(at, brief=True)]
         # the words the voice models misread are given in kana (2026-10-20: 「承りました」 said 「しょうりました」)
         return for_speech("\n".join(part.rstrip() for part in [preamble, *parts]))
@@ -413,6 +415,8 @@ class ReceptionService:
                 res, logged_args = self._save_fields(sess, snap, args)
             elif name == "offer_line_number":
                 res = self._offer_line_number(call, sess, snap)
+            elif name == "request_summary":
+                res = self._summary(sess, snap)
             elif name == "end_call":
                 # the AI said its last words; the page (or the phone side) hangs up after the caller had the chance
                 res = {"ok": True, "hangup": True, "hangup_wait_ms": int(S.HANGUP_WAIT_S * 1000),
@@ -448,6 +452,11 @@ class ReceptionService:
             saved[field] = sess.tools.save(field, value)
             logged[field] = value
         res = {"ok": True, "saved": saved}
+        # 2026-10-21 (Eleven Realtime): the shop and the name were saved, then asked for again
+        left = self._still_to_ask(sess, snap)
+        if left:
+            res["still_to_ask"] = [S.FIELD_LABELS[f] for f in left]
+        res["do_not_ask_again"] = [S.FIELD_LABELS[f] for f in S.FIELD_KEYS if f in saved]
         if skipped:
             res["not_stored_by_setting"] = skipped
         # the number or the date is read back at once, in the same tool call; one item per reply, so a second
@@ -459,6 +468,35 @@ class ReceptionService:
             res["read_back_later"] = {"fields": pending[1:],
                                       "how": "お客様が「はい」と答えた後で、request_readback を呼んで復唱する"}
         return res, logged
+
+    @staticmethod
+    def _still_to_ask(sess: CallSession, snap: dict) -> list[str]:
+        """The items not heard yet, in the order the AI asks them (VOICE_RULES 【伺うこと】). The date is asked
+        but not required: a caller may have no wish."""
+        order = ("request", "shop_name", "caller_name", "callback_number")
+        fields = sess.tools.store.fields
+        return [f for f in order if snap["config"]["fields"][f]["store"]
+                and not (fields.get(f) and fields[f].value)]
+
+    def _summary(self, sess: CallSession, snap: dict) -> dict:
+        """The words that close the intake, made here so every AI says the same correct Japanese (2026-10-22,
+        user: 「GeminiとElevenLabsが設計上同じならAIのセリフや対応も統一できますよね？」; Gemini had said
+        「承りました内容は、…の田中様より、…のご希望でございます」)."""
+        left = self._still_to_ask(sess, snap)
+        if left:
+            return {"ok": False, "missing": [S.FIELD_LABELS[f] for f in left], "say": for_speech(ASK_FOR[left[0]])}
+        fields = sess.tools.store.fields
+        val = lambda f: (fields[f].value if fields.get(f) and fields[f].value else "")
+        who = "の".join(v for v in (val("shop_name"), f"{val('caller_name')}様" if val("caller_name") else "") if v)
+        parts = ["それでは、ご用件を確認いたします。"]
+        if who:
+            parts.append(f"{who}。")
+        parts.append(f"ご用件は、{val('request')}。")
+        if val("preferred_datetime"):
+            parts.append(f"ご希望の日時は、{sess.tools.reading('preferred_datetime')}。")
+        parts.append(CLOSING_WORDS)
+        return {"ok": True, "say": for_speech("".join(parts)),
+                "then": "お客様のお返事を待つ。ほかにご用件がなければ、最後のあいさつを言って end_call を呼ぶ"}
 
     def _offer_line_number(self, call: dict, sess: CallSession, snap: dict) -> dict:
         """Ask whether to call back on the number the line delivered (spec 2: the first way to get the callback

@@ -93,7 +93,9 @@ export async function connect(ctx) {
       const heard = await ctx.onTranscript("user", ev.transcript || "");
       if (transcriptWait) { transcriptWait.resolve(heard); transcriptWait = null; }
     } else if (ev.type === "response.output_audio_transcript.done") {
-      ctx.onTranscript("ai", ev.transcript || "");
+      // the model marks its tone in the transcript (2026-10-21: 「[calm] 失礼いたしました。」); not words it said
+      const words = (ev.transcript || "").replace(/\[[a-z _-]+\]\s*/gi, "").trim();
+      if (words) ctx.onTranscript("ai", words);
     } else if (ev.type === "response.function_call_arguments.done") {
       // the caller's 「はい」 can arrive after the model's tool call: let the server see it first
       const heard = transcriptWait ? await transcriptWait.promise : null;

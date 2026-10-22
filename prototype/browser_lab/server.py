@@ -38,6 +38,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from ..engines.budget import DEFAULT_LEDGER, BudgetExceeded, UsageLedger
 from ..concierge.readings import digits_only, is_valid_jp_number
+from ..concierge.prompts import for_speech
 from ..reception.service import ReceptionService
 from ..reception.store import DEFAULT_DB, Store, dumps, iso, now_jst
 from . import vendors, wsclient
@@ -404,7 +405,11 @@ class Lab:
         self._set(sid, tool_calls=row["tool_calls"] + 1)
         if delay_ms:
             time.sleep(min(delay_ms, 15000) / 1000)
-        return self.service.tool(s["call_id"], name, args or {})   # attached text is never taken as a reply
+        res = self.service.tool(s["call_id"], name, args or {})   # attached text is never taken as a reply
+        # the voice model says the answer aloud: the misread words in kana, as in its instructions (2026-10-22)
+        if isinstance(res.get("answer"), str):
+            res = {**res, "answer": for_speech(res["answer"])}
+        return res
 
     def utterance(self, sid: str, text: str, seq) -> dict:
         """A final caller transcript from the page (the only reply the confirmation guard accepts)."""
