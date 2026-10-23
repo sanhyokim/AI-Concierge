@@ -98,11 +98,11 @@ VOICE_RULES = """\
 # speaks first (2026-10-20: the caller had to speak first because GPT-Live did not greet on its own). User decision
 # 2026-10-20: the AI says it in its own voice (「GPTでもGEMINIでもAIと同じ声質にしてほしい」), not a recording.
 # 2026-10-22 (user): the first wording used 「ございます」 four times and sounded long and stiff
-# 2026-10-23: the user's own wording (「以下に変更」)
+# 2026-10-23: the user's own wording (「以下に変更」), and a last sentence that welcomes questions too (user's choice)
 OPENING_ANNOUNCEMENT = ("お電話ありがとうございます。株式会社野田のAIオペレーターでございます。"
                         "ご用件を承りまして、担当の者から折り返しご連絡いたします。"
                         "通話は内容確認と品質向上のため録音させていただきます。")
-OPENING_QUESTION = "それでは、どのようなご用件でしょうか。"
+OPENING_QUESTION = "それでは、ご依頼のご相談やご質問など、お気軽にお話しください。"
 
 # The fixed questions and closing words every AI says (2026-10-22, user: 「GeminiとElevenLabsが設計上同じならAIの
 # セリフや対応も統一できますよね？」「とにかく正しい日本語を使ってほしい」). The server's request_summary uses them too.
