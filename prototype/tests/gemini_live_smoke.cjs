@@ -63,6 +63,33 @@ async function run(browser, base, silentFirst) {
   return { ...out, fromPage, errors };
 }
 
+// The gate alone: 40 ms chunks of loud (voice) or zero (silence) PCM at 16 kHz.
+async function gateCheck(browser, base) {
+  const page = await browser.newPage();
+  await page.goto(base + "/");
+  const out = await page.evaluate(async () => {
+    const { createBackchannelGate } = await import("/backchannel.js");
+    const chunk = (loud) => { const a = new Int16Array(640); if (loud) a.fill(8000); return a.buffer; };
+    const isLoud = (b) => new Int16Array(b).some((v) => v !== 0);
+    const run = (pattern, talking) => {
+      const sent = []; let backchannels = 0, i = 0;
+      const gate = createBackchannelGate({ send: (b) => sent.push(b), aiTalking: () => talking(i),
+                                           onBackchannel: () => backchannels++ });
+      for (; i < pattern.length; i++) gate.push(chunk(pattern[i]));
+      return { fed: pattern.length, sent: sent.length, loud: sent.filter(isLoud).length, backchannels };
+    };
+    const voice = (n) => Array(n).fill(1), quiet = (n) => Array(n).fill(0);
+    return {
+      short: run([...voice(5), ...quiet(10)], () => true),          // 「はい」 0.2 s over the AI
+      long: run([...voice(20), ...quiet(5)], () => true),           // 0.8 s: 「ちょっと待って」
+      quietAi: run([...voice(5), ...quiet(3)], () => false),        // the AI is silent: an answer
+      endsMidway: run([...voice(8), ...quiet(3)], (i) => i < 3),     // the AI stops while the caller speaks
+    };
+  });
+  await page.close();
+  return out;
+}
+
 (async () => {
   const srv = http.createServer((req, res) => {
     const file = req.url === "/" ? null : path.join(STATIC, decodeURIComponent(req.url.split("?")[0]));
@@ -94,6 +121,13 @@ async function run(browser, base, silentFirst) {
     if (firstAudio >= 0 && firstAudio < secondText) fail("the mic was sent before the opening was heard");
     if (!silent.log.some(([k, d]) => k === "冒頭の案内" && String(d).includes("声が届かなかった"))) fail("no note on the retry");
     if (silent.errors.length) fail(`page errors: ${silent.errors}`);
+    // 3. back-channel (2026-10-23): while the AI talks, a short 「はい」 is replaced by silence; a long one goes through
+    const gate = await gateCheck(browser, base);
+    if (gate.short.sent !== gate.short.fed || gate.short.loud !== 0) fail(`short sound over the AI was not silenced: ${JSON.stringify(gate.short)}`);
+    if (gate.short.backchannels !== 1) fail("the back-channel was not noted");
+    if (gate.long.loud < 15) fail(`a long interruption did not reach the AI: ${JSON.stringify(gate.long)}`);
+    if (gate.quietAi.loud !== 5 || gate.quietAi.sent !== gate.quietAi.fed) fail(`with the AI silent, a short answer must pass at once: ${JSON.stringify(gate.quietAi)}`);
+    if (gate.endsMidway.loud < 3) fail(`a sound that outlasts the AI's voice must reach it: ${JSON.stringify(gate.endsMidway)}`);
     console.log(JSON.stringify({ heard: kinds.slice(0, 3), silent: silent.fromPage.slice(0, 4).map((e) => e.kind),
                                  notes: silent.log.filter(([k]) => k === "冒頭の案内") }, null, 1));
   } catch (e) {

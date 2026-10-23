@@ -2,11 +2,14 @@
 // Mic: 16 kHz PCM. Model audio: PCM (24 kHz unless the mimeType says otherwise). On serverContent.interrupted
 // everything not yet heard is dropped and the interruption is reported to the server (an unanswered readback
 // is then not confirmed). Caller transcripts are sent before tool calls so the server sees the reply first.
+// While the AI talks, the caller's short sounds (back-channel 「はい」) are held back and not sent (backchannel.js).
 // Written from the public docs (2026-10-05); the connection has not been confirmed with a real account.
 import { createPlayer, fromBase64, startCapture, toBase64 } from "../pcm.js";
+import { createBackchannelGate } from "../backchannel.js";
 
 const OPENING_WAIT_MS = 4000;   // the opening's voice has this long to arrive before it is asked for once more
 const MIC_WAIT_MS = 8000;       // the mic is sent once the opening is heard, or after this long at the latest
+const TAIL_S = 1.5;             // under this much of the AI's voice left, a short 「はい」 is an answer, not back-channel
 
 export async function connect(ctx) {
   const { token, ws_url: wsUrl, setup } = ctx.credentials;
@@ -116,8 +119,16 @@ export async function connect(ctx) {
   async function startMic() {
     if (micStarted || closing) return;
     micStarted = true;
-    capture = await startCapture(ac, ctx.micStream, 16000, (buf) =>
-      send({ realtimeInput: { audio: { data: toBase64(buf), mimeType: "audio/pcm;rate=16000" } } }));
+    const gate = createBackchannelGate({
+      send: (buf) => send({ realtimeInput: { audio: { data: toBase64(buf), mimeType: "audio/pcm;rate=16000" } } }),
+      // the AI is talking while its voice is queued; once the whole answer is in, only beyond the last TAIL_S
+      aiTalking: () => (generationDone ? player.pendingSeconds() > TAIL_S : player.pendingSeconds() > 0.05),
+      thresholdDb: () => (ctx.micThresholdDb ? ctx.micThresholdDb() : -42),
+      onBackchannel: (d) => ctx.log("相づち", `AIの話し中の短い声（${d.ms} ms）は、AIに渡さなかった（話を止めない）`),
+      onRelease: (d) => ctx.log("話し中の割り込み", d.why === "long" ? `AIの話し中に${d.ms} ms以上話したので、AIに渡した`
+        : "AIが話し終えたので、お客様の声をそのままAIに渡した"),
+    });
+    capture = await startCapture(ac, ctx.micStream, 16000, (buf) => gate.push(buf));
     if (closing) capture.stop();
   }
   function askOpeningAgain(why) {

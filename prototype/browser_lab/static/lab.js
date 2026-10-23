@@ -383,6 +383,7 @@ function makeCtx(creds) {
       $("status").textContent = `終了：AIの会社が接続を閉じました（${why}）。この文を開発の担当に送ってください`;
     },
     vendorEvent: (kind, data) => reportVendorEvent(kind, data),
+    micThresholdDb: () => Number($("micThr").value),   // the level that counts as the caller's voice
     attachOutputNode(node) { node.connect(st.aiAnalyser); node.connect(st.ac.destination); },
     attachOutputStream(stream) { st.ac.createMediaStreamSource(stream).connect(st.aiAnalyser); },
     onUserSpeech(cb) { st.userSpeechListeners.add(cb); return () => st.userSpeechListeners.delete(cb); },
