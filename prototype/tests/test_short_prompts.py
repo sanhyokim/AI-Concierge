@@ -133,9 +133,9 @@ class OpeningTest(unittest.TestCase):
         from prototype.browser_lab import config, vendors
         from prototype.concierge.prompts import OPENING_ANNOUNCEMENT, OPENING_NOTE, OPENING_REQUEST
         from prototype.concierge.prompts import for_speech
-        self.assertIn(for_speech(OPENING_ANNOUNCEMENT + "どのようなご用件でしょうか。"), OPENING_REQUEST)
-        self.assertIn("ご用件をうけたまわり、", OPENING_REQUEST)          # 2026-10-20: 「しょうりました」
-        self.assertIn("録音し", OPENING_REQUEST)                    # A-01 (spec 4-2)
+        self.assertIn(for_speech(OPENING_ANNOUNCEMENT + "それでは、どのようなご用件でしょうか。"), OPENING_REQUEST)
+        self.assertIn("ご用件をうけたまわりまして、", OPENING_REQUEST)          # 2026-10-20: 「しょうりました」
+        self.assertIn("録音させていただきます", OPENING_REQUEST)     # A-01 (spec 4-2)
         self.assertIn(OPENING_NOTE, config.LAB_PERSONA)
         calls = []
 

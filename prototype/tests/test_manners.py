@@ -102,8 +102,8 @@ class FixedPhrasesTest(unittest.TestCase):
                 self.assertNotIn(word, text, text)
 
     def test_greeting_names_the_company_and_the_ai(self):
-        self.assertTrue(GREETING.startswith("お電話ありがとうございます。株式会社野田でございます。"))
-        self.assertIn("AIの受付", GREETING)
+        self.assertTrue(GREETING.startswith("お電話ありがとうございます。株式会社野田のAIオペレーターでございます。"))
+        self.assertIn("AIオペレーター", GREETING)   # 2026-10-23: the user's wording
         self.assertEqual(lab.GREETING, GREETING)
 
 
