@@ -68,7 +68,8 @@ def monthly_total(c: dict, scn: dict, cache: bool = True) -> tuple[cm.Money, flo
 # Today every call to 0120 and 092 is forwarded by NTT to the staff member's mobile (user, 2026-10-07; set with
 # 142 as far as they remember). Plan 2 re-points that forward to the AI number only while the system is ON.
 # Calls answered by people never pass through the cloud, so plan 1's extra for human-answered calls does not apply.
-PLAN2_TESTED = ("gpt-live-1", "gemini-3.8-live", "eleven-realtime-max", "eleven-realtime-mini")   # Eleven: 2026-10-21
+PLAN2_TESTED = ("gpt-live-1", "gemini-3.8-live", "eleven-realtime-max", "eleven-realtime-mini",   # Eleven: 2026-10-21
+                "grok-voice-3")                                                                   # Grok: 2026-10-23
 PLAN2_REFERENCE = ("gpt-realtime-2.1", "elevenagents", "cartesia-agents", "qwen-omni-realtime")
 DELTA_F = "ΔF"   # per AI call: F_050 (forward to the AI number) minus F_mob (forward to the mobile); may be negative
 
@@ -207,7 +208,7 @@ def render_frame() -> str:
       "配点や予算の上限は、利用者が決めない限り置かない。安くても必要な会話条件を満たさない候補は採用しない。")
     w("- 旧費用表（案A・案B）の約37円・約50円などは、旧構成と旧仮定による概算。この表の比較には、同じ前提で計算し直した値を使う。")
     w("- 最初の接続の試験は GPT-Live 1 と Gemini 3.8 Live の2つだけ（利用者の決定、2026-10-07）。"
-      "2026-10-21 に Eleven Realtime（v1 Max・v1 Mini）を試験に加えた（利用者の決定）。"
+      "2026-10-21 に Eleven Realtime（v1 Max・v1 Mini）を、2026-10-23 に Grok Voice 3.0 を試験に加えた（利用者の決定）。"
       "ElevenAgents（Expressive mode）・Cartesia・GPT-Realtime-2.1 は保留で、Qwen は次の候補。表には比較のため全候補を残す。\n")
 
     w("## 1. そろえた前提\n")
@@ -347,6 +348,8 @@ def render_list() -> str:
     w("\n- 最初の接続の確認は GPT-Live 1 と Gemini 3.8 Live の2つだけで行う（2026-10-07）。保留の候補は、採用の候補からは外していない。")
     w("- 2026-10-21、Eleven Realtime（v1 Max・v1 Mini）を試験に加えた（利用者の決定。ElevenLabsのアカウントを作る）。"
       "受付の本命は v1 Max（業務処理の成功率87.1%）。v1 Mini は会話の自然さの比較用。")
+    w("- 2026-10-23、Grok Voice 3.0 を試験に加えた（利用者の決定「Grok Voice 3.0を使ってみたい」。xAIのアカウントを作る）。"
+      "日本語に公式に対応し、決まった文をそのまま話させる機能（force_message）で番号の復唱を正確にできる見込み。")
     w("- GPT-Liveは、日本語の受付を最初に確かめる。業務処理を受け持つ裏方のモデル（delegation）も確かめる。")
     w("- Inworldは、接続の調査を優先して進める（ブラウザーからは中継が要り、提供段階がResearch previewのため、会話試験は2回目）。")
     w("- Grok・Deepgram・Retell・Vapiは、初回の結果と未確認の点の確認の後に比べる。")

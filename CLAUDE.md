@@ -51,7 +51,7 @@
 | 2026-10-05 | 採用は、必要な会話条件を満たした候補から、コストと性能のバランスで選ぶ。部分減速（番号・日時だけを遅く読む）は初期導入の条件から外す（番号・日時の明瞭な復唱と確認は残す） |
 | 2026-10-05 | 開発の順序：ブラウザーでの会話試験 → 管理画面の調整 → 試験用の電話経路 → 会社番号での運用 |
 | 2026-10-07 | 最初の接続の試験は GPT-Live 1 と Gemini 3.8 Live だけ。ElevenLabs・Cartesia・GPT-Realtime-2.1 は保留（画面にも出さない）。2つがよくなければ Qwen が次の候補 |
-| 2026-10-07 | アカウントは OpenAI と Google AI Studio だけ（2026-10-21 に ElevenLabs を追加） |
+| 2026-10-07 | アカウントは OpenAI と Google AI Studio だけ（2026-10-21 に ElevenLabs、2026-10-23 に xAI を追加） |
 | 2026-10-07・08 | **回線案2を採用**：AIのオン・オフは、NTTの転送先を担当者の携帯とAIの番号で切り替えて行う（手動。アプリからは変えない）。アプリに届いた通話は、すべてAIが受ける。受電モード・スケジュール・「普通受電」の経路はない。回線案1（常にクラウドを通す）は採用しない（参考として残す） |
 | 2026-10-08 | 会話試験の回数と費用の上限は撤廃。試験の通話は5分で止める（本番で止めるかは未決定） |
 | 2026-10-08 | 会話試験の台本はC1〜C7（C7は、ふだんの話し方） |
@@ -61,6 +61,7 @@
 | 2026-10-20 | 冒頭の案内（A-01・A-04）は、録音ではなく、会話のAIが自分の声で話す（「GPTでもGEMINIでもAIと同じ声質にしてほしい」）。会話試験の録音の機能とブラウザーの読み上げは外した |
 | 2026-10-21 | **Eleven Realtime（ElevenLabs、v1 Max・v1 Mini）を会話試験に加える**（「イレブンラボもぜひ試してみたい」）。ElevenLabs のアカウントを作る。受付の本命は v1 Max、v1 Mini は会話の自然さの比較用。ElevenAgents（Expressive mode）は保留のまま |
 | 2026-10-23 | **伺う順**：どのAIも、ご用件 → ご希望の日時 → 店舗名とお名前 → 折り返しのお電話番号（「要件や日程を確認してからお名前や連絡先を聞いたほうがいい」）。お客様が先に名乗れば、そのまま受ける |
+| 2026-10-23 | **Grok Voice 3.0（xAI）を会話試験に加える**（「Grok Voice 3.0を使ってみたい」）。xAI のアカウントを作る。新しいモデルは日本語対応が必須（「最新モデルは日本語対応が必須です」）。GPT-Realtime-2.1 は保留のまま |
 
 ## 判断待ち（利用者に確認すること）
 
@@ -111,6 +112,7 @@
   - `node prototype/tests/admin_smoke.cjs docs/screenshots`（管理画面のブラウザー試験。画面の画像を撮り直す）
   - `node prototype/tests/browser_lab_smoke.cjs`（会話試験の画面）
   - `node prototype/tests/eleven_realtime_smoke.cjs`（Eleven Realtime のつなぎ口を、模擬の相手で確かめる）
+  - `node prototype/tests/realtime_ws_smoke.cjs`（GPT-Realtime-2.1・Grok Voice 3.0 の共通のつなぎ口を、模擬の相手で確かめる）
   - `node prototype/tests/gemini_live_smoke.cjs`（Gemini Live の冒頭の案内を、模擬の相手で確かめる）
 - **日本語の Windows**
   - 既定の文字コードが cp932 です。ファイルの読み書きには必ず `encoding="utf-8"` を付けます（`test_text_encoding.py` が検査します）。

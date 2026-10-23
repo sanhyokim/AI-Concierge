@@ -72,11 +72,22 @@ CANDIDATES = {
         "cartesia_version": "2026-08-14", "logic_path": "client_tools",
         "applies": {"instructions": "agent_fixed", "voice": "agent_fixed"}, "hold": HOLD_BY_USER,
         "note": "エージェントと Client function（8つ）はCartesiaの画面で作る。新しいWebSocket（/v1/agents/websocket）で接続"},
+    # GPT-Realtime-2.1 and Grok Voice 3.0 (2026-10-23): one model that listens, thinks, speaks and calls the tools
+    # itself, like Gemini, over the OpenAI-compatible WebSocket (adapter realtime-ws.js), with the short prompt.
     "gpt-realtime-2.1": {
-        "name": "OpenAI GPT-Realtime-2.1（比較の基準）", "adapter": "openai-realtime", "env": ["OPENAI_API_KEY"],
+        "name": "OpenAI GPT-Realtime-2.1", "adapter": "realtime-ws", "env": ["OPENAI_API_KEY"],
         "vendor": "openai_lab", "model": "gpt-realtime-2.1", "voice": "marin", "upper_usd_per_min": 0.30,
         "increment_s": 60, "verified": False, "logic_path": "function_call",
-        "applies": {"instructions": "session", "voice": "session"}, "hold": HOLD_BY_USER},
+        "applies": {"instructions": "session", "voice": "session"}, "prompt_style": "short", "hold": HOLD_BY_USER,
+        "note": "1つのAIで聞く・考える・話す・業務処理を呼ぶ。日本語は公式の一覧になし（日本語の評価記事あり）。"
+                "日本語の声はない。料金は音声100万トークンあたり入力$32・出力$64"},
+    "grok-voice-3": {
+        "name": "xAI Grok Voice 3.0", "adapter": "realtime-ws", "env": ["XAI_API_KEY"], "vendor": "xai_lab",
+        "model": "grok-voice-3.0", "upper_usd_per_min": 0.10, "increment_s": 60, "verified": False,
+        "logic_path": "function_call", "applies": {"instructions": "session", "voice": "session"},
+        "prompt_style": "short",   # the user chose to try it (2026-10-23, 「Grok Voice 3.0を使ってみたい」)
+        "note": "1つのAIで聞く・考える・話す・業務処理を呼ぶ。日本語は公式に対応（日本語専用の声はない）。"
+                "復唱とまとめは、決まった文をそのまま読む機能（force_message）で読む。料金は接続1分$0.08（無音も含む）"},
 }
 LOGIC_PATHS = {"client_tools": "ブラウザーのclient tools → この端末のサーバー",
                "delegation_responses": "delegation（Responses）の関数呼び出し → ブラウザー → この端末のサーバー",
@@ -124,12 +135,14 @@ def delegation_model(cfg: dict, env: dict) -> str:
 # Sessions allowed per candidate and stage. None = no count limit: the user removed the limits for the two tested
 # candidates (2026-10-08); sessions are still counted for the record. Held candidates get none until released.
 SESSIONS = {stage: {"gpt-live-1": None, "gemini-3.8-live": None, "eleven-realtime-max": None,
-                    "eleven-realtime-mini": None, "elevenagents": 0, "cartesia-agents": 0, "gpt-realtime-2.1": 0}
+                    "eleven-realtime-mini": None, "elevenagents": 0, "cartesia-agents": 0, "gpt-realtime-2.1": 0,
+                    "grok-voice-3": None}
             for stage in ("connection", "detailed")}   # Eleven Realtime: no limit, like the two others (2026-10-21)
 _NO_CAP = Limits(max_requests=None, max_audio_seconds=None, max_cost_usd=None)   # user decision 2026-10-08
 _HELD = Limits(max_requests=0, max_audio_seconds=0, max_cost_usd=0.0)
 LAB_LIMITS_BY_STAGE = {   # the ledger still records every session and its reservation; it no longer refuses
-    stage: {"openai_lab": _NO_CAP, "google_lab": _NO_CAP, "elevenlabs_lab": _NO_CAP, "cartesia_lab": _HELD}
+    stage: {"openai_lab": _NO_CAP, "google_lab": _NO_CAP, "elevenlabs_lab": _NO_CAP, "cartesia_lab": _HELD,
+            "xai_lab": _NO_CAP}
     for stage in ("connection", "detailed")
 }
 LAB_STAGES = {"connection": "接続の予備試験", "detailed": "詳しい会話比較"}
@@ -139,6 +152,7 @@ ENV_SETUP = {   # shown on the lab page: how to set a variable on the tester's P
     "OPENAI_API_KEY": "OpenAIの管理画面（Platform）で作るAPIキー。試験専用のプロジェクトで作る",
     "GEMINI_API_KEY": "Google AI Studio で作るAPIキー",
     "ELEVENLABS_API_KEY": "ElevenLabs の画面（Developers → API Keys）で作るAPIキー。ElevenAgents の権限を付ける",
+    "XAI_API_KEY": "xAI の画面（console.x.ai → API Keys）で作るAPIキー",
     "GPT_LIVE_DELEGATION_MODEL": "任意。GPT-Liveの裏方のモデル（既定 gpt-6-luna）",
 }
 

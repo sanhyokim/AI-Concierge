@@ -112,8 +112,13 @@ class LabPromptTest(unittest.TestCase):
         self.assertNotIn("secret-gemini-key", json.dumps(s))
 
     def test_held_candidates_keep_the_full_prompt(self):
-        self.assertNotIn("prompt_style", config.CANDIDATES["gpt-realtime-2.1"])
         self.assertNotIn("prompt_style", config.CANDIDATES["elevenagents"])
+        self.assertNotIn("prompt_style", config.CANDIDATES["cartesia-agents"])
+
+    def test_single_model_candidates_get_the_short_prompt(self):
+        # 2026-10-23: GPT-Realtime-2.1 and Grok Voice 3.0 call the tools themselves, like Gemini
+        for cid in ("gemini-3.8-live", "eleven-realtime-max", "gpt-realtime-2.1", "grok-voice-3"):
+            self.assertEqual(config.CANDIDATES[cid]["prompt_style"], "short", cid)
 
 
 if __name__ == "__main__":

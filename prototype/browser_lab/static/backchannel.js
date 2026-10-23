@@ -6,8 +6,6 @@
 // same length, so the stream keeps its timing. When the AI is silent, or has under tailMs left to say, every
 // sound passes at once: a short 「はい」 then is an answer (the server's read-back tail rule already accepts it).
 
-const SAMPLE_RATE = 16000;
-
 export function levelDb(buf) {
   const pcm = new Int16Array(buf);
   if (!pcm.length) return -100;
@@ -19,11 +17,13 @@ export function levelDb(buf) {
 
 // send(buf): to the vendor. aiTalking(): true while the AI's voice still has more than the tail to play.
 // thresholdDb(): the level that counts as the caller's voice (the lab's microphone threshold).
+// sampleRate: of the 16-bit PCM pushed (Gemini 16 kHz, the OpenAI-compatible APIs 24 kHz).
 export function createBackchannelGate({ send, aiTalking, thresholdDb = () => -42, onBackchannel = () => {},
-                                        onRelease = () => {}, minMs = 600, endSilenceMs = 300, openSilenceMs = 800 }) {
+                                        onRelease = () => {}, minMs = 600, endSilenceMs = 300, openSilenceMs = 800,
+                                        sampleRate = 16000 }) {
   let mode = "pass";          // pass | hold (sound while the AI talks, not yet long enough) | open (let through)
   let held = [], heldMs = 0, voicedMs = 0, quietMs = 0;
-  const ms = (buf) => new Int16Array(buf).length / SAMPLE_RATE * 1000;
+  const ms = (buf) => new Int16Array(buf).length / sampleRate * 1000;
   const release = (why) => {
     for (const b of held) send(b);
     onRelease({ ms: Math.round(voicedMs), why });

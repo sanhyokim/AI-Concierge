@@ -12,15 +12,15 @@
 | Google Gemini 3.8 Live | 会話モデル（音声） | Live APIの対応言語の表に日本語（ja）がある | 一時トークン（POST v1beta/auth_tokens、既定30分・1回）で、BidiGenerateContentConstrained のWebSocketにつなぐ | 音声入力 $0.005/分・出力 $0.018/分（目安） | 初回（試験の対象） |
 | ElevenLabs Eleven Realtime v1 Max | 会話モデル（音声） | モデルの資料は90以上の言語（Eleven v4の言語の表に日本語がある）。Realtimeでの日本語の明記はない | 一時の鍵（POST v1/convai/realtime/client_secrets）で、OpenAI互換のWebSocketにつなぐ（WebRTCはない） | $0.08/分 | 追加の試験（利用者の決定、2026-10-21） |
 | ElevenLabs Eleven Realtime v1 Mini | 会話モデル（音声） | モデルの資料は90以上の言語（Eleven v4の言語の表に日本語がある）。Realtimeでの日本語の明記はない | 一時の鍵（POST v1/convai/realtime/client_secrets）で、OpenAI互換のWebSocketにつなぐ（WebRTCはない） | $0.08/分 | 追加の試験（利用者の決定、2026-10-21） |
+| xAI Grok Voice 3.0 | 会話モデル（音声） | 公式の対応言語に日本語（language_hint で ja）。日本語専用の声はない（どの声も多言語） | 一時トークン（POST v1/realtime/client_secrets）を、WebSocketのサブプロトコル xai-client-secret. で渡す。設定は接続の後に session.update で送る | $0.08/分 | 追加の試験（利用者の決定、2026-10-23） |
 | ElevenLabs ElevenAgents（Expressive mode） | 会話サービス | Expressive modeの資料が日本語を明記 | @elevenlabs/client。署名付きURL（15分）またはWebRTCのトークンをサーバーで発行 | $0.08/分（から） | 保留（費用が高い。性能に大差がなければ使わない） |
 | Cartesia Managed Agents（Ink-2＋LLM＋Sonic-3.6） | 会話サービス（部品統合） | Ink-2・Sonic-3.6のモデル資料に日本語（ja） | 一時トークン（POST /access-token）で wss://api.cartesia.ai/agents/stream/{agent_id}?access_token= につなぐ | $0.06/分 | 保留（費用が高い。性能に大差がなければ使わない） |
-| OpenAI GPT-Realtime-2.1（比較の基準） | 会話モデル（音声） | 日本語の試験は既存の計画で行う。自然さは未実測 | WebRTC（一時キー） | 旧費用表と同じトークン単価 | 基準（保留） |
+| OpenAI GPT-Realtime-2.1（比較の基準） | 会話モデル（音声） | 公式の言語の一覧はない。日本語のお客様対応の評価（Gen-AX、2026-07-17）で、業務処理の実行93〜100%・返事まで平均1.35秒。数字の聞き取りの誤りの指摘あり。日本語の声はない | WebSocket（一時キーをサブプロトコルで渡す） | 旧費用表と同じトークン単価 | 基準（保留） |
 | OpenAI GPT-Realtime-2.1-mini（比較の基準） | 会話モデル（音声） | 未実測 | WebRTC（一時キー） | 旧費用表と同じトークン単価 | 基準（保留） |
 | Inworld Realtime API（STT-1＋LLM＋TTS-2） | 会話API（部品統合） | STT-1とTTS-2に日本語の記載 | WebSocketにBearerヘッダーが要る。ブラウザーからは中継が要る見込み（WebRTCはEarly access） | STT $0.15/時間、TTS $25/100万文字、LLM別 | 接続調査を優先（2回目） |
 | Deepgram Voice Agent API（Flux multilingual＋LLM＋TTS） | 会話API | Fluxに日本語。管理型TTSの日本語の声は未確認 | 一時JWT（30秒）で /agent のWebSocket | $0.075/分 | 2回目以降 |
 | Retell AI | 会話サービス | 対応表に日本語 | Web call SDK | $0.078/分 | 2回目以降 |
 | Vapi | 会話サービス | AssemblyAIの日本語。TTSは別に選ぶ | Web SDK（公開鍵） | $0.05/分 | 2回目以降 |
-| xAI grok-voice-think-fast-2.0 | 会話モデル（音声） | 対応表に日本語 | 一時トークン（xai-client-secret.） | $0.08/分 | 2回目以降 |
 | Alibaba Qwen3.8-Omni-Flash-Realtime | 会話モデル（同時に聞いて話す） | 声の一覧に日本語 | Bearerの鍵だけで、一時トークンがない → 中継が要る | 単価は確認、換算は未確認 | 次の候補（GPT-Live・Geminiがよくなかった場合） |
 
 ## 2. 候補ごとの詳細
@@ -69,6 +69,17 @@
 - 位置づけの理由：会話の自然さ（相づち・割り込み）の比較用。業務処理の成功率が低く、受付の本命ではない
 - 出典：[1](https://elevenlabs.io/blog/realtime)、[2](https://elevenlabs.io/realtime)、[3](https://elevenlabs.io/pricing/api)、[4](https://elevenlabs.io/docs/overview/models)、[5](https://elevenlabs.io/docs/eleven-agents/guides/openai-realtime-compatibility)、[6](https://elevenlabs.io/docs/eleven-agents/customization/realtime-models)
 
+### xAI Grok Voice 3.0（追加の試験（利用者の決定、2026-10-23））
+
+- モデル・構成：grok-voice-3.0（別名 grok-voice-latest は使わず、名前を固定する）
+- 公式で確認：2026-10-14発表。音声から音声へ直接返すモデル（1つのモデルが聞く・考える・話す・業務処理を呼ぶ）／xAIの発表：Big Bench Audio 98.5%、Full Duplex Bench 97.0%、業務の成功率94.8%、τ-Voice 71.6%（xAIが選んだ試験。GPT-Live 1・Gemini 3.8 Live より上）／OpenAIのRealtime APIと互換（WebSocket）。server_vad、SIP／決まった文をそのまま話させる機能（force_message）と、読み方の差し替え（replace）がある／料金：接続1分$0.08（無音の時間も含む）。テキストの入力は1件$0.004
+- 日本語：公式の対応言語に日本語（language_hint で ja）。日本語専用の声はない（どの声も多言語）
+- 接続：ブラウザーは一時トークン（POST v1/realtime/client_secrets）を、WebSocketのサブプロトコル xai-client-secret. で渡す。設定は接続の後に session.update で送る。電話は電話向けの符号化（μ-law・A-law 8kHz）・SIP
+- 未確認：日本語での正確さ・発音（評価の数字は英語）／一時トークンの返事の形（項目名が公式に書かれていない）／force_message が業務処理の結果の後に使えるか／テキスト入力の課金単位（記号 T_grok）／新しいアカウントの無料のクレジット（第三者の記事で$25・30日。公式の料金表に記載なし）
+- 自社で作るもの：自社の中継・業務処理が要る（Geminiと同じく、モデルが業務処理を直接呼ぶ）
+- 位置づけの理由：公式に日本語に対応し、評価の数字が最上位。決まった文をそのまま読ませられるので、番号の復唱を正確にできる見込み
+- 出典：[1](https://x.ai/news/grok-voice-3)、[2](https://docs.x.ai/developers/model-capabilities/audio/speech-to-speech)、[3](https://docs.x.ai/developers/model-capabilities/audio/ephemeral-tokens)、[4](https://x.ai/news/new-flagship-voices)、[5](https://docs.x.ai/developers/pricing)
+
 ### ElevenLabs ElevenAgents（Expressive mode）（保留（費用が高い。性能に大差がなければ使わない））
 
 - モデル・構成：音声認識＋選んだLLM＋Eleven v3 Conversational＋独自の発話区切り
@@ -94,13 +105,13 @@
 ### OpenAI GPT-Realtime-2.1（比較の基準）（基準（保留））
 
 - モデル・構成：gpt-realtime-2.1
-- 公式で確認：既存の試作の基準。料金は旧費用表と同じ／出力の上限 max_output_tokens（1〜4096）／ブラウザーは一時キー（/v1/realtime/client_secrets）とWebRTC（/v1/realtime/calls）
-- 日本語：日本語の試験は既存の計画で行う。自然さは未実測
-- 接続：ブラウザーはWebRTC（一時キー）。電話はMedia Streams・SIP
+- 公式で確認：既存の試作の基準。料金は旧費用表と同じ／出力の上限 max_output_tokens（1〜4096）／ブラウザーは一時キー（/v1/realtime/client_secrets）。会話試験では WebSocket でつなぐ（相づちの扱いを画面で行うため）
+- 日本語：公式の言語の一覧はない。日本語のお客様対応の評価（Gen-AX、2026-07-17）で、業務処理の実行93〜100%・返事まで平均1.35秒。数字の聞き取りの誤りの指摘あり。日本語の声はない
+- 接続：ブラウザーはWebSocket（一時キーをサブプロトコルで渡す）。電話はMedia Streams・SIP
 - 未確認：キャッシュが実際に成立する率
 - 自社で作るもの：自社の中継・業務処理が要る（既存の試作がある）
 - 位置づけの理由：比較の基準。GPT-Liveと同じ構成とはみなさない
-- 出典：[1](https://developers.openai.com/api/docs/guides/voice-webrtc?api=realtime)、[2](https://developers.openai.com/api/reference/resources/realtime/client-events)、[3](https://developers.openai.com/api/docs/pricing)
+- 出典：[1](https://developers.openai.com/api/docs/guides/voice-webrtc?api=realtime)、[2](https://developers.openai.com/api/reference/resources/realtime/client-events)、[3](https://developers.openai.com/api/docs/pricing)、[4](https://zenn.dev/genax_corp/articles/4fc3c76c1e8ebc)
 
 ### OpenAI GPT-Realtime-2.1-mini（比較の基準）（基準（保留））
 
@@ -157,17 +168,6 @@
 - 位置づけの理由：構成を細かく調整できる会話サービス
 - 出典：[1](https://vapi.ai/pricing)、[2](https://docs.vapi.ai/customization/voice-pipeline-configuration)、[3](https://docs.vapi.ai/providers/transcriber/assembly-ai)
 
-### xAI grok-voice-think-fast-2.0（2回目以降）
-
-- モデル・構成：grok-voice-think-fast-2.0（別名 grok-voice-latest は使わず、名前を固定する）
-- 公式で確認：日本語（ja）／server_vadによる割り込み／$0.08/分。テキスト入力に$0.004の表記
-- 日本語：対応表に日本語
-- 接続：ブラウザーは一時トークン（xai-client-secret.）。電話は電話向けの符号化・SIPの案内
-- 未確認：一時トークンを発行するエンドポイント／テキスト入力の課金単位（記号 T_grok）／相づちの扱い
-- 自社で作るもの：自社の中継・業務処理が要る
-- 位置づけの理由：割り込みの挙動を比べる候補
-- 出典：[1](https://docs.x.ai/developers/model-capabilities/audio/speech-to-speech)、[2](https://docs.x.ai/developers/pricing)
-
 ### Alibaba Qwen3.8-Omni-Flash-Realtime（次の候補（GPT-Live・Geminiがよくなかった場合））
 
 - モデル・構成：qwen3.8-omni-flash-realtime
@@ -203,6 +203,7 @@
 | Google Gemini 3.8 Live | 初回（試験の対象） | 日本語の明記があり、トークン単価が安い会話モデル。安い構成の代表として比べる |
 | ElevenLabs Eleven Realtime v1 Max | 追加の試験（利用者の決定、2026-10-21） | 速さと正確さが評価表で最上位。Geminiと同じ1つのモデルの構成で、受付の業務処理の確実さを比べる |
 | ElevenLabs Eleven Realtime v1 Mini | 追加の試験（利用者の決定、2026-10-21） | 会話の自然さ（相づち・割り込み）の比較用。業務処理の成功率が低く、受付の本命ではない |
+| xAI Grok Voice 3.0 | 追加の試験（利用者の決定、2026-10-23） | 公式に日本語に対応し、評価の数字が最上位。決まった文をそのまま読ませられるので、番号の復唱を正確にできる見込み |
 | ElevenLabs ElevenAgents（Expressive mode） | 保留（費用が高い。性能に大差がなければ使わない） | 独自の発話区切りのモデルと、会話向けの日本語の声を持つ会話サービスの代表 |
 | Cartesia Managed Agents（Ink-2＋LLM＋Sonic-3.6） | 保留（費用が高い。性能に大差がなければ使わない） | 費用面で有力な部品統合型。日本語のSTT・TTSを公式資料で確認できた |
 | OpenAI GPT-Realtime-2.1（比較の基準） | 基準（保留） | 比較の基準。GPT-Liveと同じ構成とはみなさない |
@@ -211,6 +212,7 @@
 
 - 最初の接続の確認は GPT-Live 1 と Gemini 3.8 Live の2つだけで行う（2026-10-07）。保留の候補は、採用の候補からは外していない。
 - 2026-10-21、Eleven Realtime（v1 Max・v1 Mini）を試験に加えた（利用者の決定。ElevenLabsのアカウントを作る）。受付の本命は v1 Max（業務処理の成功率87.1%）。v1 Mini は会話の自然さの比較用。
+- 2026-10-23、Grok Voice 3.0 を試験に加えた（利用者の決定「Grok Voice 3.0を使ってみたい」。xAIのアカウントを作る）。日本語に公式に対応し、決まった文をそのまま話させる機能（force_message）で番号の復唱を正確にできる見込み。
 - GPT-Liveは、日本語の受付を最初に確かめる。業務処理を受け持つ裏方のモデル（delegation）も確かめる。
 - Inworldは、接続の調査を優先して進める（ブラウザーからは中継が要り、提供段階がResearch previewのため、会話試験は2回目）。
 - Grok・Deepgram・Retell・Vapiは、初回の結果と未確認の点の確認の後に比べる。

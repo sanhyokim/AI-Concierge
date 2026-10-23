@@ -16,6 +16,7 @@ import urllib.error
 import urllib.request
 from typing import Callable
 
+from ..concierge.prompts import OPENING_ANNOUNCEMENT, OPENING_QUESTION, for_speech
 from ..engines.budget import MAX_OUTPUT_TOKENS
 from .config import (GREETING, LAB_INSTRUCTIONS, MAX_SESSION_MIN, OPENING_REQUEST, delegation_model, gemini_function_declarations,
                      openai_tools)
@@ -100,20 +101,6 @@ def mint(cfg: dict, env: dict, http: Http = http_json, instructions: str = LAB_I
     adapter = cfg["adapter"]
     if adapter == "fake":
         return {"greeting": GREETING, "script": list(script or [])}
-    if adapter == "openai-realtime":
-        body = {"expires_after": {"anchor": "created_at", "seconds": 60},   # one key could open several sessions
-                "session": {
-            "type": "realtime", "model": cfg["model"], "instructions": instructions,
-            "audio": {"input": {"transcription": {"model": "gpt-4o-transcribe", "language": "ja"},
-                                "turn_detection": {"type": "semantic_vad"}},
-                      "output": {"voice": voice or cfg.get("voice", "marin")}},
-            "tools": openai_tools(), "tool_choice": "auto", "max_output_tokens": MAX_OUTPUT_TOKENS}}
-        _, data = http("POST", "https://api.openai.com/v1/realtime/client_secrets",
-                       {"Authorization": f"Bearer {env['OPENAI_API_KEY']}", "Content-Type": "application/json"}, body)
-        if not isinstance(data, dict) or "value" not in data:
-            raise VendorError("client_secrets: no 'value' in the response")
-        return {"ephemeral_key": data["value"], "calls_url": "https://api.openai.com/v1/realtime/calls",
-                "greeting": GREETING}
     if adapter == "gpt-live":
         # the offer is exchanged server-side; the page asks again for the opening if the model stays silent
         return {"sdp_exchange": "api/session/sdp", "opening_request": OPENING_REQUEST}
@@ -150,6 +137,10 @@ def mint(cfg: dict, env: dict, http: Http = http_json, instructions: str = LAB_I
                 "setup": {"setup": setup}, "opening_request": OPENING_REQUEST}
     if adapter == "eleven-realtime":
         return mint_eleven_realtime(cfg, env, http, instructions, voice)
+    if adapter == "realtime-ws":
+        if cfg["vendor"] == "xai_lab":
+            return mint_grok_voice(cfg, env, http, instructions, voice)
+        return mint_openai_realtime_ws(cfg, env, http, instructions, voice)
     if adapter == "elevenlabs":
         url = ("https://api.elevenlabs.io/v1/convai/conversation/get-signed-url?agent_id="
                + urllib.request.quote(env["ELEVENLABS_AGENT_ID"]))
@@ -174,6 +165,72 @@ def mint(cfg: dict, env: dict, http: Http = http_json, instructions: str = LAB_I
                 "ws_url": f"wss://api.cartesia.ai/v1/agents/websocket/{urllib.request.quote(env['CARTESIA_AGENT_ID'])}",
                 "start": {"type": "session_create", "audio": {"input_format": "pcm_16000"}}}
     raise VendorError(f"unknown adapter {adapter}")
+
+
+# The single-model candidates over the OpenAI-compatible WebSocket (adapter realtime-ws.js, 2026-10-23): 24 kHz PCM
+# both ways, Japanese transcription, the least eager end of turn (a number given in parts needs the caller's pauses).
+REALTIME_PCM = {"type": "audio/pcm", "rate": 24000}
+
+
+def openai_realtime_session(cfg: dict, instructions: str, voice: str | None) -> dict:
+    """GPT-Realtime-2.1: the session minted with the client secret (OpenAI Realtime API, GA)."""
+    return {"type": "realtime", "model": cfg["model"], "instructions": instructions, "output_modalities": ["audio"],
+            "audio": {"input": {"format": REALTIME_PCM,
+                                "transcription": {"model": "gpt-4o-transcribe", "language": "ja"},
+                                "turn_detection": {"type": "semantic_vad", "eagerness": "low"}},
+                      "output": {"format": REALTIME_PCM, "voice": voice or cfg.get("voice", "marin")}},
+            "tools": openai_tools(), "tool_choice": "auto", "max_output_tokens": MAX_OUTPUT_TOKENS}
+
+
+def mint_openai_realtime_ws(cfg: dict, env: dict, http: Http, instructions: str, voice: str | None) -> dict:
+    """A client secret (60 s to connect) carrying the session. The browser opens the WebSocket with it as a
+    subprotocol, as OpenAI's own browser SDK does (WebRTC would send the mic straight to OpenAI, past the page's
+    back-channel gate)."""
+    body = {"expires_after": {"anchor": "created_at", "seconds": 60},
+            "session": openai_realtime_session(cfg, instructions, voice)}
+    _, data = http("POST", "https://api.openai.com/v1/realtime/client_secrets",
+                   {"Authorization": f"Bearer {env['OPENAI_API_KEY']}", "Content-Type": "application/json"}, body)
+    if not isinstance(data, dict) or "value" not in data:
+        raise VendorError("client_secrets: no 'value' in the response")
+    return {"ws_url": f"wss://api.openai.com/v1/realtime?model={urllib.request.quote(cfg['model'])}",
+            "protocols": ["realtime", f"openai-insecure-api-key.{data['value']}"], "vendor": "openai",
+            "opening_request": OPENING_REQUEST}
+
+
+# Words of the business the transcription should expect (xAI: audio.input.transcription.keyterms, up to 100)
+GROK_KEYTERMS = ["株式会社野田", "排煙ダクト", "ダクト清掃", "厨房換気", "無煙ロースター", "グリスフィルター",
+                 "レンジフード", "焼肉", "折り返し"]
+
+
+def grok_session(instructions: str, voice: str | None) -> dict:
+    """Grok Voice 3.0: the settings sent as session.update (xAI's client secret takes no session)."""
+    session = {"instructions": instructions, "tools": openai_tools(), "turn_detection": {"type": "server_vad"},
+               "audio": {"input": {"format": REALTIME_PCM,
+                                   "transcription": {"model": "grok-transcribe", "language_hint": "ja",
+                                                     "keyterms": GROK_KEYTERMS}},
+                         "output": {"format": REALTIME_PCM}}}
+    if voice:   # none: xAI's default voice
+        session["voice"] = voice
+    return session
+
+
+def mint_grok_voice(cfg: dict, env: dict, http: Http, instructions: str, voice: str | None) -> dict:
+    """An ephemeral token from POST /v1/realtime/client_secrets (xAI docs, 2026-10-23: no "session" and no
+    "expires_after.anchor"). The page sends the session itself, and reads the server's fixed words (the opening,
+    the read-backs, the closing) as they are with xAI's force_message."""
+    _, data = http("POST", "https://api.x.ai/v1/realtime/client_secrets",
+                   {"Authorization": f"Bearer {env['XAI_API_KEY']}", "Content-Type": "application/json"},
+                   {"expires_after": {"seconds": 60}})
+    token = None
+    if isinstance(data, dict):   # the response's field names are not documented: OpenAI's shape first
+        secret = data.get("client_secret")
+        token = data.get("value") or (secret.get("value") if isinstance(secret, dict) else secret) or data.get("token")
+    if not token:
+        raise VendorError("realtime/client_secrets: no token in the response")
+    return {"ws_url": f"wss://api.x.ai/v1/realtime?model={urllib.request.quote(cfg['model'])}",
+            "protocols": [f"xai-client-secret.{token}"], "vendor": "xai",
+            "session_update": grok_session(instructions, voice), "force_message": True, "truncate": False,
+            "greeting": for_speech(OPENING_ANNOUNCEMENT + OPENING_QUESTION), "opening_request": OPENING_REQUEST}
 
 
 ELEVEN_REALTIME_URL = "wss://api.elevenlabs.io/v1/convai/realtime"

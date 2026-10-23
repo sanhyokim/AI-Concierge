@@ -384,7 +384,7 @@ class ReceptionService:
                 return {"recorded": False}
             store = json.loads(call["snapshot"])["config"]["store_transcript"]
             self._event(call_id, "ai", {"text": text if store else "（文字起こしを保存しない設定）"})
-            if "日時" in text:
+            if "日時" in text or "にちじ" in text:
                 sess.date_asked = True
             wrong = sess.tools.ai_said(text)
             for name, said in wrong.items():

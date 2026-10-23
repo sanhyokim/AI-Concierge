@@ -121,7 +121,8 @@ def phone_stage_estimate() -> dict:
 
 # --- browser conversation stage (measurement plan v2.2; a proposal, not an approved budget) ---------------
 TESTED = ("gpt-live-1", "gemini-3.8-live",                        # user decision 2026-10-07
-          "eleven-realtime-max", "eleven-realtime-mini")             # added by the user, 2026-10-21
+          "eleven-realtime-max", "eleven-realtime-mini",             # added by the user, 2026-10-21
+          "grok-voice-3")                                            # added by the user, 2026-10-23
 HELD = ("gpt-realtime-2.1", "elevenagents", "cartesia-agents")    # kept as candidates, no sessions planned
 BROWSER_CONFIGS = TESTED + HELD
 BROWSER_AVG_MIN = 3.0                       # expected length; the page and the server stop at MAX_SESSION_MIN
@@ -162,6 +163,16 @@ PLANS = {
         "expiry": "集計の遅れ・残高での停止の記載は未確認",
         "tax": "価格は税抜（消費税の扱いは未確認）",
         "sources": ["https://elevenlabs.io/pricing/api", "https://elevenlabs.io/docs/eleven-agents/customization/realtime-models"]},
+    # Grok Voice 3.0, added by the user on 2026-10-23 (xAI's pages and a third-party guide read that day)
+    "xai_lab": {
+        "vendor": "xAI（Grok Voice 3.0）", "plan": "プランなし（従量）。前払いのクレジット（最低額は未確認）",
+        "quota": "新しいアカウントに$25のクレジット・30日（第三者の記事。公式の料金表に記載なし＝未確認）",
+        "free_condition": "データ共有の制度（会話のデータを渡すと毎月のクレジット）は使わない（お客様の会話を渡さない）",
+        "overage": "接続1分$0.08（無音の時間も含む）。テキストの入力は1件$0.004",
+        "expiry": "月の上限・通知（50%・75%・90%）・自動の補充の設定がある（第三者の記事）。集計の遅れは未確認",
+        "tax": "価格は税抜（消費税の扱いは未確認）",
+        "sources": ["https://x.ai/news/grok-voice-3", "https://docs.x.ai/developers/pricing",
+                    "https://radar.apideck.com/blog/how-to-get-your-grok-xai-api-key"]},
 }
 HELD_NOTE = {   # reference only: no sessions are planned until the user releases them
     "gpt-realtime-2.1": "保留（再開すると同じOpenAIの前払いから引かれる。$0.30/分を上限に留保）",
@@ -205,7 +216,8 @@ def browser_stage_estimate() -> dict:
     caps = {v: lim.max_cost_usd for v, lim in lc.LAB_LIMITS_BY_STAGE["connection"].items()}
     payments = [("OpenAI 前払い（残高がなければ。最低額）", 5.0),
                 ("Google 無料枠（架空のデータだけ）。有料枠を選ぶ場合は前払い$5から", 0.0),
-                ("ElevenLabs 無料のプランから（含まれる分を超えるなら Starter $6/月など。利用者が選ぶ）", 0.0)]
+                ("ElevenLabs 無料のプランから（含まれる分を超えるなら Starter $6/月など。利用者が選ぶ）", 0.0),
+                ("xAI 新しいアカウントのクレジットから（足りなければ前払い。額は利用者が決める）", 0.0)]
     unconfirmed = [
         ("L_live", "GPT-Liveの裏方のモデルに渡る量", "入力は指示文（最大16,384トークン）と会話の履歴。渡る量が公式に書かれていないため、"
          "典型と厳しめの仮定を並べるだけで、上限は確定しない"),
@@ -216,6 +228,8 @@ def browser_stage_estimate() -> dict:
          "受付の指示の長さからの見込みは、3分で v1 Max 約10円・v1 Mini 約1円。ElevenLabsの画面の目安"
          "（2026-10-21、利用者のアカウント）は、1分あたり v1 Max ~$0.0135・v1 Mini ~$0.0030（接続の$0.08とは別）"),
         ("—", "Eleven Realtime の日本語", "評価の数字（Big Bench Audio など）は英語。実際に話して確かめる"),
+        ("T_grok", "Grok Voice 3.0 のテキスト入力の料金", "1件$0.004。業務処理の結果が数に入るかが公式に書かれていない"),
+        ("—", "Grok Voice 3.0 の日本語", "公式に対応。評価の数字は英語。実際に話して確かめる"),
         ("—", "課金の集計の遅れ", "OpenAI：" + BILLING_DELAY["openai_lab"][0] + "。Google：" + BILLING_DELAY["google_lab"][0]),
         ("FX", "為替", f"1ドル＝{FX_ASSUMED:.0f}円の仮置き（140〜160円で変わる）"),
     ]

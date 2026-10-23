@@ -29,6 +29,7 @@ DEFAULT_CONFIG = {
         {"id": "v2", "candidate": "gemini-3.8-live", "voice": "Kore", "label": "Geminiの声（候補・日本語は未確認）"},
         {"id": "v3", "candidate": "fake", "voice": "tone", "label": "オフラインの模擬（音声の評価には使えない）"},
         {"id": "v4", "candidate": "gpt-live-1", "voice": "shida", "label": "GPT-Liveの日本語の声（男性・shida）"},
+        {"id": "v5", "candidate": "grok-voice-3", "voice": "ara", "label": "Grokの声（女性・ara）"},   # 2026-10-23
     ],
     "active_voice": "v1",
     "fields": {k: {"store": True, "summary": True, "notify": True} for k in FIELD_KEYS},
@@ -133,6 +134,10 @@ VOICE_CATALOG = {
     "eleven-realtime-max": {"voices": [], "how": "ElevenLabsの声の一覧（Voice Library）で日本語の声を選び、声のIDを入力して登録する。"
                                                  "接続のときにサーバーが audio.output.voice で指定する（IDで通るかは未確認。断られたら業者の既定の声）"},
     "eleven-realtime-mini": {"voices": [], "how": "v1 Max と同じ。声のIDを入力して登録する"},
+    # xAI: every voice speaks every supported language (no Japanese-only voice). Ara, Eve: female; Leo, Rex: male
+    "grok-voice-3": {"voices": ["ara", "eve", "leo", "rex", "sal"],
+                     "how": "接続のあとに session.update で指定する。どの声も日本語を話す（日本語専用の声はない）。"
+                            "ara・eve は女性、leo・rex は男性、sal は中性"},
     "elevenagents": {"voices": [], "how": "ElevenLabsの画面でエージェントの声を選ぶ。声のIDを入力して登録（上書きの許可が要る）"},
     "cartesia-agents": {"voices": [], "how": "Cartesiaの画面でエージェントの声を選ぶ。声のIDを入力して記録する"},
 }

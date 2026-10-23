@@ -101,6 +101,35 @@ class LabTest(unittest.TestCase):
         self.assertTrue(listed["eleven-realtime-mini"]["ready"])
         self.assertFalse(listed["elevenagents"]["ready"])          # the older ElevenAgents path stays held
 
+    def test_grok_voice_gets_a_token_and_the_page_sends_the_session(self):
+        # 2026-10-23 (user: 「Grok Voice 3.0を使ってみたい」). xAI's client secret takes no session settings
+        lab = self.lab({"XAI_API_KEY": "xai-secret"}, {"api.x.ai/v1/realtime/client_secrets": {"value": "xs_1"}})
+        s = lab.start("grok-voice-3")
+        self.assertNotIn("xai-secret", json.dumps(s))
+        creds = s["credentials"]
+        self.assertEqual(creds["protocols"], ["xai-client-secret.xs_1"])
+        self.assertEqual(creds["ws_url"], "wss://api.x.ai/v1/realtime?model=grok-voice-3.0")
+        call = lab.http.calls[0]
+        self.assertEqual(call["headers"]["Authorization"], "Bearer xai-secret")
+        self.assertEqual(call["body"], {"expires_after": {"seconds": 60}})   # no "session", no "anchor" (xAI docs)
+        session = creds["session_update"]
+        self.assertEqual({t["name"] for t in session["tools"]}, {t["name"] for t in config.TOOLS})
+        self.assertEqual(session["audio"]["input"]["transcription"]["language_hint"], "ja")
+        self.assertEqual(session["voice"], "ara")                       # the admin's registered voice
+        self.assertIn("lookup_faq", s["applied"]["instructions"])       # the short prompt
+        self.assertTrue(creds["force_message"])                         # the server's words are read as they are
+        self.assertIn("株式会社野田", creds["greeting"])
+        self.assertNotIn("伺", creds["greeting"] + creds["opening_request"])   # kana for misread words
+        self.assertIsNotNone(lab.ledger("xai_lab").totals()["held_usd"])
+
+    def test_grok_token_in_another_shape_and_a_missing_one(self):
+        cfg = config.CANDIDATES["grok-voice-3"]
+        for resp in ({"client_secret": {"value": "a1"}}, {"client_secret": "a1"}, {"token": "a1"}):
+            out = vendors.mint(cfg, {"XAI_API_KEY": "k"}, FakeHttp({"client_secrets": resp}), instructions="指示")
+            self.assertEqual(out["protocols"], ["xai-client-secret.a1"])
+        with self.assertRaises(vendors.VendorError):
+            vendors.mint(cfg, {"XAI_API_KEY": "k"}, FakeHttp({"client_secrets": {"expires_at": 1}}), instructions="指示")
+
     def test_the_voice_is_chosen_on_the_page_by_its_name(self):
         # 2026-10-21 (user): choose the voice by its display name under the chosen AI
         lab = self.lab({"OPENAI_API_KEY": "k", "GEMINI_API_KEY": "g"},
@@ -190,11 +219,15 @@ class LabTest(unittest.TestCase):
         self.assertNotIn("overrides", e)                     # no overrides unless allowed
         self.assertEqual(http.calls[-1]["headers"]["xi-api-key"], "xi")
         r = vendors.mint(config.CANDIDATES["gpt-realtime-2.1"], env, http)
-        self.assertEqual(r["ephemeral_key"], "ek_1")
+        # 2026-10-23: WebSocket with the secret as a subprotocol (the page's back-channel gate needs the mic audio)
+        self.assertEqual(r["protocols"], ["realtime", "openai-insecure-api-key.ek_1"])
+        self.assertEqual(r["ws_url"], "wss://api.openai.com/v1/realtime?model=gpt-realtime-2.1")
         body = http.calls[-1]["body"]
         self.assertEqual(body["session"]["max_output_tokens"], 1200)
+        self.assertEqual(body["session"]["audio"]["input"]["turn_detection"], {"type": "semantic_vad", "eagerness": "low"})
+        self.assertEqual(body["session"]["audio"]["output"]["format"], {"type": "audio/pcm", "rate": 24000})
         self.assertEqual(body["expires_after"], {"anchor": "created_at", "seconds": 60})
-        self.assertNotIn("sk", json.dumps(r))
+        self.assertNotIn('"sk"', json.dumps(r))
 
     def test_tools_use_the_confirmation_guard_and_results_are_saved(self):
         lab = self.lab({})

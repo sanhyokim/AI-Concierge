@@ -167,6 +167,48 @@
       ]
     },
     {
+      "id": "grok-voice-3",
+      "name": "xAI Grok Voice 3.0",
+      "type": "会話モデル（音声）",
+      "wave": "追加の試験（利用者の決定、2026-10-23）",
+      "model": "grok-voice-3.0（別名 grok-voice-latest は使わず、名前を固定する）",
+      "confirmed": [
+        "2026-10-14発表。音声から音声へ直接返すモデル（1つのモデルが聞く・考える・話す・業務処理を呼ぶ）",
+        "xAIの発表：Big Bench Audio 98.5%、Full Duplex Bench 97.0%、業務の成功率94.8%、τ-Voice 71.6%（xAIが選んだ試験。GPT-Live 1・Gemini 3.8 Live より上）",
+        "OpenAIのRealtime APIと互換（WebSocket）。server_vad、SIP",
+        "決まった文をそのまま話させる機能（force_message）と、読み方の差し替え（replace）がある",
+        "料金：接続1分$0.08（無音の時間も含む）。テキストの入力は1件$0.004"
+      ],
+      "japanese": "公式の対応言語に日本語（language_hint で ja）。日本語専用の声はない（どの声も多言語）",
+      "browser": "一時トークン（POST v1/realtime/client_secrets）を、WebSocketのサブプロトコル xai-client-secret. で渡す。設定は接続の後に session.update で送る",
+      "phone": "電話向けの符号化（μ-law・A-law 8kHz）・SIP",
+      "unconfirmed": [
+        "日本語での正確さ・発音（評価の数字は英語）",
+        "一時トークンの返事の形（項目名が公式に書かれていない）",
+        "force_message が業務処理の結果の後に使えるか",
+        "テキスト入力の課金単位（記号 T_grok）",
+        "新しいアカウントの無料のクレジット（第三者の記事で$25・30日。公式の料金表に記載なし）"
+      ],
+      "price": {
+        "kind": "per_min",
+        "usd_per_min": 0.08,
+        "status": "confirmed",
+        "note": "接続1分$0.08（無音も含む）。テキストの入力は記号",
+        "symbols": {
+          "T_grok": "テキスト入力の課金／通話"
+        }
+      },
+      "build": "自社の中継・業務処理が要る（Geminiと同じく、モデルが業務処理を直接呼ぶ）",
+      "reason": "公式に日本語に対応し、評価の数字が最上位。決まった文をそのまま読ませられるので、番号の復唱を正確にできる見込み",
+      "sources": [
+        "https://x.ai/news/grok-voice-3",
+        "https://docs.x.ai/developers/model-capabilities/audio/speech-to-speech",
+        "https://docs.x.ai/developers/model-capabilities/audio/ephemeral-tokens",
+        "https://x.ai/news/new-flagship-voices",
+        "https://docs.x.ai/developers/pricing"
+      ]
+    },
+    {
       "id": "elevenagents",
       "name": "ElevenLabs ElevenAgents（Expressive mode）",
       "type": "会話サービス",
@@ -259,10 +301,10 @@
       "confirmed": [
         "既存の試作の基準。料金は旧費用表と同じ",
         "出力の上限 max_output_tokens（1〜4096）",
-        "ブラウザーは一時キー（/v1/realtime/client_secrets）とWebRTC（/v1/realtime/calls）"
+        "ブラウザーは一時キー（/v1/realtime/client_secrets）。会話試験では WebSocket でつなぐ（相づちの扱いを画面で行うため）"
       ],
-      "japanese": "日本語の試験は既存の計画で行う。自然さは未実測",
-      "browser": "WebRTC（一時キー）",
+      "japanese": "公式の言語の一覧はない。日本語のお客様対応の評価（Gen-AX、2026-07-17）で、業務処理の実行93〜100%・返事まで平均1.35秒。数字の聞き取りの誤りの指摘あり。日本語の声はない",
+      "browser": "WebSocket（一時キーをサブプロトコルで渡す）",
       "phone": "Media Streams・SIP",
       "unconfirmed": [
         "キャッシュが実際に成立する率"
@@ -277,7 +319,8 @@
       "sources": [
         "https://developers.openai.com/api/docs/guides/voice-webrtc?api=realtime",
         "https://developers.openai.com/api/reference/resources/realtime/client-events",
-        "https://developers.openai.com/api/docs/pricing"
+        "https://developers.openai.com/api/docs/pricing",
+        "https://zenn.dev/genax_corp/articles/4fc3c76c1e8ebc"
       ]
     },
     {
@@ -441,40 +484,6 @@
         "https://vapi.ai/pricing",
         "https://docs.vapi.ai/customization/voice-pipeline-configuration",
         "https://docs.vapi.ai/providers/transcriber/assembly-ai"
-      ]
-    },
-    {
-      "id": "grok-voice",
-      "name": "xAI grok-voice-think-fast-2.0",
-      "type": "会話モデル（音声）",
-      "wave": "2回目以降",
-      "model": "grok-voice-think-fast-2.0（別名 grok-voice-latest は使わず、名前を固定する）",
-      "confirmed": [
-        "日本語（ja）",
-        "server_vadによる割り込み",
-        "$0.08/分。テキスト入力に$0.004の表記"
-      ],
-      "japanese": "対応表に日本語",
-      "browser": "一時トークン（xai-client-secret.）",
-      "phone": "電話向けの符号化・SIPの案内",
-      "unconfirmed": [
-        "一時トークンを発行するエンドポイント",
-        "テキスト入力の課金単位（記号 T_grok）",
-        "相づちの扱い"
-      ],
-      "price": {
-        "kind": "per_min",
-        "usd_per_min": 0.08,
-        "status": "confirmed",
-        "symbols": {
-          "T_grok": "テキスト入力の課金／通話"
-        }
-      },
-      "build": "自社の中継・業務処理が要る",
-      "reason": "割り込みの挙動を比べる候補",
-      "sources": [
-        "https://docs.x.ai/developers/model-capabilities/audio/speech-to-speech",
-        "https://docs.x.ai/developers/pricing"
       ]
     },
     {
