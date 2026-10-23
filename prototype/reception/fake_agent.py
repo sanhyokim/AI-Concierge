@@ -17,7 +17,7 @@ from ..concierge.confirmation import Reply, classify_reply
 from ..concierge.prompts import CLOSING, GREETING
 from ..concierge.readings import digits_only, is_valid_jp_number, resolve_relative_day
 
-ORDER = ("request", "shop_name", "caller_name", "callback_number", "preferred_datetime")
+ORDER = ("request", "preferred_datetime", "shop_name", "caller_name", "callback_number")   # user decision 2026-10-23
 LABEL = {"request": "ご用件", "shop_name": "店舗名", "caller_name": "お名前", "callback_number": "折り返し先のお電話番号",
          "preferred_datetime": "ご希望の日時"}
 ASK = {"request": "どのようなご用件でしょうか。", "shop_name": "恐れ入りますが、店舗名をお伺いしてもよろしいでしょうか。",
@@ -26,6 +26,7 @@ ASK = {"request": "どのようなご用件でしょうか。", "shop_name": "�
        "preferred_datetime": "ご希望の日時はございますか。"}
 CONFIRM = ("callback_number", "preferred_datetime")
 _RELATIVE = re.compile(r"明明後日|しあさって|明後日|あさって|明日|あした|(?:来週|今週)の?[月火水木金土日]")
+_NO_WISH = ("特に", "とくに", "いつでも", "おまかせ", "お任せ", "希望はない", "希望はありません", "ないです", "ありません")
 _PHONE = re.compile(r"0\d{1,4}-\d{1,4}-\d{3,4}|0\d{9,10}")
 _REQUEST_WORDS = ("清掃", "点検", "修理", "見積", "交換", "取り付け", "相談")
 _POLITE_TAIL = re.compile(r"(をお願いしたいのですが|をお願いしたいです|をお願いします|をお願いできますか|お願いしたいです|"
@@ -42,7 +43,8 @@ class RuleAgent:
         self.awaiting: str | None = None       # field read back, waiting for the caller's reply
         self.human_pending = False
         self.emergency_asked = False
-        self.skip: set[str] = set()            # fields the settings say not to store
+        self.skip: set[str] = set()            # fields the settings say not to store, or a date the caller has no wish for
+        self.asked: str | None = None          # the field asked last
         self.done = False
         self.unclear_day: list = []          # candidate dates of an ambiguous 「来週の火曜」 or late-night 「明日」
         self.line_offered = False            # asked once whether to call back on the line's number
@@ -85,6 +87,7 @@ class RuleAgent:
                     if res.get("read_back_now"):
                         self.awaiting = f
                         return [res["read_back_now"]["say"]]
+                self.asked = f
                 return [ASK[f]]
         self.done = True
         return [CLOSING]
@@ -202,6 +205,8 @@ class RuleAgent:
             self.emergency_asked = True
             return ["調理中の煙がうまく排気されない、というご相談でしょうか。それとも、炎や、いつもと違う煙・焦げ臭さがありますか。"]
 
+        if self.asked == "preferred_datetime" and any(w in text for w in _NO_WISH):   # no wish: not asked again
+            self.skip.add("preferred_datetime")
         found = self._extract(text)
         out: list[str] = []
         if self.awaiting:
@@ -224,6 +229,8 @@ class RuleAgent:
             return ["恐れ入ります。こちらでお間違いないでしょうか。"]
         if found:
             return self._save_all(found, out)
+        if "preferred_datetime" in self.skip and self.asked == "preferred_datetime":
+            return ["承知いたしました。"] + self._next_question()
         if any(m in text for m in ("ですか", "ますか", "?", "？", "いくら", "何時")):
             res = self._tool("lookup_faq", question=text)
             return [res.get("answer", "")] + self._next_question()

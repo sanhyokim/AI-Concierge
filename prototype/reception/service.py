@@ -54,6 +54,7 @@ class CallSession:
     def __init__(self, tools: ToolHandler, flow: CallFlow) -> None:
         self.tools, self.flow, self.lock = tools, flow, threading.RLock()
         self.new_utterance = threading.Condition(self.lock)
+        self.date_asked = False   # the AI has asked for the wished date: a caller with no wish is not asked again
 
 
 def _flow_dump(f: CallFlow) -> dict:
@@ -383,6 +384,8 @@ class ReceptionService:
                 return {"recorded": False}
             store = json.loads(call["snapshot"])["config"]["store_transcript"]
             self._event(call_id, "ai", {"text": text if store else "（文字起こしを保存しない設定）"})
+            if "日時" in text:
+                sess.date_asked = True
             wrong = sess.tools.ai_said(text)
             for name, said in wrong.items():
                 self._event(call_id, "read_back_mismatch", {"field": name, "said": said})
@@ -455,7 +458,8 @@ class ReceptionService:
         # 2026-10-21 (Eleven Realtime): the shop and the name were saved, then asked for again
         left = self._still_to_ask(sess, snap)
         if left:
-            res["still_to_ask"] = [S.FIELD_LABELS[f] for f in left]
+            res["still_to_ask"] = [S.FIELD_LABELS[f] + ("（ご希望がなければ不要）" if f == "preferred_datetime" else "")
+                                   for f in left]
         res["do_not_ask_again"] = [S.FIELD_LABELS[f] for f in S.FIELD_KEYS if f in saved]
         if skipped:
             res["not_stored_by_setting"] = skipped
@@ -470,19 +474,21 @@ class ReceptionService:
         return res, logged
 
     @staticmethod
-    def _still_to_ask(sess: CallSession, snap: dict) -> list[str]:
-        """The items not heard yet, in the order the AI asks them (VOICE_RULES 【伺うこと】). The date is asked
-        but not required: a caller may have no wish."""
-        order = ("request", "shop_name", "caller_name", "callback_number")
+    def _still_to_ask(sess: CallSession, snap: dict, required_only: bool = False) -> list[str]:
+        """The items not heard yet, in the order the AI asks them (VOICE_RULES 【伺うこと】). User decision
+        2026-10-23: the request and the date first, the name and the number after (「日時の要件より先に電話番号を
+        聞くのは失礼な気がする」). The date is asked once but not required: a caller may have no wish."""
+        order = ("request", "preferred_datetime", "shop_name", "caller_name", "callback_number")
         fields = sess.tools.store.fields
         return [f for f in order if snap["config"]["fields"][f]["store"]
+                and not (f == "preferred_datetime" and (required_only or sess.date_asked))
                 and not (fields.get(f) and fields[f].value)]
 
     def _summary(self, sess: CallSession, snap: dict) -> dict:
         """The words that close the intake, made here so every AI says the same correct Japanese (2026-10-22,
         user: 「GeminiとElevenLabsが設計上同じならAIのセリフや対応も統一できますよね？」; Gemini had said
         「承りました内容は、…の田中様より、…のご希望でございます」)."""
-        left = self._still_to_ask(sess, snap)
+        left = self._still_to_ask(sess, snap, required_only=True)
         if left:
             return {"ok": False, "missing": [S.FIELD_LABELS[f] for f in left], "say": for_speech(ASK_FOR[left[0]])}
         fields = sess.tools.store.fields
