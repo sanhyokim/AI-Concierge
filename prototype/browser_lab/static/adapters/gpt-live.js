@@ -11,6 +11,9 @@
 // Written from the public docs (2026-10-07); the connection has not been confirmed with a real account.
 const CLOSE_WAIT_MS = 5000;
 const ICE_WAIT_MS = 10000;
+// GPT-Live sends the AI's words only as deltas, with no end mark (2026-10-23: 324 deltas, no .done). The words were
+// passed on only when the caller spoke next, so the closing words came too late to hang up. Now after a pause.
+const AI_PAUSE_MS = 2000;
 const OPENING_WAIT_MS = 2500;   // the model has this long to start the opening by itself   // the official WebRTC guide waits for ICE gathering (10 s timeout) before sending the offer
 
 function iceGathered(pc) {
@@ -36,7 +39,8 @@ export async function connect(ctx) {
   const send = (ev) => dc.readyState === "open" && dc.send(JSON.stringify(ev));
   let userBuf = "", aiBuf = "", closeWaiter = null, aiSpoke = false, callerSpoke = false;
   const flushUser = () => { const t = userBuf; userBuf = ""; return t ? ctx.onTranscript("user", t) : Promise.resolve(null); };
-  const flushAi = () => { if (aiBuf) { ctx.onTranscript("ai", aiBuf); aiBuf = ""; } };
+  let aiTimer = null;
+  const flushAi = () => { clearTimeout(aiTimer); if (aiBuf) { ctx.onTranscript("ai", aiBuf); aiBuf = ""; } };
   const usageOf = (u) => u && {
     input_tokens: u.input_tokens || 0, output_tokens: u.output_tokens || 0,
     cached_tokens: (u.input_tokens_details && u.input_tokens_details.cached_tokens) || 0 };
@@ -62,6 +66,7 @@ export async function connect(ctx) {
       flushUser();
     } else if (ev.type === "session.output_transcript.delta") {
       flushUser(); aiSpoke = true; aiBuf += ev.delta || "";
+      clearTimeout(aiTimer); aiTimer = setTimeout(flushAi, AI_PAUSE_MS);
     } else if (inner && inner.type === "response.created") {
       ctx.vendorEvent("backend_response");
     } else if (inner && ["response.completed", "response.done", "response.incomplete", "response.failed"].includes(inner.type)) {
