@@ -13,7 +13,8 @@ const RATE = 24000;
 const TRANSCRIPT_WAIT_MS = 1500;   // how long a tool call waits for the caller's words that came just before it
 const OPENING_WAIT_MS = 3000;      // the model has this long to start the opening before it is asked another way
 const MIC_WAIT_MS = 8000;          // the mic is sent once the opening is heard, or after this long at the latest
-const FORCE_WAIT_MS = 2500;        // a forced text must start sounding within this, or the model is asked instead
+const FORCE_WAIT_MS = 2500;        // the vendor must start a response for a forced text within this, or the model is asked
+const FORCE_SOUND_MS = 6000;       // once it has started one, the voice must come within this
 const TAIL_S = 1.5;                // under this much of the AI's voice left, a short 「はい」 is an answer
 
 // The words a tool result asks to be read as they are (the server makes them: prompts.ASK_FOR, request_summary)
@@ -85,17 +86,22 @@ export async function connect(ctx) {
   };
   const same = (a, b) => a.replace(/[\s、。]/g, "") === b.replace(/[\s、。]/g, "");
 
-  function speak(text) {   // a text read as it is (xAI force_message); no response.create after it
-    send({ type: "conversation.item.create", item: { type: "force_message", text } });
-    forced = { text, timer: setTimeout(() => forceFailed("声が届かない"), FORCE_WAIT_MS) };
+  // a text read as it is (xAI force_message, in the shape of the xAI docs: an assistant item with output_text);
+  // the vendor answers it with a response of its own, so no response.create after it. The opening is not
+  // interruptible (the caller's sounds are dropped until it has played); the read-backs are.
+  function speak(text, isOpening) {
+    send({ type: "conversation.item.create", item: { type: "force_message", role: "assistant",
+           interruptible: !isOpening, content: [{ type: "output_text", text }] } });
+    forced = { text, isOpening, timer: setTimeout(() => forceFailed("声が届かない"), FORCE_WAIT_MS) };
   }
   function forceFailed(why) {
     if (!forced) return;
     clearTimeout(forced.timer);
+    const wasOpening = forced.isOpening;
     forced = null;
     force = false;
     ctx.log("注意", `決まった文をそのまま読ませる方法（force_message）が使えなかった（${why}）。ここからはAIに読ませます`);
-    send({ type: "response.create" });
+    if (wasOpening) askForOpening(); else send({ type: "response.create" });
   }
 
   function afterTools() {   // every call of the response answered: one response.create (or a forced text)
@@ -120,6 +126,10 @@ export async function connect(ctx) {
     } else if (t === "response.created") {
       responded = true; generationDone = false; aiText = ""; aiReported = false;
       outputs = []; inflight = 0; responseOver = false; hangup = false;
+      if (forced) {   // the vendor took the forced text: give its voice time (a slow start is not a refusal)
+        clearTimeout(forced.timer);
+        forced.timer = setTimeout(() => forceFailed("声が届かない"), FORCE_SOUND_MS);
+      }
       await flushUser();
     } else if (t === "response.output_audio.delta" || t === "response.audio.delta") {
       if (holding || !ev.delta) return;
@@ -181,7 +191,11 @@ export async function connect(ctx) {
 
   function opening() {
     // the opening (A-01) in the model's own voice (user decision 2026-10-20), then it waits for the caller
-    if (force && c.greeting) { speak(c.greeting); return; }   // xAI: the exact words of A-01
+    if (force && c.greeting) { speak(c.greeting, true); return; }   // xAI: the exact words of A-01
+    askForOpening();
+  }
+
+  function askForOpening() {   // the model is asked to say the opening (the words come with the request)
     if (!c.opening_request) { startMic(); return; }
     send({ type: "conversation.item.create",
            item: { type: "message", role: "user", content: [{ type: "input_text", text: c.opening_request }] } });

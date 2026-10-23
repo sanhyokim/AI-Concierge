@@ -129,7 +129,7 @@ async function runPage(page, credentials, waitMs, toolResults) {
             if (forcedSeen === 1) {   // the opening sounds; then the caller gives a number and the model saves it
               out({ type: "response.created", response: {} });
               out({ type: "response.output_audio.delta", item_id: "f1", delta: pcmB64(300) });
-              out({ type: "response.output_audio_transcript.done", transcript: ev.item.text });
+              out({ type: "response.output_audio_transcript.done", transcript: ev.item.content[0].text });
               out({ type: "response.done", response: {} });
               setTimeout(() => {
                 out({ type: "input_audio_buffer.speech_started" });
@@ -159,7 +159,13 @@ async function runPage(page, credentials, waitMs, toolResults) {
       const types = sent.map((e) => e.type);
       if (protocols && !protocols.includes("xai-client-secret.xs_test")) fail(`xai: protocols ${protocols}`);
       if (types[0] !== "session.update" || sent[0].session.voice !== "ara") fail(`xai: session.update first: ${types}`);
-      const forced = sent.filter((e) => e.item && e.item.type === "force_message").map((e) => e.item.text);
+      const forcedItems = sent.filter((e) => e.item && e.item.type === "force_message").map((e) => e.item);
+      // the shape of the xAI docs: an assistant item whose content is output_text (a bare "text" is ignored)
+      if (!forcedItems.every((i) => i.role === "assistant" && Array.isArray(i.content) && i.content.length === 1
+                                     && i.content[0].type === "output_text")) fail(`xai: force_message shape: ${JSON.stringify(forcedItems)}`);
+      if (forcedItems[0] && forcedItems[0].interruptible !== false) fail("xai: the opening is not interruptible");
+      if (forcedItems[1] && forcedItems[1].interruptible !== true) fail("xai: a read-back can be interrupted");
+      const forced = forcedItems.map((i) => (i.content && i.content[0] ? i.content[0].text : i.text));
       if (forced[0] !== "お電話ありがとうございます。株式会社野田でございます。") fail(`xai: the opening is forced: ${forced}`);
       if (forced[1] !== READ_BACK) fail(`xai: the read-back is forced word for word: ${forced}`);
       const iOut = sent.findIndex((e) => e.item && e.item.type === "function_call_output");
@@ -180,6 +186,36 @@ async function runPage(page, credentials, waitMs, toolResults) {
       if (order.includes(`ai:${READ_BACK}`)) fail(`xai: a forced text is the AI's words only once it sounds: ${order}`);
       if (order.some((o) => o.startsWith("closed:"))) fail(`xai: closed: ${order}`);
       console.log(JSON.stringify({ xai: { order, sent: types } }));
+      await page.close();
+    }
+    // --- Grok Voice 3.0: the forced opening is ignored without an error (seen 2026-10-23 with a wrong item shape):
+    //     the page asks the model for the opening with its words, not with a bare response.create -------------
+    {
+      const page = await browser.newPage();
+      page.on("pageerror", (e) => errors.push(String(e)));
+      const sent = [];
+      await page.routeWebSocket(/api\.x\.ai/, (ws) => {
+        const out = (ev) => ws.send(JSON.stringify(ev));
+        ws.onMessage((m) => {
+          const ev = JSON.parse(m);
+          if (ev.type === "input_audio_buffer.append") return;
+          sent.push(ev);
+          if (ev.type === "session.update") out({ type: "session.updated", session: {} });
+        });
+        out({ type: "conversation.created", conversation: { id: "conv_2" } });
+      });
+      await page.goto(base + "/");
+      const { log } = await runPage(page, {
+        ws_url: "wss://api.x.ai/v1/realtime?model=grok-voice-3.0", protocols: ["xai-client-secret.xs_test"],
+        vendor: "xai", session_update: { instructions: "指示" }, force_message: true, truncate: false,
+        greeting: "お電話ありがとうございます。", opening_request: "最初の案内",
+      }, 3500, {});
+      const types = sent.map((e) => e.type);
+      const iAsk = sent.findIndex((e) => e.item && e.item.type === "message" && e.item.role === "user"
+        && e.item.content[0].text === "最初の案内");
+      if (iAsk < 0 || types[iAsk + 1] !== "response.create") fail(`xai ignored: the opening request comes after: ${types}`);
+      if (!log.some(([k]) => k === "注意")) fail("xai ignored: the fallback must be shown on the page");
+      console.log(JSON.stringify({ xai_ignored: { sent: types } }));
       await page.close();
     }
     if (errors.length) fail(`page errors: ${errors}`);
