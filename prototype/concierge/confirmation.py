@@ -64,8 +64,33 @@ def _norm(text: str) -> str:
     return unicodedata.normalize("NFKC", text).replace(" ", "").replace("\u3000", "")
 
 
-def classify_reply(text: str) -> Reply:
+# After a date read back without a time, the AI asks for a time: 「特にありません」 then accepts the date as read
+# (2026-10-24, user). A time in the reply is a new value to save, not an answer.
+_NO_TIME_WISH = ("特に", "とくに", "いつでも", "何時でも", "なんじでも", "おまかせ", "お任せ", "希望はない", "希望はありません",
+                 "ないです", "ありません", "ございません", "ない。", "なし")
+_ANY_TIME = ("いつでも", "何時でも", "なんじでも")
+_TIME_SAID = re.compile(r"\d|[一二三四五六七八九十]時|時半|午前|午後|朝|昼|夕方|夜")
+_STRONG_NEGATIVE = ("違", "ちが", "じゃなく", "ではなく", "間違", "まちが", "そうじゃない")
+
+
+def no_time_wish(text: str) -> bool:
     t = _norm(text)
+    if any(p in t for p in _STRONG_NEGATIVE) or (_TIME_SAID.search(t) and not any(p in t for p in _ANY_TIME)):
+        return False
+    return any(p in t for p in _NO_TIME_WISH) or t in ("ない", "ないです")
+
+
+def classify_reply(text: str, time_question: bool = False) -> Reply:
+    t = _norm(text)
+    if time_question and no_time_wish(text):   # the read-back ended with 「お時間のご希望はございますか」
+        return Reply.AFFIRMATIVE
+    reply = _classify(t)
+    if time_question and reply == Reply.AFFIRMATIVE and _TIME_SAID.search(t) and not any(p in t for p in _ANY_TIME):
+        return Reply.UNCLEAR   # 「はい、三時で」: a time to save with the date and read back again, not a yes yet
+    return reply
+
+
+def _classify(t: str) -> Reply:
     affirm_phrase = False
     for p in _AFFIRM_WITH_NEGATIVE_CHARS:
         if p in t:
@@ -99,6 +124,7 @@ class FieldState:
     readback_interrupted: bool = False
     readback_mismatch: str | None = None    # what the AI said instead of the value (from its own transcript)
     readback_spoken_ok: bool = False        # the AI's transcript said the value (and nothing different)
+    asks_time: bool = False                 # a date read back without a time, then 「お時間のご希望は…」
 
     def _log(self, event: str, t_ms: int | None, **extra) -> None:
         self.history.append({"event": event, "value": self.value, "status": self.status.value,
@@ -163,7 +189,7 @@ class FieldState:
 
     def answer(self, utterance: str, t_ms: int | None = None) -> Reply:
         """The caller replied after a read-back. Only an affirmative reply confirms."""
-        reply = classify_reply(utterance)
+        reply = classify_reply(utterance, self.asks_time)
         if self.status == Status.AWAITING and not self.readback_interrupted:
             if reply == Reply.AFFIRMATIVE and self.read_back_value == self.value:
                 self.status = Status.CONFIRMED
@@ -190,7 +216,7 @@ class FieldState:
                            "speaking, then call confirm_field again; do not ask the caller to repeat")
         if self.name == "callback_number" and _foreign_digits(last_caller_utterance, value):
             return False, "the reply contains a different number; save it and read it back again"
-        reply = classify_reply(last_caller_utterance)
+        reply = classify_reply(last_caller_utterance, self.asks_time)
         if reply != Reply.AFFIRMATIVE:
             return False, f"caller reply is {reply.value}; ask again"
         self.answer(last_caller_utterance, t_ms)

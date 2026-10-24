@@ -23,7 +23,7 @@ LABEL = {"request": "ご用件", "shop_name": "店舗名", "caller_name": "お�
 ASK = {"request": "どのようなご用件でしょうか。", "shop_name": "恐れ入りますが、店舗名をお伺いしてもよろしいでしょうか。",
        "caller_name": "恐れ入りますが、お名前をお伺いしてもよろしいでしょうか。",
        "callback_number": "担当の者から折り返しお電話いたしますので、ご連絡先のお電話番号をお伺いしてもよろしいでしょうか。",
-       "preferred_datetime": "ご希望の日時はございますか。"}
+       "preferred_datetime": "作業にお伺いする日時のご希望はございますか。"}
 CONFIRM = ("callback_number", "preferred_datetime")
 _RELATIVE = re.compile(r"明明後日|しあさって|明後日|あさって|明日|あした|(?:来週|今週)の?[月火水木金土日]")
 _NO_WISH = ("特に", "とくに", "いつでも", "おまかせ", "お任せ", "希望はない", "希望はありません", "ないです", "ありません")
@@ -101,6 +101,8 @@ class RuleAgent:
 
     @staticmethod
     def _readback_line(field: str, res: dict) -> str:
+        if field == "preferred_datetime":   # the date at once, without 「復唱いたします」 (2026-10-24, user)
+            return res["say"]
         return f"{LABEL[field]}を復唱いたします。{res['read_this_clearly']}。{res['then_ask']}"
 
     def _date(self, text: str, current: str | None) -> str | None:

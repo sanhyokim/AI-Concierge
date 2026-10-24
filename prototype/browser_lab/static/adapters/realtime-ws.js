@@ -38,8 +38,12 @@ export async function connect(ctx) {
   let forced = null;                               // { text, timer } while a forced text has not sounded yet
   let aiText = "", aiReported = false;             // the AI's words of the current response (from deltas)
   let lastForced = "";                             // the last forced text (already reported as the AI's words)
-  const userHeard = new Map();                     // item_id → latest cumulative transcript not yet reported
-  const reported = new Set();
+  // The caller's words per item. xAI sends several transcripts for one item, before and after the end of speech
+  // (2026-10-24: only the first piece, 「焼肉」, reached the server): the words not yet reported are kept and
+  // reported when they matter (a tool call, the AI's next words); a later, longer transcript adds the rest.
+  const userHeard = new Map();                     // item_id → words heard and not yet reported
+  const userSent = new Map();                      // item_id → words already reported
+  let heardSinceSpeech = false;                    // some of the caller's words reported since they began to speak
   // per response: tool outputs sent, calls still running, and whether the response itself is over
   let inflight = 0, outputs = [], responseOver = false, hangup = false;
 
@@ -63,25 +67,35 @@ export async function connect(ctx) {
     const timer = setTimeout(() => done(null), TRANSCRIPT_WAIT_MS);
     transcriptWait = { promise: p, resolve: (v) => { clearTimeout(timer); done(v); } };
   };
-  async function reportUser(item, text) {
-    if (reported.has(item)) return null;
-    reported.add(item);
-    userHeard.delete(item);
-    const heard = await ctx.onTranscript("user", text || "");
-    if (transcriptWait) { transcriptWait.resolve(heard); transcriptWait = null; }
-    return heard;
+  function heardUser(item, text) {   // a transcript for an item: the whole so far (cumulative) or a new piece
+    if (!text) return;
+    const sent = userSent.get(item) || "", sofar = sent + (userHeard.get(item) || "");
+    let whole;
+    if (text.startsWith(sofar)) whole = text;                    // the whole so far, grown
+    else if (sofar.includes(text)) return;                       // heard already
+    else if (sofar && text.startsWith(sent) && text.slice(0, 2) === sofar.slice(0, 2)) whole = text;   // corrected
+    else whole = sofar + text;                                   // the next piece
+    const rest = whole.slice(sent.length);
+    if (rest) userHeard.set(item, rest); else userHeard.delete(item);
   }
-  // xAI sends the caller's words only as a growing text (….updated): report what is there when it matters
-  async function flushUser() {
+  async function flushUser() {   // report the words not reported yet
     let last = null;
-    for (const [item, text] of [...userHeard]) last = await reportUser(item, text);
+    for (const [item, text] of [...userHeard]) {
+      userHeard.delete(item);
+      if (!text.trim()) continue;
+      userSent.set(item, (userSent.get(item) || "") + text);
+      heardSinceSpeech = true;
+      last = await ctx.onTranscript("user", text);
+      if (transcriptWait) { transcriptWait.resolve(last); transcriptWait = null; }
+    }
     return last;
   }
-  const reportAi = (text) => {
+  const reportAi = async (text) => {
     const words = (text || "").replace(/\[[a-z _-]+\]\s*/gi, "").trim();
     if (!words || aiReported) return;
     aiReported = true;
     if (lastForced && same(words, lastForced)) { lastForced = ""; return; }   // the forced text, already reported
+    await flushUser();   // the caller's words come first
     ctx.onTranscript("ai", words);
   };
   const same = (a, b) => a.replace(/[\s、。]/g, "") === b.replace(/[\s、。]/g, "");
@@ -136,7 +150,8 @@ export async function connect(ctx) {
       if (forced) {   // the forced text is sounding: these are the AI's words (the server checks the read-back)
         clearTimeout(forced.timer);
         lastForced = forced.text;
-        ctx.onTranscript("ai", forced.text);
+        const said = forced.text;
+        flushUser().then(() => ctx.onTranscript("ai", said));
         forced = null;
       }
       if (ev.item_id !== aiItem) { aiItem = ev.item_id; aiQueuedMs = 0; }
@@ -154,6 +169,7 @@ export async function connect(ctx) {
       responseOver = true;
       afterTools();
     } else if (t === "input_audio_buffer.speech_started") {
+      heardSinceSpeech = false;
       const unplayedMs = player.pendingSeconds() * 1000;
       if (unplayedMs > 0) {
         player.clear();
@@ -166,13 +182,17 @@ export async function connect(ctx) {
     } else if (t === "input_audio_buffer.speech_stopped") {
       waitForTranscript();
     } else if (t === "conversation.item.input_audio_transcription.completed") {
-      await reportUser(ev.item_id || `u${reported.size}`, ev.transcript);
+      heardUser(ev.item_id || "u", ev.transcript || "");
+      if (c.vendor === "xai") ctx.log("文字起こし", { item: ev.item_id, text: ev.transcript || "" });
+      if (transcriptWait) await flushUser();   // the speech is over: a tool call may be waiting for these words
     } else if (t === "conversation.item.input_audio_transcription.updated") {
-      if (ev.item_id && !reported.has(ev.item_id)) userHeard.set(ev.item_id, ev.transcript || "");
+      heardUser(ev.item_id || "u", ev.transcript || "");
     } else if (t === "response.function_call_arguments.done") {
       inflight++;
       // the caller's 「はい」 can arrive after the model's tool call: let the server see it first
-      const heard = transcriptWait ? await transcriptWait.promise : await flushUser();
+      // words already heard go at once; only when none has come since the speech ended, wait a little for them
+      let heard = await flushUser();
+      if (!heard && transcriptWait && !heardSinceSpeech) heard = await transcriptWait.promise;
       if (heard && heard.stop_ai) { inflight--; return; }
       let args = {};
       try { args = JSON.parse(ev.arguments || "{}"); } catch (e) { /* keep empty */ }

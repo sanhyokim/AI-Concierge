@@ -17,6 +17,7 @@ from ..concierge.readings import date_phrase, datetime_phrase, digits_only, phon
 
 READBACK_FIELDS = ("callback_number", "preferred_datetime")   # read back digit by digit / with the weekday
 THEN_ASK = "こちらでお間違いないでしょうか。"
+ASK_TIME = "お時間のご希望はございますか。"   # after a date read back without a time
 READBACK_TAIL_MS = 2000   # about the time 「こちらでお間違いないでしょうか。」 takes to say
 
 
@@ -142,6 +143,13 @@ class ToolHandler:
         state.read_back(state.value, t_ms=t_ms, after_seq=self._utt_seq)
         self._last_readback = field
         reading = self._reading(field, state.value)
+        if field == "preferred_datetime":
+            # 2026-10-24 (user): 「相手が日時を言ってきたら返事に「復唱いたします」はいらない。すぐに相手の言った日時を
+            # 復唱する。なお時間の言わなかった場合は希望の時間がないか確認する」
+            state.asks_time = len(state.value or "") == 10   # a date without a time
+            then_ask = ASK_TIME if state.asks_time else ""
+            return {"field": field, "read_this_clearly": reading, "then_ask": then_ask,
+                    "say": f"{reading}でございますね。{then_ask}"}
         return {"field": field, "read_this_clearly": reading, "then_ask": THEN_ASK,
                 "say": f"復唱いたします。{reading}。{THEN_ASK}"}
 

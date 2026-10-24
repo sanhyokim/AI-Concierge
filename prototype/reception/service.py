@@ -499,7 +499,7 @@ class ReceptionService:
             parts.append(f"{who}。")
         parts.append(f"ご用件は、{val('request')}。")
         if val("preferred_datetime"):
-            parts.append(f"ご希望の日時は、{sess.tools.reading('preferred_datetime')}。")
+            parts.append(f"作業のご希望の日時は、{sess.tools.reading('preferred_datetime')}。")
         parts.append(CLOSING_WORDS)
         return {"ok": True, "say": for_speech("".join(parts)),
                 "then": "お客様のお返事を待つ。ほかにご用件がなければ、最後のあいさつを言って end_call を呼ぶ"}

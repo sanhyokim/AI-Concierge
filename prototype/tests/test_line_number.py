@@ -122,7 +122,7 @@ class OfferLineNumberTest(unittest.TestCase):
         agent = RuleAgent(svc, cid)
         agent.greeting()
         said = agent.hear("焼肉ほのか博多店の田中です。無煙ロースターの清掃をお願いしたいです。")["say"]
-        self.assertIn("ご希望の日時", " ".join(said))   # the date before the number (user decision 2026-10-23)
+        self.assertIn("日時のご希望", " ".join(said))   # the date before the number (user decision 2026-10-23)
         said = agent.hear("特に希望はありません。")["say"]
         self.assertIn("いまおかけいただいているお電話番号、ゼロキュウゼロの、イチイチイチイチの、ニーニーニーニー", " ".join(said))
         agent.hear("はい、お願いします。")

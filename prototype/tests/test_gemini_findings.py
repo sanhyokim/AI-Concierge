@@ -116,7 +116,7 @@ class SpeechKanaTest(unittest.TestCase):
         cid = svc.start_call(at="2026-10-20T18:00")["id"]
         for backend in (True, False):
             text = svc.voice_instructions(cid, "", backend=backend)
-            self.assertIn("AI受付がうけたまわりました。失礼いたします。", text)
+            self.assertIn("AIオペレーターがうけたまわりました。失礼いたします。", text)   # 2026-10-24: the name of the opening
             self.assertNotIn("承り", text)
 
 

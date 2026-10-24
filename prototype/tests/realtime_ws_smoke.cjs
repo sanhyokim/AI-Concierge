@@ -218,6 +218,67 @@ async function runPage(page, credentials, waitMs, toolResults) {
       console.log(JSON.stringify({ xai_ignored: { sent: types } }));
       await page.close();
     }
+    // --- Grok Voice 3.0: several transcripts for one item, before and after the end of speech (2026-10-24: only
+    //     the first piece 「焼肉」 reached the server, and each tool call waited 1.5 s) -------------------------
+    for (const pieces of [["焼肉", "焼肉ほのか博多店の田中です"], ["焼肉", "ほのか博多店の田中です"]]) {
+      const page = await browser.newPage();
+      page.on("pageerror", (e) => errors.push(String(e)));
+      let toolAt = 0, stoppedAt = 0;
+      await page.routeWebSocket(/api\.x\.ai/, (ws) => {
+        const out = (ev) => ws.send(JSON.stringify(ev));
+        let started = false;
+        ws.onMessage((m) => {
+          const ev = JSON.parse(m);
+          if (ev.type === "session.update") { out({ type: "session.updated", session: {} }); return; }
+          if (ev.type === "conversation.item.create" && ev.item.type === "force_message" && !started) {
+            started = true;
+            out({ type: "response.created", response: {} });
+            out({ type: "response.output_audio.delta", item_id: "f1", delta: pcmB64(200) });
+            out({ type: "response.done", response: {} });
+            setTimeout(() => {
+              out({ type: "input_audio_buffer.speech_started" });
+              out({ type: "conversation.item.input_audio_transcription.completed", item_id: "u1", transcript: pieces[0] });
+              setTimeout(() => {
+                stoppedAt = Date.now();
+                out({ type: "input_audio_buffer.speech_stopped" });
+                out({ type: "conversation.item.input_audio_transcription.completed", item_id: "u1", transcript: pieces[1] });
+                out({ type: "response.created", response: {} });
+                out({ type: "response.function_call_arguments.done", name: "save_fields", call_id: "g1",
+                      arguments: JSON.stringify({ shop_name: "焼肉ほのか博多店", caller_name: "田中" }) });
+                out({ type: "response.done", response: {} });
+              }, 300);
+            }, 500);
+          }
+        });
+        out({ type: "conversation.created", conversation: { id: "conv_3" } });
+      });
+      await page.goto(base + "/");
+      await page.exposeFunction("toolSeen", () => { toolAt = Date.now(); });
+      const { order } = await page.evaluate(async () => {
+        const order = [];
+        const ac = new AudioContext(); await ac.resume();
+        const mic = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const mod = await import("/adapters/realtime-ws.js");
+        const conn = await mod.connect({
+          credentials: { ws_url: "wss://api.x.ai/v1/realtime?model=grok-voice-3.0", protocols: ["xai-client-secret.x"],
+                         vendor: "xai", session_update: {}, force_message: true, truncate: false, greeting: "案内",
+                         opening_request: "最初の案内" },
+          micStream: mic, audioContext: ac, log: () => {}, attachOutputNode: (n) => n.connect(ac.destination),
+          onTranscript: async (role, text) => { order.push(`${role}:${text}`); return null; },
+          vendorInterrupted: () => {}, vendorClosed: (why) => order.push(`closed:${why}`),
+          toolCall: async (name) => { await window.toolSeen(); order.push(`tool:${name}`); return { ok: true }; },
+        });
+        await new Promise((r) => setTimeout(r, 2500));
+        await conn.close();
+        return { order };
+      });
+      const heard = order.filter((o) => o.startsWith("user:")).map((o) => o.slice(5)).join("");
+      if (heard !== "焼肉ほのか博多店の田中です") fail(`xai pieces ${pieces}: all the caller's words reach the server once: ${order}`);
+      if (order.indexOf("tool:save_fields") < order.findIndex((o) => o.startsWith("user:"))) fail(`xai pieces: words before the tool: ${order}`);
+      if (!toolAt || toolAt - stoppedAt > 800) fail(`xai pieces: the tool waited ${toolAt - stoppedAt} ms for words already heard`);
+      console.log(JSON.stringify({ xai_pieces: { pieces, order, tool_wait_ms: toolAt - stoppedAt } }));
+      await page.close();
+    }
     if (errors.length) fail(`page errors: ${errors}`);
   } catch (e) {
     fail(String(e.stack || e));

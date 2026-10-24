@@ -64,7 +64,7 @@ class ServiceTest(unittest.TestCase):
         svc.ai_utterance(cid, res["read_back_now"]["say"])
         self.assertEqual(svc.caller_utterance(cid, "はい", "u1")["confirmed"], "callback_number")
         date = svc.tool(cid, "request_readback", {"field": "preferred_datetime"})
-        self.assertEqual(date["say"], "復唱いたします。10月15日、木曜日。こちらでお間違いないでしょうか。")
+        self.assertEqual(date["say"], "10月15日、木曜日でございますね。お時間のご希望はございますか。")   # 2026-10-24
         svc.ai_utterance(cid, date["say"])
         self.assertEqual(svc.caller_utterance(cid, "はい、大丈夫です", "u2")["confirmed"], "preferred_datetime")
 
@@ -133,7 +133,7 @@ class SummaryTest(unittest.TestCase):
         self.assertNotIn("still_to_ask", res)
         say = svc.tool(cid, "request_summary", {})["say"]
         self.assertTrue(say.startswith("それでは、ご用件を確認いたします。焼肉ほのか博多店の田中様。ご用件は、無煙ロースターの清掃。"
-                                       "ご希望のにちじは、10月23日、金曜日の、午後3時。"), say)
+                                       "作業のご希望のにちじは、10月23日、金曜日の、午後3時。"), say)
         self.assertIn("担当のものにもうしつたえ", say)
         self.assertTrue(say.endswith("ほかにご用件はございますでしょうか。"))
         for word in FORBIDDEN + ("担当の者", "担当の方", "0805"):
