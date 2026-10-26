@@ -46,6 +46,13 @@ class FollowUpTest(unittest.TestCase):
         res = svc.tool(cid, "save_field", {"field": "request", "value": "厨房のフードの清掃"})
         self.assertNotIn("say", res)   # a kitchen hood: no count needed
 
+    def test_uwabiki_is_said_in_kana(self):   # 2026-10-26 (user): 「上引き＝うわびきです」
+        self.assertIn("焼肉のうわびきフード", for_speech(ASK_FOR["request_target"]))
+        svc, cid = call()
+        svc.ai_utterance(cid, for_speech(ASK_FOR["request_target"]))
+        res = svc.tool(cid, "save_field", {"field": "request", "value": "うわびきフードの清掃"})
+        self.assertEqual(res["say"], for_speech(ASK_FOR["request_count"]))   # clear now; a yakiniku job: how many
+
     def test_a_yakiniku_job_is_asked_how_many_once(self):
         svc, cid = call()
         res = svc.tool(cid, "save_field", {"field": "request", "value": "無煙ロースターの清掃"})

@@ -48,8 +48,8 @@ SOURCES = {"demo": "架空の着信テスト", "browser_lab": "ブラウザー�
 
 # Follow-up questions on the request, user 2026-10-26: 「清掃の対象がなんなのかを必ず確認する（…「フードの清掃」というと
 # 厨房フードか焼肉屋の上引きフードかわからない）。また焼肉屋だと対象のものが何基あるか必ず確認する。」
-_CLEAR_HOOD = ("厨房", "キッチン", "調理", "焼肉", "上引き", "ロースター", "レンジ")
-_YAKINIKU = ("ロースター", "上引き", "焼肉", "無煙")
+_CLEAR_HOOD = ("厨房", "キッチン", "調理", "焼肉", "上引き", "うわびき", "上びき", "ロースター", "レンジ")
+_YAKINIKU = ("ロースター", "上引き", "うわびき", "上びき", "焼肉", "無煙")
 _COUNT_SAID = re.compile(r"(\d+|[一二三四五六七八九十何数]+)\s*(基|台|卓|つ|個)")
 FOLLOW_UPS = {
     "request_target": lambda req, shop: bool(req) and "フード" in req and not any(w in req for w in _CLEAR_HOOD),
@@ -408,7 +408,7 @@ class ReceptionService:
                 sess.date_asked = True
             if "何基" in text or "なんき" in text:
                 sess.asked.add("request_count")
-            if "厨房" in text and "上引き" in text:
+            if "厨房" in text and ("上引き" in text or "うわびき" in text):
                 sess.asked.add("request_target")
             wrong = sess.tools.ai_said(text)
             for name, said in wrong.items():
