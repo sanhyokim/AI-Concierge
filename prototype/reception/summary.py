@@ -6,9 +6,8 @@ nothing about the quality of a model-written summary.
 """
 from __future__ import annotations
 
-import datetime as dt
 
-from ..concierge.readings import date_phrase, datetime_phrase, group_phone_number
+from ..concierge.readings import group_phone_number, wish_phrase
 from .settings import FIELD_KEYS, FIELD_LABELS
 
 STATUS_LABELS = {
@@ -34,12 +33,7 @@ def display_value(name: str, value: str | None) -> str:
     if name == "callback_number":
         return "-".join(group_phone_number(value)) or value
     if name == "preferred_datetime":
-        try:
-            if len(value) == 10:
-                return date_phrase(dt.date.fromisoformat(value))[0]
-            return datetime_phrase(dt.datetime.fromisoformat(value))[0]
-        except ValueError:
-            return value
+        return wish_phrase(value)
     return value
 
 

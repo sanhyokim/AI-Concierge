@@ -10,10 +10,9 @@ requested before that reply.
 """
 from __future__ import annotations
 
-import datetime as dt
 
 from ..concierge.confirmation import FieldStore, Status
-from ..concierge.readings import date_phrase, datetime_phrase, digits_only, phone_reading
+from ..concierge.readings import digits_only, normalize_wish, phone_reading, wish_phrase
 
 READBACK_FIELDS = ("callback_number", "preferred_datetime")   # read back digit by digit / with the weekday
 THEN_ASK = "こちらでお間違いないでしょうか。"
@@ -115,7 +114,11 @@ class ToolHandler:
 
     # --- tools ------------------------------------------------------------------------------------------
     def _normalize(self, field: str, value: str) -> str:
-        return digits_only(value) if field == "callback_number" else value.strip()
+        if field == "callback_number":
+            return digits_only(value)
+        if field == "preferred_datetime":   # 2026-10-26: no clock time the caller did not say
+            return normalize_wish(value, self._utt_text)
+        return value.strip()
 
     @staticmethod
     def _reading(field: str, value: str) -> str:
@@ -123,12 +126,7 @@ class ToolHandler:
         if field == "callback_number":
             return phone_reading(value)
         if field == "preferred_datetime":
-            try:
-                if len(value) == 10:   # a date without a time
-                    return date_phrase(dt.date.fromisoformat(value))[0]
-                return datetime_phrase(dt.datetime.fromisoformat(value))[0]
-            except ValueError:
-                return value
+            return wish_phrase(value)
         return value
 
     def reading(self, field: str) -> str:

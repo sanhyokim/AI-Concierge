@@ -57,7 +57,7 @@ class ServiceTest(unittest.TestCase):
         svc = service()
         cid = svc.start_call(at="2026-10-13T14:17")["id"]
         res = svc.tool(cid, "save_fields", {"shop_name": "焼肉太郎博多店", "caller_name": "田中",
-                                            "callback_number": "080-5644-2050", "request": "無煙ロースターの清掃",
+                                            "callback_number": "080-5644-2050", "request": "無煙ロースター3基の清掃",
                                             "preferred_datetime": "2026-10-15"})
         self.assertEqual(res["read_back_now"]["field"], "callback_number")
         self.assertEqual(res["read_back_later"]["fields"], ["preferred_datetime"])
@@ -117,7 +117,7 @@ class SummaryTest(unittest.TestCase):
     def test_the_summary_asks_for_what_is_missing_first(self):
         svc = service()
         cid = svc.start_call(at="2026-10-21T13:00")["id"]
-        svc.tool(cid, "save_fields", {"request": "無煙ロースターの清掃"})
+        svc.tool(cid, "save_fields", {"request": "無煙ロースター3基の清掃"})
         res = svc.tool(cid, "request_summary", {})
         self.assertFalse(res["ok"])
         self.assertEqual(res["missing"], ["店舗名", "お名前", "折り返し先"])
@@ -127,12 +127,12 @@ class SummaryTest(unittest.TestCase):
         svc = service()
         cid = svc.start_call(at="2026-10-21T13:00")["id"]
         res = svc.tool(cid, "save_fields", {"shop_name": "焼肉ほのか博多店", "caller_name": "田中",
-                                            "request": "無煙ロースターの清掃", "callback_number": "080-5644-2050",
+                                            "request": "無煙ロースター3基の清掃", "callback_number": "080-5644-2050",
                                             "preferred_datetime": "2026-10-23T15:00"})
         self.assertEqual(res["do_not_ask_again"], ["店舗名", "お名前", "折り返し先", "用件", "希望日時"])
         self.assertNotIn("still_to_ask", res)
         say = svc.tool(cid, "request_summary", {})["say"]
-        self.assertTrue(say.startswith("それでは、ご用件を確認いたします。焼肉ほのか博多店の田中様。ご用件は、無煙ロースターの清掃。"
+        self.assertTrue(say.startswith("それでは、ご用件を確認いたします。焼肉ほのか博多店の田中様。ご用件は、無煙ロースター3基の清掃。"
                                        "作業のご希望のにちじは、10月23日、金曜日の、午後3時。"), say)
         self.assertIn("担当のものにもうしつたえ", say)
         self.assertTrue(say.endswith("ほかにご用件はございますでしょうか。"))

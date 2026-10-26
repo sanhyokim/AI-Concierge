@@ -13,7 +13,9 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import threading
+import unicodedata
 import uuid
 from dataclasses import asdict
 
@@ -43,6 +45,23 @@ ACTION_LABELS = {"stop_ai_stream": "AIへの音声送信を停止", "stop_record
 SOURCES = {"demo": "架空の着信テスト", "browser_lab": "ブラウザー会話試験", "relay": "電話経路（未接続）"}
 
 
+
+# Follow-up questions on the request, user 2026-10-26: 「清掃の対象がなんなのかを必ず確認する（…「フードの清掃」というと
+# 厨房フードか焼肉屋の上引きフードかわからない）。また焼肉屋だと対象のものが何基あるか必ず確認する。」
+_CLEAR_HOOD = ("厨房", "キッチン", "調理", "焼肉", "上引き", "ロースター", "レンジ")
+_YAKINIKU = ("ロースター", "上引き", "焼肉", "無煙")
+_COUNT_SAID = re.compile(r"(\d+|[一二三四五六七八九十何数]+)\s*(基|台|卓|つ|個)")
+FOLLOW_UPS = {
+    "request_target": lambda req, shop: bool(req) and "フード" in req and not any(w in req for w in _CLEAR_HOOD),
+    "request_count": lambda req, shop: (bool(req) and any(w in req + shop for w in _YAKINIKU)
+                                        and not _COUNT_SAID.search(unicodedata.normalize("NFKC", req))),
+}
+FOLLOW_UP_LABELS = {"request_target": "清掃の対象（厨房のフードか、焼肉の上引きフードか）", "request_count": "対象の数（何基か）"}
+
+
+def _label(field: str) -> str:
+    return FOLLOW_UP_LABELS.get(field) or S.FIELD_LABELS[field]
+
 class HandledConflict(Exception):
     """The handling state changed after the screen read it (someone else took or changed the call first)."""
 
@@ -55,6 +74,7 @@ class CallSession:
         self.tools, self.flow, self.lock = tools, flow, threading.RLock()
         self.new_utterance = threading.Condition(self.lock)
         self.date_asked = False   # the AI has asked for the wished date: a caller with no wish is not asked again
+        self.asked: set[str] = set()   # follow-up questions on the request the AI has asked (request_target/count)
 
 
 def _flow_dump(f: CallFlow) -> dict:
@@ -386,6 +406,10 @@ class ReceptionService:
             self._event(call_id, "ai", {"text": text if store else "（文字起こしを保存しない設定）"})
             if "日時" in text or "にちじ" in text:
                 sess.date_asked = True
+            if "何基" in text or "なんき" in text:
+                sess.asked.add("request_count")
+            if "厨房" in text and "上引き" in text:
+                sess.asked.add("request_target")
             wrong = sess.tools.ai_said(text)
             for name, said in wrong.items():
                 self._event(call_id, "read_back_mismatch", {"field": name, "said": said})
@@ -434,6 +458,8 @@ class ReceptionService:
                     logged_args = {"field": field, "value": "（保存しない設定のため記録しない）"}
                 else:
                     res = sess.tools.handle(name, args)
+                    if name == "save_field" and field in ("request", "shop_name") and "read_back_now" not in res:
+                        res.update(self._request_followup(sess, snap))
             else:
                 res = {"ok": False, "reason": f"unknown tool {name}"}
             self._event(call_id, "tool", {"name": name, "args": logged_args, "result": res})
@@ -459,7 +485,7 @@ class ReceptionService:
         # 2026-10-21 (Eleven Realtime): the shop and the name were saved, then asked for again
         left = self._still_to_ask(sess, snap)
         if left:
-            res["still_to_ask"] = [S.FIELD_LABELS[f] + ("（ご希望がなければ不要）" if f == "preferred_datetime" else "")
+            res["still_to_ask"] = [_label(f) + ("（ご希望がなければ不要）" if f == "preferred_datetime" else "")
                                    for f in left]
         res["do_not_ask_again"] = [S.FIELD_LABELS[f] for f in S.FIELD_KEYS if f in saved]
         if skipped:
@@ -474,7 +500,18 @@ class ReceptionService:
                                       "how": "お客様が「はい」と答えた後で、request_readback を呼んで復唱する"}
         if "caller_name" in saved and not had_name and not pending:
             res.update(self._greet_and_go_on(sess, left, (call or {}).get("caller_id")))
+        elif not pending:
+            res.update(self._request_followup(sess, snap))
         return res, logged
+
+    def _request_followup(self, sess: CallSession, snap: dict) -> dict:
+        """What to ask about the request right away: which hood, and how many (FOLLOW_UPS)."""
+        left = self._still_to_ask(sess, snap)
+        if not left or left[0] not in FOLLOW_UPS:
+            return {}
+        return {"say": for_speech(ASK_FOR[left[0]]),
+                "how": ("お答えをご用件に足し、save_field で request を保存し直します"
+                        "（例：「焼肉の上引きフードの清掃、3基」）。分からないと言われたら、そのまま次へ進みます")}
 
     @staticmethod
     def _greet_and_go_on(sess: CallSession, left: list[str], line_number: str | None) -> dict:
@@ -499,9 +536,13 @@ class ReceptionService:
         聞くのは失礼な気がする」). The date is asked once but not required: a caller may have no wish."""
         order = ("request", "preferred_datetime", "shop_name", "caller_name", "callback_number")
         fields = sess.tools.store.fields
-        return [f for f in order if snap["config"]["fields"][f]["store"]
+        left = [f for f in order if snap["config"]["fields"][f]["store"]
                 and not (f == "preferred_datetime" and (required_only or sess.date_asked))
                 and not (fields.get(f) and fields[f].value)]
+        # the follow-ups on the request come right after it, each asked once (the caller may not know)
+        val = lambda f: (fields[f].value or "") if fields.get(f) else ""
+        extra = [k for k, needed in FOLLOW_UPS.items() if k not in sess.asked and needed(val("request"), val("shop_name"))]
+        return [f for f in left if f == "request"] + extra + [f for f in left if f != "request"]
 
     def _summary(self, sess: CallSession, snap: dict) -> dict:
         """The words that close the intake, made here so every AI says the same correct Japanese (2026-10-22,
@@ -509,7 +550,7 @@ class ReceptionService:
         「承りました内容は、…の田中様より、…のご希望でございます」)."""
         left = self._still_to_ask(sess, snap, required_only=True)
         if left:
-            return {"ok": False, "missing": [S.FIELD_LABELS[f] for f in left], "say": for_speech(ASK_FOR[left[0]])}
+            return {"ok": False, "missing": [_label(f) for f in left], "say": for_speech(ASK_FOR[left[0]])}
         fields = sess.tools.store.fields
         val = lambda f: (fields[f].value if fields.get(f) and fields[f].value else "")
         who = "の".join(v for v in (val("shop_name"), f"{val('caller_name')}様" if val("caller_name") else "") if v)

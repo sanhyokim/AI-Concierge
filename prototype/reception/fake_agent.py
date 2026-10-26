@@ -120,7 +120,7 @@ class RuleAgent:
             md_day = days[0]
         elif not md and not (d_only and current):
             return None
-        cur = dt.datetime.fromisoformat(current) if current and len(current) > 10 else None
+        cur = dt.datetime.fromisoformat(current) if current and "T" in current else None
         if rel:
             year, month, day = md_day.year, md_day.month, md_day.day
         else:

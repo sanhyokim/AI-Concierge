@@ -35,7 +35,7 @@ class PromptTextTest(unittest.TestCase):
 
     def test_gpt_live_voice_model_gets_a_short_prompt_without_tools_faq_or_digits(self):
         voice = self.svc.voice_instructions(self.cid, LAB_PERSONA, backend=True)
-        self.assertLess(len(voice), 2100)   # 2026-10-20: a few words in kana (for_speech) made it longer
+        self.assertLess(len(voice), 2150)   # 2026-10-20: a few words in kana (for_speech) made it longer; 10-26: which hood, how many
         self.assertLess(len(voice), len(self.full) / 2)
         for words in ("0は「ゼロ」と言います", "裏方にまとめを頼み", "失礼いたします。」と言い、裏方に",
                       "【裏方への頼み方】", "「そのまま読む文：」は、一字一句変えずに読みます", "「次にすること：」は声に出さず",

@@ -20,7 +20,7 @@ def call(**kw):
 class AfterTheNameTest(unittest.TestCase):
     def test_the_greeting_and_the_next_question_come_in_one_go(self):
         svc, cid = call()
-        svc.tool(cid, "save_fields", {"request": "無煙ロースターの清掃"})
+        svc.tool(cid, "save_fields", {"request": "無煙ロースター3基の清掃"})
         res = svc.tool(cid, "save_fields", {"shop_name": "焼肉ほのか博多店", "caller_name": "田中"})
         self.assertEqual(res["say"], for_speech("田中様でいらっしゃいますね。いつもお世話になっております。"
                                                 + ASK_FOR["preferred_datetime"]))
@@ -30,7 +30,7 @@ class AfterTheNameTest(unittest.TestCase):
         svc, cid = call()
         svc.ai_utterance(cid, ASK_FOR["preferred_datetime"])
         svc.caller_utterance(cid, "特にありません", "u1")
-        res = svc.tool(cid, "save_fields", {"request": "清掃", "shop_name": "焼肉ほのか博多店", "caller_name": "田中"})
+        res = svc.tool(cid, "save_fields", {"request": "無煙ロースター3基の清掃", "shop_name": "焼肉ほのか博多店", "caller_name": "田中"})
         self.assertTrue(res["say"].endswith(for_speech(ASK_FOR["callback_number"])), res["say"])
 
     def test_a_name_given_first_asks_only_for_the_shop(self):

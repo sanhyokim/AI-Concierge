@@ -257,11 +257,10 @@ _NUM = r"(\d{1,2}|[〇一二三四五六七八九十]{1,3})"
 def spoken_datetime_mismatch(text: str, value: str) -> str | None:
     """What the AI said, when its month/day, weekday or hour differs from the ISO value it was asked to read
     back ('2026-10-15' or '2026-10-15T15:00'); None when it matches or says no date."""
-    try:
-        when = dt.datetime.fromisoformat(value) if "T" in value or " " in value else None
-        day = when.date() if when else dt.date.fromisoformat(value)
-    except ValueError:
+    parts = split_wish(value)
+    if not parts:
         return None
+    day, when, _ = parts
     t = unicodedata.normalize("NFKC", text)
     wrong = []
     for m in re.finditer(_NUM + "月" + _NUM + "日", t):
@@ -283,3 +282,62 @@ def spoken_datetime_mismatch(text: str, value: str) -> str | None:
             if h != when.hour and not (m.group(1) is None and h + 12 == when.hour):
                 wrong.append(m.group(0))
     return "、".join(wrong) or None
+
+
+# --- a wished time of day without a clock time (2026-10-26) -------------------------------------------------
+# Grok saved 「午前の方がいいです」 as 9:00, and after the correction read back 「2026-11-03T午前でございますね」
+# (user: 「「2026-11-03T午前」というのはおかしいでしょ」). A part of the day is kept as words: '2026-11-03 午前中'.
+PERIODS = (("午前中", "午前中"), ("午前", "午前中"), ("昼過ぎ", "お昼過ぎ"), ("お昼", "お昼"), ("昼", "お昼"),
+           ("午後", "午後"), ("夕方", "夕方"), ("朝", "朝"), ("夜", "夜"))
+_HOUR_SAID = re.compile(r"\d|[〇一二三四五六七八九十]+時|時半|正午")
+
+
+def period_in(text: str) -> str | None:
+    """The part of the day said in the text (as said back: 午前 → 午前中), or None."""
+    t = unicodedata.normalize("NFKC", text or "")
+    return next((said for word, said in PERIODS if word in t), None)
+
+
+def split_wish(value: str) -> tuple[dt.date, dt.datetime | None, str | None] | None:
+    """('2026-11-03', '2026-11-03T15:00', '2026-11-03 午前中' or '2026-11-03T午前') → (day, time, part of the day)."""
+    v = unicodedata.normalize("NFKC", value or "").strip()
+    m = re.fullmatch(r"(\d{4}-\d{2}-\d{2})(?:[T ]?(.*))?", v)
+    if not m:
+        return None
+    try:
+        day = dt.date.fromisoformat(m.group(1))
+        rest = (m.group(2) or "").strip()
+        if not rest:
+            return day, None, None
+        if re.fullmatch(r"\d{1,2}:\d{2}(:\d{2})?", rest):
+            return day, dt.datetime.fromisoformat(f"{m.group(1)}T{rest.zfill(5) if len(rest) == 4 else rest}"), None
+    except ValueError:
+        return None
+    period = period_in(rest)
+    return (day, None, period) if period else None
+
+
+def normalize_wish(value: str, caller_text: str = "") -> str:
+    """The wished date as saved. A clock time the caller did not say becomes the part of the day they said
+    (「午前の方がいいです」 is not 9:00)."""
+    parts = split_wish(value)
+    if not parts:
+        return (value or "").strip()
+    day, when, period = parts
+    if period:
+        return f"{day.isoformat()} {period}"
+    said = period_in(caller_text)
+    if when and said and not _HOUR_SAID.search(unicodedata.normalize("NFKC", caller_text)):
+        return f"{day.isoformat()} {said}"
+    return when.strftime("%Y-%m-%dT%H:%M") if when else day.isoformat()
+
+
+def wish_phrase(value: str) -> str:
+    """How the wished date is said: '11月3日、火曜日', '…の、午後3時', '…の、午前中'. Unreadable values as they are."""
+    parts = split_wish(value)
+    if not parts:
+        return value
+    day, when, period = parts
+    if when:
+        return datetime_phrase(when)[0]
+    return f"{date_phrase(day)[0]}の、{period}" if period else date_phrase(day)[0]

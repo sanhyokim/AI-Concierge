@@ -273,13 +273,21 @@ function cancelHangup(text) {
   log("終話を取り消し", "お客様が続けて話したので、会話を続ける");
 }
 
+// 2026-10-26 (Grok, 「最後に電話が切れない」): short noises on the caller's side (80–360 ms) kept restarting the wait,
+// so the call never ended. Only speech of 600 ms or more holds the wait (its words then decide, cancelHangup), and
+// once the AI has finished, noise can delay the hang-up by HANGUP_MAX_EXTRA_MS at most.
+const HANGUP_MAX_EXTRA_MS = 6000;
+
 function checkHangup() {
   const h = st.hangup;
   if (!h || st.closing) return;
-  if (st.ai.on || st.user.on) { h.quietSince = null; return; }
   const t = now();
-  if (h.quietSince === null) h.quietSince = t;
-  if (t - h.quietSince >= h.waitMs) { st.hangup = null; hangUp(); }
+  if (st.ai.on) { h.quietSince = null; h.aiDone = null; return; }
+  if (h.aiDone == null) h.aiDone = t;
+  const speaking = st.user.on && st.user.startT !== null && t - st.user.startT >= SHORT_UTTERANCE_MS;
+  if (speaking) { h.quietSince = null; return; }
+  if (h.quietSince == null) h.quietSince = t;
+  if (t - h.quietSince >= h.waitMs || t - h.aiDone >= h.waitMs + HANGUP_MAX_EXTRA_MS) { st.hangup = null; hangUp(); }
 }
 
 // Japanese hang-up tone: 400 Hz, 0.5 s on and 0.5 s off, three times; played directly (not measured as AI audio)

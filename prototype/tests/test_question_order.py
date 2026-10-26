@@ -22,7 +22,7 @@ class OrderTest(unittest.TestCase):
     def test_the_server_lists_the_date_next_until_the_ai_has_asked_it(self):
         svc = service()
         cid = svc.start_call(at="2026-10-23T13:00")["id"]
-        res = svc.tool(cid, "save_fields", {"request": "無煙ロースターの清掃"})
+        res = svc.tool(cid, "save_fields", {"request": "無煙ロースター3基の清掃"})
         self.assertEqual(res["still_to_ask"], ["希望日時（ご希望がなければ不要）", "店舗名", "お名前", "折り返し先"])
         svc.ai_utterance(cid, ASK_FOR["preferred_datetime"])
         svc.caller_utterance(cid, "特にありません", "u1")
