@@ -80,8 +80,16 @@ def no_time_wish(text: str) -> bool:
     return any(p in t for p in _NO_TIME_WISH) or t in ("ない", "ないです")
 
 
-def classify_reply(text: str, time_question: bool = False) -> Reply:
+# The answer to 「こちらでお間違いないでしょうか。」: 「ないです」 means there is no mistake (2026-10-26, Grok: the
+# number was asked for again after 「ないです。」)
+_NO_MISTAKE = re.compile(r"(はい|ええ)?[、,]?(特に|とくに)?(ない|ないです|ないですね|ないですよ|ありません|ございません|"
+                         r"大丈夫|大丈夫です)[。.!！]?")
+
+
+def classify_reply(text: str, time_question: bool = False, mistake_question: bool = False) -> Reply:
     t = _norm(text)
+    if mistake_question and _NO_MISTAKE.fullmatch(t):
+        return Reply.AFFIRMATIVE
     if time_question and no_time_wish(text):   # the read-back ended with 「お時間のご希望はございますか」
         return Reply.AFFIRMATIVE
     reply = _classify(t)
@@ -125,6 +133,12 @@ class FieldState:
     readback_mismatch: str | None = None    # what the AI said instead of the value (from its own transcript)
     readback_spoken_ok: bool = False        # the AI's transcript said the value (and nothing different)
     asks_time: bool = False                 # a date read back without a time, then 「お時間のご希望は…」
+
+    @property
+    def asks_mistake(self) -> bool:
+        """The read-back ends with 「こちらでお間違いないでしょうか。」 (not the date's, not the line number's
+        「…で、よろしいでしょうか。」)."""
+        return self.name != "preferred_datetime" and self.source != "line"
 
     def _log(self, event: str, t_ms: int | None, **extra) -> None:
         self.history.append({"event": event, "value": self.value, "status": self.status.value,
@@ -189,7 +203,7 @@ class FieldState:
 
     def answer(self, utterance: str, t_ms: int | None = None) -> Reply:
         """The caller replied after a read-back. Only an affirmative reply confirms."""
-        reply = classify_reply(utterance, self.asks_time)
+        reply = classify_reply(utterance, self.asks_time, self.asks_mistake)
         if self.status == Status.AWAITING and not self.readback_interrupted:
             if reply == Reply.AFFIRMATIVE and self.read_back_value == self.value:
                 self.status = Status.CONFIRMED
@@ -216,7 +230,7 @@ class FieldState:
                            "speaking, then call confirm_field again; do not ask the caller to repeat")
         if self.name == "callback_number" and _foreign_digits(last_caller_utterance, value):
             return False, "the reply contains a different number; save it and read it back again"
-        reply = classify_reply(last_caller_utterance, self.asks_time)
+        reply = classify_reply(last_caller_utterance, self.asks_time, self.asks_mistake)
         if reply != Reply.AFFIRMATIVE:
             return False, f"caller reply is {reply.value}; ask again"
         self.answer(last_caller_utterance, t_ms)

@@ -415,7 +415,7 @@ class ReceptionService:
             elif name == "flag_emergency":
                 res = self._emergency(call, args)
             elif name == "save_fields":
-                res, logged_args = self._save_fields(sess, snap, args)
+                res, logged_args = self._save_fields(sess, snap, args, call)
             elif name == "offer_line_number":
                 res = self._offer_line_number(call, sess, snap)
             elif name == "request_summary":
@@ -440,10 +440,11 @@ class ReceptionService:
             self._persist(call_id, sess)
             return res
 
-    def _save_fields(self, sess: CallSession, snap: dict, args: dict) -> tuple[dict, dict]:
+    def _save_fields(self, sess: CallSession, snap: dict, args: dict, call: dict | None = None) -> tuple[dict, dict]:
         """Several heard values in one tool call (an empty string = not heard). One call instead of one per
         value: each tool call is a pause before the AI speaks again (2026-10-13: six calls in a row)."""
         saved, skipped, logged = {}, [], {}
+        had_name = bool(sess.tools.store.fields.get("caller_name") and sess.tools.store.fields["caller_name"].value)
         for field in S.FIELD_KEYS:
             value = str(args.get(field) or "").strip()
             if not value:
@@ -471,7 +472,25 @@ class ReceptionService:
         if pending[1:]:
             res["read_back_later"] = {"fields": pending[1:],
                                       "how": "お客様が「はい」と答えた後で、request_readback を呼んで復唱する"}
+        if "caller_name" in saved and not had_name and not pending:
+            res.update(self._greet_and_go_on(sess, left, (call or {}).get("caller_id")))
         return res, logged
+
+    @staticmethod
+    def _greet_and_go_on(sess: CallSession, left: list[str], line_number: str | None) -> dict:
+        """The name was just given: 「田中様でいらっしゃいますね。いつもお世話になっております。」 and, without waiting,
+        the next question. 2026-10-26 (user): callers mostly say nothing to this greeting, so the AI waited in
+        silence (Grok: 10 s until the caller said 「はい」); 「続けて…そのまましゃべっていいと思う」."""
+        name = sess.tools.store.fields["caller_name"].value
+        greeting = f"{name}様でいらっしゃいますね。いつもお世話になっております。"
+        how = "お客様のお返事を待たずに、一度の返答で続けて言う"
+        if not left:
+            return {"say": for_speech(greeting), "then": "お返事を待たずに、request_summary を呼ぶ"}
+        if left[0] == "callback_number" and line_number:
+            return {"say": for_speech(greeting), "then": "お返事を待たずに、offer_line_number を呼ぶ"}
+        if left[0] == "shop_name":   # the name came first: ask only for the shop
+            return {"say": for_speech(greeting + "恐れ入りますが、店舗名をお伺いしてもよろしいでしょうか。"), "how": how}
+        return {"say": for_speech(greeting + ASK_FOR[left[0]]), "how": how}
 
     @staticmethod
     def _still_to_ask(sess: CallSession, snap: dict, required_only: bool = False) -> list[str]:
