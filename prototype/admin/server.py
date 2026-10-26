@@ -289,14 +289,15 @@ def make_handler(app: AdminApp, allowed_hosts: set[str], log_requests: bool = Tr
             c = SimpleCookie(self.headers.get("Cookie") or "")
             return c[COOKIE].value if COOKIE in c else None
 
-        def _send(self, status: int, data: bytes, ctype: str, extra: dict | None = None, page: bool = False) -> None:
+        def _send(self, status: int, data: bytes, ctype: str, extra: dict | None = None, page: bool = False,
+                  frame: str = "DENY") -> None:
             self.send_response(status)
             self.send_header("Content-Type", ctype)
             self.send_header("Content-Length", str(len(data)))
             self.send_header("Cache-Control", "no-store")
             self.send_header("X-Content-Type-Options", "nosniff")
             self.send_header("Referrer-Policy", "no-referrer")
-            self.send_header("X-Frame-Options", "DENY")
+            self.send_header("X-Frame-Options", frame)
             if page:
                 self.send_header("Content-Security-Policy", CSP)
             for k, v in (extra or {}).items():
@@ -363,6 +364,8 @@ def make_handler(app: AdminApp, allowed_hosts: set[str], log_requests: bool = Tr
                 return self._guard(lambda: self._json(200, app.get(path, query, user)))
             if path in ("/", "/index.html"):
                 return self._file(STATIC, "index.html", page=True) if user else self._redirect("/login")
+            if path == "/test":   # the test page (2026-10-26: all the tests in one place)
+                return self._redirect("/#/test" if user else "/login?next=/test")
             if path == "/lab":
                 return self._redirect("/lab/")
             if path.startswith("/lab/"):
@@ -375,7 +378,9 @@ def make_handler(app: AdminApp, allowed_hosts: set[str], log_requests: bool = Tr
                 found = labsrv.static_file(sub)
                 if found is None:
                     return self._json(HTTPStatus.NOT_FOUND, {"error": "not found"})
-                return self._send(200, found[0], found[1])
+                # the lab page is shown inside this app's 「試験」 page (2026-10-26), from this app only
+                return self._send(200, found[0], found[1], {"Content-Security-Policy": "frame-ancestors 'self'"},
+                                  frame="SAMEORIGIN")
             return self._json(HTTPStatus.NOT_FOUND, {"error": "not found"})
 
         do_HEAD = do_GET
@@ -472,14 +477,13 @@ def main() -> int:
         print(f"注意：同じネットワークの他の端末から開けます：{addrs}。HTTPSではないため、自宅・事務所のWi-Fiの中だけで、"
               "架空のデータで使ってください。", flush=True)
     if args.setup:
-        url = f"http://127.0.0.1:{port}/lab/"
+        url = f"http://127.0.0.1:{port}/test"
         print("", flush=True)
-        print("準備ができました。ブラウザーで会話試験の画面が開きます。", flush=True)
+        print("準備ができました。ブラウザーで試験の画面が開きます。", flush=True)
         print(f"  開かないときは、ブラウザーの上の住所の欄に入力：{url}", flush=True)
         print("  ログイン：ユーザー名 admin と、決めたパスワード", flush=True)
-        print("  管理画面（設定・受付履歴・費用の台帳）：http://127.0.0.1:%d/" % port, flush=True)
         print("この黒い画面は、試験が終わるまで閉じないでください。終えるときは、この画面を閉じます。", flush=True)
-        webbrowser.open(f"http://127.0.0.1:{port}/login?next=/lab/")
+        webbrowser.open(f"http://127.0.0.1:{port}/login?next=/test")
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:

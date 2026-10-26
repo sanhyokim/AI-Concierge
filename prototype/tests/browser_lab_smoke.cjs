@@ -81,6 +81,8 @@ function fail(msg) { console.error("FAIL:", msg); process.exitCode = 1; }
     // AI refusal: the server refuses further AI work and the page closes the connection
     await page.click("#startBtn");
     await page.waitForFunction(() => document.getElementById("status").textContent.startsWith("会話中"), null, { timeout: 15000 });
+    // the simulated refusal sits in the folded 詳しい設定 (2026-10-26)
+    await page.evaluate(() => { document.getElementById("refuseBtn").closest("details").open = true; });
     await page.click("#refuseBtn");
     await page.waitForFunction(() => document.getElementById("status").textContent === "終了", null, { timeout: 15000 });
     const refused = await page.evaluate(() => window.__lab.events.some((e) => e.kind === "AIの拒否（模擬）"));

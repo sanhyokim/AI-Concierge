@@ -55,9 +55,15 @@ const head = (title, lead = "", actions = "") => `<div class="page-head"><div><h
 
 // --- router -----------------------------------------------------------------------------------------------
 const routes = {};
+// The tests in one place (user, 2026-10-26: 「テストはテストページ一か所でまとめてほしい」): one menu item, three tabs
+const TEST_PAGES = ["test", "demo", "ledger"];
+const testTabs = (on) => `<nav class="page-tabs" aria-label="試験の種類">${[["test", "声で話す", "AIと実際に話す"],
+  ["demo", "文字で試す", "受付・要約・通知の流れ"], ["ledger", "費用", "試験の費用の記録"]].map(([k, l, d]) =>
+  `<a href="#/${k}" class="${k === on ? "on" : ""}" ${k === on ? 'aria-current="page"' : ""}><b>${l}</b><span>${d}</span></a>`).join("")}</nav>`;
 async function render() {
   const [, name = "", arg] = location.hash.split("/");
-  document.querySelectorAll("#nav a").forEach((a) => a.classList.toggle("active", a.getAttribute("href") === `#/${name === "call" ? "calls" : name}`));
+  const menu = name === "call" ? "calls" : TEST_PAGES.includes(name) ? "test" : name;
+  document.querySelectorAll("#nav a").forEach((a) => a.classList.toggle("active", a.getAttribute("href") === `#/${menu}`));
   resetView();
   view.innerHTML = `<p class="muted">読み込み中…</p>`;
   try { await (routes[name] || routes[""])(arg ? decodeURIComponent(arg) : undefined); }
@@ -71,7 +77,7 @@ window.addEventListener("hashchange", render);
 routes[""] = async () => {
   const [s, c] = await Promise.all([api("/api/status"), api("/api/calls")]);
   view.innerHTML = `${head("ホーム", "AIの電話受付の設定と、最近の受付の一覧です。",
-      `<a class="button" href="/lab/">会話試験</a><a class="button primary" href="#/demo">着信テスト</a>`)}
+      `<a class="button primary" href="#/test">試験</a>`)}
   <div class="grid">
     <section class="card stat"><span class="label">AI受付のオン・オフ</span><span class="value">NTTの転送の切り替えで行います</span>
       <span class="sub">このアプリからは変えられません。</span>
@@ -170,7 +176,7 @@ routes.voice = async () => {
         <td data-label=""><button class="small danger" data-del="${i}">削除</button></td></tr>`;
     }).join("");
   };
-  view.innerHTML = `${head("音声", "声を登録し、表示名（例：女性）を付けます。会話試験では、AIを選んだ後に<b>この表示名で声を選べます</b>。「使う」は、着信テストと、会話試験の最初の選択の声です。")}
+  view.innerHTML = `${head("音声", "声を登録し、表示名（例：女性）を付けます。試験の「声で話す」では、AIを選んだ後に<b>この表示名で声を選べます</b>。「使う」は、「文字で試す」と「声で話す」で最初に選ばれる声です。")}
     <section class="card"><table class="stack"><thead><tr><th>使う</th><th>表示名</th><th>接続候補</th><th>声（名前・ID）</th><th>状態</th><th></th></tr></thead><tbody id="voiceRows"></tbody></table>
     <div class="form-actions"><button id="addVoice">＋ 声を追加</button><button class="primary" id="saveVoices">保存</button></div></section>
     <section class="card"><details><summary>接続候補と声の状態</summary><table class="stack"><thead><tr><th>候補</th><th>状態</th><th>声の候補</th><th>声の指定の方法</th><th>この画面の声の反映</th></tr></thead><tbody>
@@ -200,7 +206,7 @@ function notifySummary(n) {
   return parts.join("・") || "—";
 }
 function callsTable(calls) {
-  if (!calls.length) return `<p class="muted">まだ受付はありません。<a href="#/demo">着信テスト</a>で作れます。</p>`;
+  if (!calls.length) return `<p class="muted">まだ受付はありません。<a href="#/demo">試験の「文字で試す」</a>で作れます。</p>`;
   return `<table class="stack"><thead><tr><th>日時</th><th>種類</th><th>経路</th><th>店舗・お名前</th><th>折り返し先</th><th>用件</th><th>通知</th><th>対応</th></tr></thead><tbody>
   ${calls.map((c) => `<tr><td data-label="日時"><a href="#/call/${encodeURIComponent(c.id)}">${esc(fmt(c.started_at))}</a></td>
     <td data-label="種類">${esc(c.source_label)}${c.emergency ? ` <span class="badge bad">${c.emergency === "obvious" ? "緊急" : "要注意"}</span>` : ""}</td>
@@ -212,7 +218,7 @@ function callsTable(calls) {
 }
 routes.calls = async () => {
   const { calls } = await api("/api/calls");
-  view.innerHTML = `${head("受付履歴", "着信テストと会話試験の記録です（会社の回線の着信はありません）。日時を押すと詳しく見られます。")}<section class="card">${callsTable(calls)}</section>`;
+  view.innerHTML = `${head("受付履歴", "試験（文字で試す・声で話す）の記録です（会社の回線の着信はありません）。日時を押すと詳しく見られます。")}<section class="card">${callsTable(calls)}</section>`;
 };
 
 function eventText(e) {
@@ -406,7 +412,8 @@ const QUICK = ["点検は無料ですか？", "駐車場はありますか？", 
 const demo = { call: null };
 routes.demo = async () => {
   const now = new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 16);
-  view.innerHTML = `${head("着信テスト", "架空の着信で、受付・要約・通知の流れを確かめます。AIの代わりに<b>決まった規則で動く試験用の応答</b>を使うので、会話のAIの性能は分かりません（それは会話試験で見ます）。業務処理は本番と同じです。")}
+  view.innerHTML = `${head("試験")}${testTabs("demo")}
+  <p class="sub">架空の着信を文字で入れて、受付・要約・通知の流れを確かめます。AIの代わりに<b>決まった規則で動く試験用の応答</b>を使うので、会話のAIの性能は分かりません（それは「声で話す」で見ます）。業務処理は本番と同じです。</p>
   <div class="grid">
     <section class="card"><h2>1. 架空の着信を入れる</h2>
       <label>着信先 <select id="dialed"><option>0120-77-3408</option><option>092-504-2185</option><option>不明</option></select></label>
@@ -526,12 +533,25 @@ async function showResult(c) {
     <p><a href="#/call/${encodeURIComponent(c.id)}">受付の詳細（補正・再送・再投入）を開く</a></p>`;
 }
 
+// --- test: talking with the AI (the lab page, shown inside this app) ---------------------------------------
+routes.test = async () => {
+  view.innerHTML = `${head("試験")}${testTabs("test")}
+    <iframe id="labFrame" class="lab-frame" src="/lab/?embed=1" allow="microphone; autoplay" title="声で話す試験"></iframe>`;
+};
+window.addEventListener("message", (e) => {   // the lab page tells its height, so the page scrolls as one
+  const f = document.getElementById("labFrame");
+  if (f && e.origin === location.origin && e.source === f.contentWindow && e.data && e.data.labHeight) {
+    f.style.height = `${Math.ceil(e.data.labHeight) + 4}px`;
+  }
+});
+
 // --- ledger -----------------------------------------------------------------------------------------------
 const usd = (v) => `$${Number(v || 0).toFixed(4)}`;
 routes.ledger = async () => {
   const l = await api("/api/ledger");
   const rows = Object.entries(l.ledgers).filter(([, x]) => x.cap_usd !== 0 || x.requests || x.open_reservations);
-  view.innerHTML = `${head("費用の台帳", `会話試験の費用の見込みと実際の額です。${esc(l.note)}`)}
+  view.innerHTML = `${head("試験")}${testTabs("ledger")}
+    <p class="sub">声で話す試験の費用の見込みと実際の額です。${esc(l.note)}</p>
     <section class="card"><table class="stack"><thead><tr><th>台帳</th><th>会話の数</th><th>合計（推定・照合済み）</th><th>うち照合待ちの留保</th><th>照合待ち</th><th>上限</th></tr></thead><tbody>
     ${rows.map(([v, x]) => `<tr><td data-label="台帳">${esc(v)}</td><td data-label="会話の数">${x.requests}</td><td data-label="合計">${usd(x.est_cost_usd)}</td><td data-label="留保">${usd(x.held_usd)}</td><td data-label="照合待ち">${x.open_reservations}件</td><td data-label="上限">${x.cap_usd == null ? "なし" : `$${x.cap_usd}`}</td></tr>`).join("")}
     </tbody></table></section>

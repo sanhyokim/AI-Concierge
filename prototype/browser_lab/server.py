@@ -46,7 +46,7 @@ from .config import (APPLY_LABELS, CANDIDATES, DELEGATION_PRICES, LAB_LIMITS, LA
                      LAB_RULES, LAB_STAGES, LOGIC_PATHS, MAX_BACKEND_RESPONSES, MAX_MINT_FAILURES, MAX_RESPONSE_CREATES,
                      MAX_SESSION_MIN, MAX_TOOL_CALLS, SESSION_GRACE_S, SESSIONS, apply_modes, delegation_model,
                      public_candidates, released, session_reserve_usd, voice_applies)
-from ..reception.settings import VOICE_CATALOG
+from ..reception.settings import VOICE_CATALOG, voice_type
 
 STATIC = pathlib.Path(__file__).resolve().parent / "static"
 RESULTS = pathlib.Path(__file__).resolve().parents[1] / "results" / "browser-lab"
@@ -165,9 +165,10 @@ class Lab:
             return {"choices": [], "default": ""}
         _, cfg, _ = self.service.config()
         mine = [v for v in cfg["voices"] if v["candidate"] == candidate]
-        out = [{"key": v["id"], "label": v["label"] or v["voice"], "voice": v["voice"]} for v in mine]
+        out = [{"key": v["id"], "label": v["label"] or v["voice"], "voice": v["voice"],
+                "type": voice_type(candidate, v["voice"], v["label"])} for v in mine]
         names = {v["voice"] for v in mine}
-        out += [{"key": f"catalog:{n}", "label": f"{n}（名前は未登録）", "voice": n}
+        out += [{"key": f"catalog:{n}", "label": n, "voice": n, "type": voice_type(candidate, n)}
                 for n in VOICE_CATALOG.get(candidate, {}).get("voices", []) if n not in names]
         active = next((v["id"] for v in mine if v["id"] == cfg["active_voice"]), None)
         return {"choices": out, "default": active or (out[0]["key"] if out else "")}
@@ -570,13 +571,24 @@ class Lab:
 
 # --- request handling shared with the admin app (/lab/...) -------------------------------------------------
 
+def call_cost_yen() -> dict:
+    """Candidate id -> the AI part of one 3-minute call in yen (prototype/cost: the same figures as the cost table)."""
+    try:
+        from ..cost import candidate_costs as cc
+        return {c["id"]: round(cc.ai_part(c).jpy_total()) for c in cc.candidates()}
+    except Exception:   # the cost table is a guide; the page works without it
+        return {}
+
+
 def api_get(lab: Lab, path: str, csrf: str = "") -> dict | None:
     path = path.split("?")[0]
     if path == "/api/candidates":
         cands = [c for c in public_candidates(lab.env) if not c["hold"]]   # held candidates are not offered
+        costs = call_cost_yen()
         for c in cands:
             c["counts"] = lab.counts(c["id"])
             c["voices"] = lab.voice_choices(c["id"])
+            c["call_yen"] = costs.get(c["id"])   # the AI part of one 3-minute call, with tax (cost table)
         return {"candidates": cands, "stage": lab.stage, "stage_label": LAB_STAGES[lab.stage]}
     if path == "/api/sessions":
         return {"sessions": lab.sessions_view()}

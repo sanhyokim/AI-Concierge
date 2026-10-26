@@ -18,7 +18,7 @@ const SCENARIOS = [
             "AIが止まらずに、そのまま話し続けるかを聞く",
             "日にちを聞かれたら「明後日でお願いします。」、続けて「明後日って何日でしたっけ？」",
             "AIが答えた日付と曜日が、今日から2日後と合っているかを確かめる",
-            "「以上です。ありがとうございました。」と言い、AIの最後のあいさつの後、電話が切れる（ツー・ツー・ツー）のを待つ。切れなければ「終える」を押す"] },
+            "「以上です。ありがとうございました。」と言い、AIの最後のあいさつの後、電話が切れる（ツー・ツー・ツー）のを待つ。切れなければ「電話を切る」を押す"] },
   { id: "C2", title: "「はい、違います」からの訂正", how: "AIの復唱の途中で「はい、違います。電話番号は…」と訂正する",
     check: "冒頭の「はい」を肯定にしない。訂正を聞き、正しい番号を復唱し、肯定まで確認済みにしない",
     lines: ["AIのあいさつを最後まで聞く",
@@ -26,35 +26,35 @@ const SCENARIOS = [
             "電話番号を聞かれたら「折り返しは、090-1234-5678です。」",
             "AIが番号を読み上げ始めたら、途中で「はい、違います。末尾は5679です。」",
             "AIが正しい番号（…5679）を読み直したら「はい、合っています。」",
-            "ほかに聞かれたら答え、最後に「以上です。」と言い、AIの最後のあいさつの後、電話が切れる（ツー・ツー・ツー）のを待つ。切れなければ「終える」を押す"] },
+            "ほかに聞かれたら答え、最後に「以上です。」と言い、AIの最後のあいさつの後、電話が切れる（ツー・ツー・ツー）のを待つ。切れなければ「電話を切る」を押す"] },
   { id: "C3", title: "停止の求め", how: "AIの発話の最初・途中・終わり際で「ちょっと待って」と言う",
     check: "止まって待つ。言い終えていない部分を伝えた扱いにしない",
     lines: ["AIのあいさつを聞いてから「点検は無料ですか？」",
             "AIが答え始めたら、すぐに「ちょっと待って」",
             "2〜3秒黙ってから「すみません、続けてください」",
             "AIの返事の途中と、終わり際でも「ちょっと待って」と言ってみる",
-            "「以上です。」と言い、AIの最後のあいさつの後、電話が切れる（ツー・ツー・ツー）のを待つ。切れなければ「終える」を押す"] },
+            "「以上です。」と言い、AIの最後のあいさつの後、電話が切れる（ツー・ツー・ツー）のを待つ。切れなければ「電話を切る」を押す"] },
   { id: "C4", title: "間と言い直し", how: "考えて一度間を空け、同じ内容を言い直す",
     check: "発話の終わりを早まって決めない。言い直した後の意味で受け付ける",
     lines: ["AIのあいさつを聞く",
             "「えーと……（2秒黙る）……焼肉ほのか博多店です。」",
             "「用件は、清掃の……いや、点検をお願いしたいです。」",
             "AIが「点検」として受け付けたか（清掃と取り違えていないか）を聞く",
-            "「以上です。」と言い、AIの最後のあいさつの後、電話が切れる（ツー・ツー・ツー）のを待つ。切れなければ「終える」を押す"] },
+            "「以上です。」と言い、AIの最後のあいさつの後、電話が切れる（ツー・ツー・ツー）のを待つ。切れなければ「電話を切る」を押す"] },
   { id: "C5", title: "処理中の追加・訂正", how: "（業務処理を4秒遅らせる）その間に用件を追加・訂正する",
     check: "処理中も聞ける。結果を先に約束しない。保存・要約と会話が食い違わない",
     lines: ["「焼肉ほのか博多店の田中です。無煙ロースター8台の清掃をお願いします。」",
             "AIが確認や処理をしている間（約4秒）に「あと、ダクトの点検もお願いします。」",
             "「希望日は10月8日の午後3時です。……すみません、9日の金曜日に変更してください。」",
             "最後にAIがまとめた内容（清掃＋ダクトの点検、9日の金曜日）が合っているかを聞く",
-            "「以上です。」と言い、AIの最後のあいさつの後、電話が切れる（ツー・ツー・ツー）のを待つ。切れなければ「終える」を押す"] },
+            "「以上です。」と言い、AIの最後のあいさつの後、電話が切れる（ツー・ツー・ツー）のを待つ。切れなければ「電話を切る」を押す"] },
   { id: "C6", title: "専門用語・番号・日時", how: "株式会社野田、ダクト、無煙ロースター、電話番号、日付・時間を伝える",
     check: "発音・受付の正確さ。電話番号・日時を区切って明瞭に復唱し、確認する（部分減速は必須ではない）",
     lines: ["「株式会社野田さんですよね。無煙ロースターとダクトの清掃をお願いしたいです。」",
             "電話番号を聞かれたら「090-1234-5678です。」",
             "日時を聞かれたら「10月9日、金曜日の午後3時でお願いします。」",
             "AIの読み方（会社名・ダクト・番号・日時）が正しく、聞き取りやすいかを聞く",
-            "「以上です。」と言い、AIの最後のあいさつの後、電話が切れる（ツー・ツー・ツー）のを待つ。切れなければ「終える」を押す"] },
+            "「以上です。」と言い、AIの最後のあいさつの後、電話が切れる（ツー・ツー・ツー）のを待つ。切れなければ「電話を切る」を押す"] },
   { id: "C7", title: "ふだんの話し方", how: "名乗らずに質問から入り、情報を小出しにし、あいまいに言い、途中で言い直す",
     check: "足りない情報（店名・名前・電話番号）を一つずつ自然に聞けるか。言い直し（8台→7台）を取り込むか。" +
       "あいまいな日時を確定したことにしないか。話がそれた後に自然に戻れるか",
@@ -65,7 +65,7 @@ const SCENARIOS = [
             "日時を聞かれたら「来週のどっかで。午後なら大体いけます。」",
             "「あ、ちょっと待ってください……すみません、どこまで話しましたっけ。」",
             "電話番号を聞かれたら「090の1234の5678です。」",
-            "「以上で。」と言い、AIの最後のあいさつの後、電話が切れる（ツー・ツー・ツー）のを待つ。切れなければ「終える」を押す（AIが聞いてきた順に合わせて答える）"] },
+            "「以上で。」と言い、AIの最後のあいさつの後、電話が切れる（ツー・ツー・ツー）のを待つ。切れなければ「電話を切る」を押す（AIが聞いてきた順に合わせて答える）"] },
 ];
 // Audio-only judgments (any candidate) and business-logic judgments (only where tool calls reached the server).
 const JUDGE_AUDIO = [
@@ -104,6 +104,14 @@ function log(kind, data) {
   line.textContent = `${(t / 1000).toFixed(2)}s [${st.scenario}] ${kind}${data === undefined ? "" : " " + (typeof data === "string" ? data : JSON.stringify(data))}`;
   $("log").appendChild(line);
   $("log").scrollTop = $("log").scrollHeight;
+  if (kind === "AI" || kind === "お客様") {   // the conversation itself, as a chat (user, 2026-10-24: show the lines)
+    const b = document.createElement("div");
+    b.className = `say ${kind === "AI" ? "ai" : "user"}`;
+    b.innerHTML = `<small>${kind}</small>`;
+    b.append(String(data));
+    $("talk").appendChild(b);
+    $("talk").scrollTop = $("talk").scrollHeight;
+  }
 }
 
 async function post(url, body) {
@@ -351,6 +359,7 @@ async function stopAi(reason, label) {
   const n = st.transcripts.length;
   st.transcripts = [];
   st.events = st.events.filter((e) => e.kind !== "お客様" && e.kind !== "AI");
+  $("talk").innerHTML = "";
   log(label, `AIへの送信と再生を止め、接続を閉じる。拒否より前の文字起こし${n}件を結果から除いた（サーバーでも削除）。` +
     "認識されるまでに業者へ送った音声は取り消せない");
   await stop(`${label}（${reason}）`);
@@ -432,7 +441,7 @@ async function start() {
   $("saveBtn").disabled = true;
   st.user = { on: false, since: null, below: null, startT: null };
   st.ai = { on: false, since: null, below: null, startT: null };
-  $("metrics").innerHTML = ""; $("log").innerHTML = ""; $("saved").textContent = ""; updateSummary();
+  $("metrics").innerHTML = ""; $("log").innerHTML = ""; $("talk").innerHTML = ""; $("saved").textContent = ""; updateSummary();
   try {
     $("status").textContent = "マイクを準備中";
     const echo = $("echo").checked;
@@ -455,7 +464,7 @@ async function start() {
     const c = st.session.counts || {};
     $("callInfo").innerHTML = `業務処理：${esc(st.session.logic_path)}。受付の記録 <code>${esc(st.session.call_id)}</code>（設定 v${esc(st.session.config_version)}、FAQ ${esc(st.session.faq_codes.join(", "))}）` +
       `。開始 ${c.sessions}回目${c.limit != null ? `（上限${c.limit}回）` : "（回数の上限なし）"}` +
-      (location.pathname.startsWith("/lab/") ? ` <a href="../#/call/${encodeURIComponent(st.session.call_id)}" target="_blank" rel="noopener">管理画面で開く</a>` : "") +
+      (location.pathname.startsWith("/lab/") ? ` <a href="../#/call/${encodeURIComponent(st.session.call_id)}" target="_blank" rel="noopener">受付記録を開く（別のタブ）</a>` : "") +
       appliedText(st.session.applied);
     const mod = await import(`./adapters/${st.session.adapter}.js`);
     st.conn = await mod.connect(makeCtx(st.session.credentials));
@@ -609,6 +618,23 @@ async function loadCandidates() {
   const first = st.candidates.find((c) => c.id === keep && c.ready) || st.candidates.find((c) => c.ready && c.id !== "fake")
     || st.candidates.find((c) => c.ready);
   if (first) $("candidate").value = first.id;
+  const state = (c) => c.hold ? ["ng", "保留中"] : !c.ready ? ["ng", `キーが未設定（${c.missing_env.join("・")}）`]
+    : c.id === "fake" ? ["ok", "模擬（音だけ・無料）"] : ["ok", c.verified ? "使える" : "使える（接続は試験中）"];
+  const drawCards = () => {
+    $("candCards").innerHTML = st.candidates.map((c) => {
+      const [k, label] = state(c);
+      const cost = c.id === "fake" ? "費用なし" : c.call_yen != null ? `3分 約${c.call_yen}円` : "";
+      return `<button type="button" class="pick ${c.id === $("candidate").value ? "on" : ""}" data-cand="${esc(c.id)}" ` +
+        `role="radio" aria-checked="${c.id === $("candidate").value}" ${c.ready ? "" : "disabled"}>` +
+        `<span class="name">${esc(c.name)}</span><span class="sub2">${esc(cost)}</span><span class="state ${k}">${esc(label)}</span></button>`;
+    }).join("");
+  };
+  $("candCards").onclick = (e) => {
+    const b = e.target.closest("[data-cand]");
+    if (!b || b.disabled || $("startBtn").disabled) return;   // not while a call is on
+    $("candidate").value = b.dataset.cand;
+    $("candidate").dispatchEvent(new Event("change"));
+  };
   // the voice is chosen by its name under the AI (user, 2026-10-21); names are set on the admin 「音声」 page
   const showVoices = () => {
     const c = st.candidates.find((x) => x.id === $("candidate").value);
@@ -621,8 +647,25 @@ async function loadCandidates() {
     sel.disabled = !opts.length;
     sel.value = before !== null && [...sel.options].some((o) => o.value === before) ? before : v.default;
     sel.dataset.for = c ? c.id : "";
+    const kinds = new Map(v.choices.map((x) => [x.key, x.type || {}]));
+    $("voiceChips").innerHTML = [...sel.options].map((o) => {
+      const t = o.value ? kinds.get(o.value) || {} : {};
+      const g = o.value ? t.gender || "資料なし" : "";
+      const note = [t.style, t.source && t.source !== "公式" ? t.source : ""].filter(Boolean).join("・");
+      return `<button type="button" class="pick ${o.value === sel.value ? "on" : ""}" data-voice="${esc(o.value)}" ` +
+        `role="radio" aria-checked="${o.value === sel.value}" ${sel.disabled ? "disabled" : ""}>` +
+        `<span class="name">${esc(o.textContent)}${g ? `<span class="g g-${esc(g)}">${esc(g)}</span>` : ""}</span>` +
+        `${note ? `<span class="sub2">${esc(note)}</span>` : ""}</button>`;
+    }).join("");
+  };
+  $("voiceChips").onclick = (e) => {
+    const b = e.target.closest("[data-voice]");
+    if (!b || b.disabled || $("startBtn").disabled) return;   // not while a call is on
+    $("voice").value = b.dataset.voice;
+    showVoices();
   };
   const showNote = () => {
+    drawCards();
     showVoices();
     const c = st.candidates.find((x) => x.id === $("candidate").value);
     if (!c) { $("candNote").innerHTML = ""; $("limit").textContent = ""; return; }
@@ -632,7 +675,7 @@ async function loadCandidates() {
       (c.hold ? "" : `<p>これまで${n.sessions}回・1回の会話は${esc(String(c.max_session_min))}分で止まります</p>`) + envHelp(c) +
       `<details><summary>この候補について</summary><p>${c.verified ? "" : "接続未確認の構成です。"}業務処理の経路：${esc(c.logic_path)}。${esc(c.note || "")}</p>` +
       `<p>管理画面の設定の反映：指示 ${esc(c.applies.instructions)}／声 ${esc(c.applies.voice)}</p></details>`;
-    $("limit").textContent = `1回の会話は${c.max_session_min}分で自動的に止まります（画面を閉じても、サーバーが止めます）。AIが最後のあいさつの後に電話を切ります。切れないときや、途中でやめるときは「終える」を押してください。` +
+    $("limit").textContent = `1回の会話は${c.max_session_min}分で自動的に止まります（画面を閉じても、サーバーが止めます）。AIが最後のあいさつの後に電話を切ります。切れないときや、途中でやめるときは「電話を切る」を押してください。` +
       `費用は、会話ごとに台帳へ見込みを記録します（最大時間×$${c.upper_usd_per_min}/分。GPT-Liveは裏方のモデルの分を足す）。` +
       "回数と費用の上限はありません。業者側の予算の設定（OpenAIの月の予算など）は残しておいてください。";
   };
@@ -646,5 +689,15 @@ $("saveBtn").addEventListener("click", () => save(false));
 $("refuseBtn").addEventListener("click", () => refuseAi().catch((e) => log("エラー", String(e.message || e))));
 renderStatic();
 loadCandidates();
-if (location.pathname.startsWith("/lab/")) $("backLink").hidden = false;   // served by the admin app: link back to it
+// 2026-10-26 (user): the tests are in one place, the admin app's 「試験」 page, which shows this page inside it.
+// Opened on its own from the admin app (an old bookmark), it goes there; the stand-alone lab server keeps it.
+const embedded = window.top !== window.self || new URLSearchParams(location.search).has("embed");
+if (embedded) {
+  document.body.classList.add("embedded");
+  const tell = () => window.parent.postMessage({ labHeight: document.documentElement.scrollHeight }, location.origin);
+  new ResizeObserver(tell).observe(document.body);
+  tell();
+} else if (location.pathname.startsWith("/lab/")) {
+  location.replace("/#/test");
+}
 window.__lab = st;   // for the automated smoke test

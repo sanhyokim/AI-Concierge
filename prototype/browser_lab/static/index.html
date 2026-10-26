@@ -72,80 +72,127 @@
     .lab { padding: 14px 12px 40px; }
     .lab-top { padding: 10px 12px; }
   }
+  /* 2026-10-26 (user): 「誰が見ても直観でわかるUI」: one column of numbered steps, used from top to bottom */
+  .lab.steps { max-width: 980px; }
+  .step > h2 { display: flex; align-items: center; gap: 10px; font-size: 17px; margin: 0 0 12px; }
+  .step > h2 .num { display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: var(--accent); color: var(--accent-fg); font-size: 14px; flex: none; }
+  .step > h2 .hint { font-size: 13px; font-weight: 400; color: var(--muted); }
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .pick-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; }
+  .pick { display: block; text-align: left; width: 100%; padding: 12px 14px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--surface); color: var(--fg); cursor: pointer; min-height: 0; }
+  .pick:hover:not(:disabled) { border-color: var(--accent); }
+  .pick.on { border: 2px solid var(--accent); padding: 11px 13px; background: var(--accent-soft); }
+  .pick:disabled { opacity: .55; cursor: not-allowed; }
+  .pick .name { display: block; font-weight: 700; font-size: 15px; }
+  .pick .sub2 { display: block; font-size: 12.5px; color: var(--muted); margin-top: 3px; }
+  .pick .state { display: inline-block; margin-top: 6px; font-size: 12px; font-weight: 600; }
+  .pick .state.ok { color: var(--good); } .pick .state.ng { color: var(--warn); }
+  .voice-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+  .voice-grid .pick { width: auto; min-width: 150px; }
+  .g { display: inline-block; margin-left: 6px; padding: 0 8px; border-radius: 999px; font-size: 12px; font-weight: 700; vertical-align: 1px; }
+  .g-女性 { background: #fde4ec; color: #a3184a; } .g-男性 { background: #e2ecfb; color: #1f4f8f; }
+  .g-中性 { background: #ece6fb; color: #5b3aa8; } .g-資料なし { background: var(--chip); color: var(--muted); }
+  @media (prefers-color-scheme: dark) {
+    .g-女性 { background: #4a1f2e; color: #ffb3c9; } .g-男性 { background: #1b2a44; color: #9cc0ff; } .g-中性 { background: #2e2447; color: #cdb8ff; }
+  }
+  .voice-note { font-size: 12.5px; color: var(--muted); margin: 10px 0 0; }
+  .callpanel { text-align: center; }
+  .callpanel .callstate { justify-content: center; gap: 16px; }
+  .bigbtn { font-size: 18px; font-weight: 700; padding: 14px 40px; border-radius: 999px; min-width: 260px; }
+  #stopBtn.bigbtn { background: var(--bad); border-color: var(--bad); color: var(--bg); }
+  .callbtns { display: flex; justify-content: center; }
+  .callbtns button:disabled { display: none; }
+  .callbtns:has(#startBtn:disabled):has(#stopBtn:disabled) #startBtn { display: inline-block; }
+  .meters { max-width: 460px; margin: 12px auto 0; }
+  #talk { text-align: left; margin-top: 14px; max-height: 420px; overflow: auto; display: flex; flex-direction: column; gap: 8px; padding: 12px; background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--radius-sm); }
+  #talk:empty::before { content: "電話をかけると、AIとお客様のセリフがここに順に出ます。"; color: var(--faint); font-size: 13.5px; }
+  .say { max-width: 80%; padding: 8px 12px; border-radius: 12px; font-size: 14.5px; line-height: 1.6; }
+  .say small { display: block; font-size: 11.5px; font-weight: 700; margin-bottom: 2px; opacity: .75; }
+  .say.ai { align-self: flex-start; background: var(--surface); border: 1px solid var(--line); }
+  .say.user { align-self: flex-end; background: var(--accent-soft); }
+  .more > summary { font-weight: 600; }
+  body.embedded .lab-top, body.embedded .page-head { display: none; }
+  body.embedded .lab { padding-top: 4px; }
 </style>
 </head>
 <body>
 <header class="lab-top">
-  <div class="brand"><span class="mark" aria-hidden="true">野</span>会話試験<span class="tag">試作</span></div>
-  <a id="backLink" class="button" href="../#/" hidden>← 管理画面へ</a>
+  <div class="brand"><span class="mark" aria-hidden="true">野</span>試験（声で話す）<span class="tag">試作</span></div>
 </header>
-<main class="lab">
-  <div class="page-head"><div><h1>会話試験</h1><p>AIと実際に話して、受付の会話を確かめます。名前・番号などは、台本の架空のものを使ってください。</p></div></div>
+<main class="lab steps">
+  <div class="page-head"><div><h1>試験（声で話す）</h1><p>AIと実際に話して、受付の会話を確かめます。名前・番号などは、台本の架空のものを使ってください。</p></div></div>
 
-  <details class="card about"><summary>この画面について（計測・費用・進め方）</summary>
+  <section class="card step">
+    <h2><span class="num">1</span>AIを選ぶ<span class="hint">費用は、3分の電話1回の目安（AIの分・税込）</span></h2>
+    <div id="candCards" class="pick-grid" role="radiogroup" aria-label="AI"></div>
+    <select id="candidate" class="sr-only" aria-hidden="true" tabindex="-1"></select>
+    <div id="candNote" class="cand-note" style="margin:10px 0 0"></div>
+  </section>
+
+  <section class="card step">
+    <h2><span class="num">2</span>声を選ぶ</h2>
+    <div id="voiceChips" class="voice-grid" role="radiogroup" aria-label="声"></div>
+    <select id="voice" class="sr-only" aria-hidden="true" tabindex="-1"></select>
+    <p class="voice-note">女性・男性の印は、AIの会社の資料によります。「非公式」は会社の資料に性別の記載がなく、ほかの資料や一般的な評価によるものです。「資料なし」は、見つからなかったものです。声の名前は、管理画面の「音声」で付けられます。</p>
+  </section>
+
+  <section class="card step">
+    <h2><span class="num">3</span>台本を選ぶ<span class="hint">「 」の中を、そのまま読みます。AIが別の順番で聞いてきたら、聞かれたことに答えます</span></h2>
+    <div id="cards"></div>
+  </section>
+
+  <section class="card step callpanel">
+    <h2><span class="num">4</span>電話をかける</h2>
+    <div class="callstate"><span class="status" id="status">待機中</span><span id="timer">0:00</span></div>
+    <div class="callbtns"><button class="primary bigbtn" id="startBtn">電話をかける</button><button class="bigbtn" id="stopBtn" disabled>電話を切る</button></div>
+    <div class="meters">
+      <div class="meter-row"><span>マイク</span><div class="meter"><div id="micBar"></div></div><span id="micDb"></span></div>
+      <div class="meter-row"><span>AIの声</span><div class="meter"><div id="aiBar"></div></div><span id="aiDb"></span></div>
+    </div>
+    <div id="talk" aria-live="polite"></div>
+    <p class="sub" id="callInfo"></p>
+  </section>
+
+  <section class="card step">
+    <h2><span class="num">5</span>終わったら、判定して保存<span class="hint">いま選んでいる台本の判定です</span></h2>
+    <div id="judge"></div>
+    <label style="margin-top:14px">メモ <textarea id="notes" rows="3" placeholder="気づいたこと（聞き取りにくい所、不自然な言い方など）"></textarea></label>
+    <div class="form-actions"><button class="primary" id="saveBtn" disabled>結果を保存</button><span id="saved"></span></div>
+  </section>
+
+  <details class="card more"><summary>詳しい設定（ふだんは触らなくて大丈夫です）</summary>
+    <label style="margin-top:12px">回線の番号（架空・空欄は非通知）
+      <input id="callerId" type="tel" placeholder="例 090-1111-2222" autocomplete="off"></label>
+    <label>音の出し方
+      <select id="output"><option value="headset">ヘッドセット（推奨）</option><option value="speaker">スピーカー</option></select></label>
+    <label class="check" style="margin-bottom:12px"><input type="checkbox" id="echo" checked> エコー抑制（ブラウザーの機能）</label>
+    <label>試験の回 <input type="number" id="round" value="1" min="1"></label>
+    <label>マイクの発話とみなす音量（dBFS） <input type="number" id="micThr" value="-42"></label>
+    <label>AIの音とみなす音量（dBFS） <input type="number" id="aiThr" value="-50"></label>
+    <button id="refuseBtn" class="small" disabled title="お客様がAIでの処理を断った想定。AIとの接続を閉じ、以降の業務処理を断る">通話中に、お客様がAIを断った想定にする（模擬）</button>
+  </details>
+
+  <details class="card more"><summary>技術の記録（開発の担当が見るもの）</summary>
+    <div class="tabs" role="tablist" style="margin-top:12px">
+      <button class="on" data-tab="logPane" role="tab">会話と業務処理の記録</button>
+      <button data-tab="metricsPane" role="tab">このパソコンでの計測</button>
+    </div>
+    <div id="logPane"><div id="log"></div></div>
+    <div id="metricsPane" hidden>
+      <table><thead><tr><th>台本</th><th>項目</th><th>値</th></tr></thead><tbody id="metrics"></tbody></table>
+      <p class="sub" id="summary" style="margin-top:8px"></p>
+    </div>
+  </details>
+
+  <details class="card more"><summary>この画面について（計測・費用・進め方）</summary>
     <ul>
-      <li>台本と業務処理（FAQ・確認・保存）は、どの候補でも同じです。FAQと声は、会話を始めたときの管理画面の設定を使います。</li>
-      <li>まず各候補で1〜2回、つながることと短い会話を確かめ、動いた候補で台本 C1〜C7 を比べます。</li>
+      <li>台本と業務処理（FAQ・確認・保存）は、どのAIでも同じです。FAQと声は、電話をかけたときの管理画面の設定を使います。</li>
+      <li>まず各AIで1〜2回、つながることと短い会話を確かめ、動いたAIで台本 C1〜C7 を比べます。</li>
       <li>計測は、このパソコンの音量で行います。2.5秒は目安で、合格の基準ではありません。実際に止まったかは、耳で判定します。</li>
-      <li>判定は「声と話し方」（どの候補でも）と「受付の処理」（業務処理が届いた会話だけ）に分けて記録します。</li>
+      <li>判定は「声と話し方」（どのAIでも）と「受付の処理」（業務処理が届いた会話だけ）に分けて記録します。</li>
     </ul>
     <p id="limit"></p>
   </details>
-
-  <div class="lab-grid">
-    <aside class="lab-side">
-      <section class="card">
-        <h2>通話</h2>
-        <label>AI（候補） <select id="candidate"></select></label>
-        <label>声 <select id="voice"></select></label>
-        <div id="candNote" class="cand-note"></div>
-        <label>回線の番号（架空・空欄は非通知）
-          <input id="callerId" type="tel" placeholder="例 090-1111-2222" autocomplete="off"></label>
-        <div class="callbox">
-          <div class="callstate"><span class="status" id="status">待機中</span><span id="timer">0:00</span></div>
-          <div class="callbtns"><button class="primary" id="startBtn">会話を始める</button><button id="stopBtn" disabled>終える</button></div>
-          <button id="refuseBtn" class="small" disabled title="お客様がAIでの処理を断った想定。AIとの接続を閉じ、以降の業務処理を断る">AIの拒否（模擬）</button>
-        </div>
-        <div class="meter-row"><span>マイク</span><div class="meter"><div id="micBar"></div></div><span id="micDb"></span></div>
-        <div class="meter-row"><span>AIの声</span><div class="meter"><div id="aiBar"></div></div><span id="aiDb"></span></div>
-        <p class="sub" id="callInfo"></p>
-        <details class="fold"><summary>詳しい設定</summary>
-          <label>音の出し方
-            <select id="output"><option value="headset">ヘッドセット（推奨）</option><option value="speaker">スピーカー</option></select></label>
-          <label class="check" style="margin-bottom:12px"><input type="checkbox" id="echo" checked> エコー抑制（ブラウザーの機能）</label>
-          <label>試験の回 <input type="number" id="round" value="1" min="1"></label>
-          <label>マイクの発話とみなす音量（dBFS） <input type="number" id="micThr" value="-42"></label>
-          <label>AIの音とみなす音量（dBFS） <input type="number" id="aiThr" value="-50"></label>
-        </details>
-      </section>
-    </aside>
-
-    <div class="lab-main">
-      <section class="card">
-        <div class="card-head"><h2>台本</h2><span class="sub">「 」の中を、そのまま読みます。AIが別の順番で聞いてきたら、聞かれたことに答えます。</span></div>
-        <div id="cards"></div>
-      </section>
-
-      <section class="card">
-        <div class="card-head"><h2>判定</h2><span class="sub">いま選んでいる台本の判定です。会話の後に記入します。</span></div>
-        <div id="judge"></div>
-        <label style="margin-top:14px">メモ <textarea id="notes" rows="3" placeholder="気づいたこと（聞き取りにくい所、不自然な言い方など）"></textarea></label>
-        <div class="form-actions"><button class="primary" id="saveBtn" disabled>結果を保存</button><span id="saved"></span></div>
-      </section>
-
-      <section class="card">
-        <div class="tabs" role="tablist">
-          <button class="on" data-tab="logPane" role="tab">会話と業務処理の記録</button>
-          <button data-tab="metricsPane" role="tab">このパソコンでの計測</button>
-        </div>
-        <div id="logPane"><div id="log" aria-live="polite"></div></div>
-        <div id="metricsPane" hidden>
-          <table><thead><tr><th>台本</th><th>項目</th><th>値</th></tr></thead><tbody id="metrics"></tbody></table>
-          <p class="sub" id="summary" style="margin-top:8px"></p>
-        </div>
-      </section>
-    </div>
-  </div>
 </main>
 <script type="module" src="./lab.js"></script>
 </body>

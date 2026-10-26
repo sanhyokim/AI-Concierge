@@ -264,12 +264,31 @@ const lastAi = (page) => page.$$eval("#chat .msg.ai", (els) => (els.at(-1) || {}
     await shot(page, "pc-demo-interrupt");
 
     // --- browser lab behind the same login, using the same reception service ----------------------------------------
+    // all the tests are one menu item with tabs (2026-10-26); the lab is shown inside it
+    await page.goto(url + "/#/test");
+    await page.waitForSelector("#labFrame");
+    check("one test item in the menu", (await page.$$eval("#nav a", (as) => as.filter((a) => a.textContent.includes("試験")).length)) === 1
+      && !(await page.textContent("#nav")).includes("着信テスト"));
+    check("the test page has the three tabs", (await page.textContent(".page-tabs")).includes("声で話す")
+      && (await page.textContent(".page-tabs")).includes("文字で試す") && (await page.textContent(".page-tabs")).includes("費用"));
+    const frame = await (await page.$("#labFrame")).contentFrame();
+    await frame.waitForFunction(() => document.querySelectorAll("#candCards .pick").length > 1);
+    check("the lab inside the test page has no header of its own", await frame.evaluate(() => document.body.classList.contains("embedded")
+      && getComputedStyle(document.querySelector(".lab-top")).display === "none"));
+    await page.waitForFunction(() => document.getElementById("labFrame").offsetHeight > 1200);
+    await shot(page, "pc-test");
+    // an old link to /lab/ opened on its own goes to the test page
     await page.goto(url + "/lab/");
+    await page.waitForFunction(() => location.hash === "#/test");
+    await page.goto(url + "/lab/?embed=1");
     await page.waitForFunction(() => document.querySelectorAll("#candidate option").length > 1);
     check("a real candidate is chosen by default when its key is set", (await page.$eval("#candidate", (x) => x.value)) === "gpt-live-1");
     const cardText = await page.textContent("#cards");
     check("script cards say exactly what to say", cardText.includes("折り返しは、090-1234-5678です。") && cardText.includes("はい、違います。末尾は5679です。") && cardText.includes("C7 ふだんの話し方"));
-    await page.selectOption("#candidate", "fake");
+    const voiceKinds = await page.$$eval("#voiceChips .g", (gs) => gs.map((g) => g.textContent));
+    check("each voice shows its type", voiceKinds.includes("女性") && voiceKinds.includes("男性"), voiceKinds.join(","));
+    await page.click('[data-cand="fake"]');
+    check("a card chooses the AI", (await page.$eval("#candidate", (x) => x.value)) === "fake");
     await page.click("#startBtn");
     await page.waitForFunction(() => document.getElementById("status").textContent.startsWith("会話中"), null, { timeout: 15000 });
     check("the offline stand-in says it is not the AI", (await page.textContent("#status")).includes("AIには接続していません"));
@@ -279,6 +298,7 @@ const lastAi = (page) => page.$$eval("#chat .msg.ai", (els) => (els.at(-1) || {}
     await page.click("#saveBtn");
     await page.waitForFunction(() => document.getElementById("saved").textContent.includes("保存しました"));
     const labCall = await page.evaluate(() => window.__lab.session.call_id);
+    check("the conversation shows as a chat", (await page.$$eval("#talk .say.ai", (x) => x.length)) > 0);
     await shot(page, "pc-lab");
     const labView = await (await page.request.get(url + "/api/calls/" + labCall)).json();
     check("lab session is a call in the common service", labView.source === "browser_lab" && labView.events.some((e) => e.kind === "tool"));

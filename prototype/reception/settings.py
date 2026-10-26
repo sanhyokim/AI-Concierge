@@ -137,10 +137,42 @@ VOICE_CATALOG = {
     # xAI: every voice speaks every supported language (no Japanese-only voice). Ara, Eve: female; Leo, Rex: male
     "grok-voice-3": {"voices": ["ara", "eve", "leo", "rex", "sal"],
                      "how": "接続のあとに session.update で指定する。どの声も日本語を話す（日本語専用の声はない）。"
-                            "ara・eve は女性、leo・rex は男性、sal は中性"},
+                            "ara・eve は女性、leo・rex・sal は男性（第三者の資料）"},
     "elevenagents": {"voices": [], "how": "ElevenLabsの画面でエージェントの声を選ぶ。声のIDを入力して登録（上書きの許可が要る）"},
     "cartesia-agents": {"voices": [], "how": "Cartesiaの画面でエージェントの声を選ぶ。声のIDを入力して記録する"},
 }
+
+
+# The type of each voice, shown next to its name on the test page (user, 2026-10-26: 「それぞれのモデルの声のタイプも
+# 一目見てわかるようにしてほしい。資料がないなら仕方がない」). source: "公式" = the vendor's own documents;
+# "非公式" = not in the vendor's documents (Gemini: Google gives a style word but no gender; Grok: xAI's voice table
+# was not readable, from third-party pages); "" with gender "資料なし" = nothing found.
+VOICE_TYPES = {
+    "gpt-live-1": {"harema": ("女性", "日本語の声", "公式"), "shida": ("男性", "日本語の声", "公式"),
+                   "marin": ("資料なし", "英語向けの標準の声", "")},
+    # Google's voice table (ai.google.dev speech generation, 2026-10-26): Kore Firm, Aoede Breezy, Leda Youthful,
+    # Puck Upbeat, Charon Informative, Orus Firm. The gender is the commonly reported impression.
+    "gemini-3.8-live": {"Kore": ("女性", "しっかり", "非公式"), "Aoede": ("女性", "さわやか", "非公式"),
+                        "Leda": ("女性", "若々しい", "非公式"), "Puck": ("男性", "明るい", "非公式"),
+                        "Charon": ("男性", "説明向き", "非公式"), "Orus": ("男性", "しっかり", "非公式")},
+    # third-party pages (techdevnotes, Telnyx; 2026-10-26): Ara upbeat female, Eve soothing female, Leo crisp male,
+    # Rex calm male, Sal smooth male
+    "grok-voice-3": {"ara": ("女性", "明るい", "非公式"), "eve": ("女性", "落ち着いた", "非公式"),
+                     "leo": ("男性", "きびきび", "非公式"), "rex": ("男性", "落ち着いた", "非公式"),
+                     "sal": ("男性", "低くなめらか", "非公式")},
+}
+
+
+def voice_type(candidate: str, voice: str, label: str = "") -> dict:
+    """{gender, style, source} of a voice. A registered voice with no document (an Eleven voice ID) takes the
+    gender from its display name when the name says it (「女性」「男性」)."""
+    t = VOICE_TYPES.get(candidate, {}).get(voice)
+    if t:
+        return {"gender": t[0], "style": t[1], "source": t[2]}
+    for g in ("女性", "男性", "中性"):
+        if g in (label or ""):
+            return {"gender": g, "style": "", "source": "登録の名前"}
+    return {"gender": "資料なし", "style": "", "source": ""}
 
 
 def voice_status(candidate: str, env: dict, candidates: dict) -> tuple[str, str]:
