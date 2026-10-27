@@ -331,10 +331,37 @@ class MacLauncherTest(unittest.TestCase):
         os.utime(z, (t, t))
         return z
 
-    def launch(self):
+    def launch(self, fake_bin=None):
         env = {**os.environ, "HOME": str(self.home), "LAUNCHER_INSTALL_ONLY": "1"}
+        if fake_bin:
+            env["PATH"] = str(fake_bin) + os.pathsep + env["PATH"]
         return subprocess.run(["/bin/bash", str(ROOT / "AI受付を起動_mac.command")], input="\n", env=env,
                               capture_output=True, text=True, encoding="utf-8", timeout=60)
+
+    def fake(self, name, body):
+        d = self.home / "bin"
+        d.mkdir(exist_ok=True)
+        f = d / name
+        f.write_text("#!/bin/bash\n" + body + "\n", encoding="utf-8")
+        f.chmod(0o755)
+        return d
+
+    def test_the_macs_own_ditto_opens_the_zip(self):   # 2026-10-27: unzip broke on a Japanese file name
+        self.download()
+        bin_dir = self.fake("ditto", 'echo "$@" > "$HOME/ditto-used"; exec unzip -qo "$3" -d "$4"')
+        r = self.launch(bin_dir)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("-x -k", (self.home / "ditto-used").read_text(encoding="utf-8"))
+        self.assertTrue((self.app / "AI受付を起動_windows.bat").is_file())
+
+    def test_a_file_unzip_cannot_write_does_not_stop_the_install(self):
+        self.download()
+        real = subprocess.run(["bash", "-c", "command -v unzip"], capture_output=True, text=True, encoding="utf-8").stdout.strip()
+        bin_dir = self.fake("unzip", f'"{real}" "$@" -x "*_windows.bat"; echo "write error (disk full?)" >&2; exit 50')
+        r = self.launch(bin_dir)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("Mac で使うものは入っています", r.stdout)
+        self.assertTrue((self.app / "prototype" / "admin" / "__main__.py").is_file())
 
     def test_nothing_downloaded(self):
         r = self.launch()

@@ -38,7 +38,21 @@ if [ -n "$newest" ] && [ "$newest_t" -gt "$installed_t" ]; then
   if [ -d "$newest" ]; then
     cp -R "$newest/." "$work/" || finish 1
   else
-    unzip -q "$newest" -d "$work" || { echo "ZIP を開けませんでした。ダウンロードし直してください。"; finish 1; }
+    # 2026-10-27 (user's Mac): the built-in unzip broke on the Japanese file name AI受付を起動_windows.bat
+    # (「write error (disk full?)」, the name shown as ????). ditto is the Mac's own way and keeps the names; a file
+    # unzip cannot write does not stop the install when the program itself is there.
+    if command -v ditto >/dev/null 2>&1 && ditto -x -k "$newest" "$work" 2>/dev/null; then
+      :
+    elif unzip -qo "$newest" -d "$work" </dev/null; then
+      :
+    elif [ -n "$(find "$work" -maxdepth 4 -path '*/prototype/admin/__main__.py' -print -quit 2>/dev/null)" ]; then
+      echo "（ZIP の中の一部のファイルを開けませんでしたが、Mac で使うものは入っています。続けます）"
+    else
+      echo "ZIP を開けませんでした。ダウンロードし直してください。"
+      echo "直らないときは、ZIP をダブルクリックして展開してから、もう一度これを開いてください。"
+      rm -rf "$work"
+      finish 1
+    fi
   fi
   src="$(dirname "$(find "$work" -maxdepth 3 -name start_mac.command -print -quit)")"
   if [ ! -f "$src/prototype/admin/__main__.py" ]; then
