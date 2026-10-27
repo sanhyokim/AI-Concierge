@@ -39,6 +39,11 @@ class PartOfDayTest(unittest.TestCase):
 
 
 class FollowUpTest(unittest.TestCase):
+    def test_the_voice_rules_leave_the_question_to_the_server(self):
+        # 2026-10-27 (Grok): from 「焼肉店は何基かも伺います」 it asked 「焼肉店は何基でしょうか」 about a kitchen hood
+        from prototype.concierge.prompts import voice_rules
+        self.assertNotIn("何基", voice_rules(end="", summary=""))
+
     def test_an_unclear_hood_is_asked_about(self):
         svc, cid = call()
         res = svc.tool(cid, "save_field", {"field": "request", "value": "フードの清掃"})
