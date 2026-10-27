@@ -13,7 +13,13 @@ NAME="AI-Concierge-claude-new-session-w4sjel"
 STAMP="$APP/.installed-from"
 
 finish() { echo; read -r -p "Enter キーを押すと終わります（この画面は閉じてかまいません）。" _; exit "$1"; }
-mtime() { if [ "$(uname)" = "Darwin" ]; then stat -f %m "$1"; else stat -c %Y "$1"; fi; }
+# a folder unpacked from a ZIP keeps the ZIP's file dates; the time it was made on this Mac (%B) counts too
+mtime() {
+  if [ "$(uname)" = "Darwin" ]; then
+    local m b; m="$(stat -f %m "$1")"; b="$(stat -f %B "$1")"
+    if [ "$b" -gt "$m" ] 2>/dev/null; then echo "$b"; else echo "$m"; fi
+  else stat -c %Y "$1"; fi
+}
 
 # the newest download: a ZIP, or a folder (Safari unpacks ZIPs itself) with the program inside
 newest="" newest_t=0
