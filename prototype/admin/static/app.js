@@ -292,6 +292,7 @@ function eventText(e) {
     case "recording_deleted": return d.why || "拒否より前の録音を削除";
     case "vendor_interrupted": return `業者の割り込みの通知（${d.source}${d.unplayed_ms != null ? `・残りの音 ${(d.unplayed_ms / 1000).toFixed(1)}秒` : ""}）：${(d.invalidated || []).length ? `返事の前に遮られた復唱 ${d.invalidated.join("・")} を確認済みにしない` : "無効にした復唱はない"}`;
     case "read_back_mismatch": return `復唱の言い間違い（${d.field === "callback_number" ? "折り返し先" : d.field === "preferred_datetime" ? "希望日時" : d.field}）：AIは「${d.said}」と言った。保存した値と違うので、「はい」でも確認済みにしない`;
+    case "ai_usage": { const t = d.tokens || {}; return `AIの料金（AIの会社の報告${d.reports}回の合計）：入力 音声${t.prompt_audio}・文字${t.prompt_text}、出力 音声${t.response_audio}・文字${t.response_text}トークン → $${Number(d.usd).toFixed(4)}（税抜、約${Math.round(d.usd * 150)}円）・通話${d.minutes}分`; }
     case "forward_to_staff": return d.text || "担当者の携帯へ転送";
     default: return `${e.kind} ${d && Object.keys(d).length ? JSON.stringify(d) : ""}`;
   }
@@ -614,8 +615,8 @@ routes.ledger = async () => {
       <td data-label=""><button class="small primary" data-reconcile="${esc(r.rid)}" data-vendor="${esc(v)}">照合する</button></td></tr>`)).join("")}</tbody></table>` : `<p class="muted">照合待ちの留保はありません。</p>`}</section>
     <section class="card"><h2>試験の会話（サーバーの記録）</h2>
     <p class="sub">これまでの会話：${Object.entries(l.counts || {}).filter(([, n]) => n.sessions || n.mint_failures).map(([c, n]) => `${esc(c)} ${n.sessions}回`).join("、") || "0回"}（回数の上限なし）</p>
-    ${l.sessions.length ? `<table class="stack"><thead><tr><th>開始</th><th>候補</th><th>状態</th><th>止めた理由</th><th>業者の終了</th><th>業務処理・裏方の応答</th></tr></thead><tbody>
-    ${l.sessions.map((x) => `<tr><td data-label="開始">${esc(fmt(x.started_at))}</td><td data-label="候補">${esc(x.candidate)}</td><td data-label="状態">${esc(x.status_label || x.status)}<br><span class="sub">${esc(x.end_reason || "")}</span>${x.why_counted ? `<br><span class="sub">${esc(x.why_counted)}</span>` : ""}${x.releasable ? `<div class="row" style="margin-top:4px"><input data-relnote="${esc(x.id)}" placeholder="例：10/08 OpenAIの利用画面で0件・$0を確認" aria-label="確認した内容"><button class="small" data-release="${esc(x.id)}">費用から外す</button></div>` : ""}</td><td data-label="止めた理由">${esc(x.stop_reason || "—")}</td><td data-label="業者の終了">${x.close_confirmed ? "確認" : "未確認"}</td><td data-label="回数">${x.tool_calls}・${x.backend_responses}</td></tr>`).join("")}</tbody></table>
+    ${l.sessions.length ? `<table class="stack"><thead><tr><th>開始</th><th>候補</th><th>状態</th><th>止めた理由</th><th>業者の終了</th><th>業務処理・裏方の応答</th><th>AIの会社の報告</th></tr></thead><tbody>
+    ${l.sessions.map((x) => `<tr><td data-label="開始">${esc(fmt(x.started_at))}</td><td data-label="候補">${esc(x.candidate)}</td><td data-label="状態">${esc(x.status_label || x.status)}<br><span class="sub">${esc(x.end_reason || "")}</span>${x.why_counted ? `<br><span class="sub">${esc(x.why_counted)}</span>` : ""}${x.releasable ? `<div class="row" style="margin-top:4px"><input data-relnote="${esc(x.id)}" placeholder="例：10/08 OpenAIの利用画面で0件・$0を確認" aria-label="確認した内容"><button class="small" data-release="${esc(x.id)}">費用から外す</button></div>` : ""}</td><td data-label="止めた理由">${esc(x.stop_reason || "—")}</td><td data-label="業者の終了">${x.close_confirmed ? "確認" : "未確認"}</td><td data-label="回数">${x.tool_calls}・${x.backend_responses}</td><td data-label="AIの会社の報告">${x.reported_usd == null ? "—" : `${usd(x.reported_usd)}（約${Math.round(x.reported_usd * 150)}円）`}</td></tr>`).join("")}</tbody></table>
     <p class="sub">「費用から外す」は、開始に失敗し、業者の会話が作られなかった記録だけに出ます。業者の利用画面で利用が0件であることを確かめてから、確かめた内容を入力して押してください（留保を0円で閉じます。操作履歴に残ります）。</p>` : `<p class="muted">まだ試験の会話はありません。</p>`}</section>`;
   view.addEventListener("click", (e) => {
     const t = e.target;

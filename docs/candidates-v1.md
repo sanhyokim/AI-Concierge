@@ -42,10 +42,10 @@
 - 公式で確認：Stable（2026年9月更新）／Live APIに割り込みの通知（serverContent.interrupted）と、発話検出の設定がある／3.8は非同期の関数実行が既定／Extended Thinking版（gemini-3.8-live-extended-thinking）もある／料金（1Mトークン）：音声入力$3（目安$0.005/分）、音声出力$12（目安$0.018/分）、テキスト入力$0.75・出力$4.50
 - 日本語：Live APIの対応言語の表に日本語（ja）がある
 - 接続：ブラウザーは一時トークン（POST v1beta/auth_tokens、既定30分・1回）で、BidiGenerateContentConstrained のWebSocketにつなぐ。電話はサーバーのWebSocketで中継
-- 未確認：会話の履歴がターンごとに課金されるか（記号 Ctx_gem）／無料枠でのデータの扱い（試験は有料枠を前提）
+- 未確認：返事の回数・指示の量・無音の音声が履歴に入るか（料金が大きく変わる。試験の記録の実測で確かめる）／無料枠でのデータの扱い（試験は有料枠を前提）
 - 自社で作るもの：自社の中継・業務処理が要る
 - 位置づけの理由：日本語の明記があり、トークン単価が安い会話モデル。安い構成の代表として比べる
-- 出典：[1](https://ai.google.dev/gemini-api/docs/models/gemini-3.8-live)、[2](https://ai.google.dev/gemini-api/docs/live-api/capabilities)、[3](https://ai.google.dev/gemini-api/docs/ephemeral-tokens)、[4](https://ai.google.dev/gemini-api/docs/pricing)、[5](https://ai.google.dev/gemini-api/docs/models/gemini-3.8-live-extended-thinking)
+- 出典：[1](https://ai.google.dev/gemini-api/docs/models/gemini-3.8-live)、[2](https://ai.google.dev/gemini-api/docs/live-api/capabilities)、[3](https://ai.google.dev/gemini-api/docs/ephemeral-tokens)、[4](https://ai.google.dev/gemini-api/docs/pricing)、[5](https://discuss.ai.google.dev/t/pricing-of-speech-to-speech-live-model/140340)、[6](https://discuss.ai.google.dev/t/does-gemini-live-native-audio-bill-cumulative-prompt-tokens-on-every-turn-cost-seems-to-scale-with-turn-count-not-call-duration/173248)、[7](https://ai.google.dev/gemini-api/docs/models/gemini-3.8-live-extended-thinking)
 
 ### ElevenLabs Eleven Realtime v1 Max（追加の試験（利用者の決定、2026-10-21））
 

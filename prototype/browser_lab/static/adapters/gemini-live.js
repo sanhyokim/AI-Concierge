@@ -60,6 +60,8 @@ export async function connect(ctx) {
       setTimeout(startMic, MIC_WAIT_MS);
       return;
     }
+    // one answer's bill (the whole context is read again each time): the server adds them up (2026-10-29)
+    if (ev.usageMetadata) ctx.vendorEvent("voice_usage", ev.usageMetadata);
     const sc = ev.serverContent;
     if (sc) {
       for (const part of (sc.modelTurn && sc.modelTurn.parts) || []) {

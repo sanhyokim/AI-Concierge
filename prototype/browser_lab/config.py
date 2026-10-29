@@ -41,7 +41,8 @@ CANDIDATES = {
                 "裏方のモデルは別料金で、GPT_LIVE_DELEGATION_MODEL で指定（既定 gpt-6-luna）"},
     "gemini-3.8-live": {
         "name": "Google Gemini 3.8 Live", "adapter": "gemini-live", "env": ["GEMINI_API_KEY"], "vendor": "google_lab",
-        "model": "models/gemini-3.8-live", "upper_usd_per_min": 0.06, "increment_s": 60, "verified": False,
+        # upper 0.20: every answer re-reads the whole call so far (Google, 2026-05-11), about $0.13/min at 5 minutes
+        "model": "models/gemini-3.8-live", "upper_usd_per_min": 0.20, "increment_s": 60, "verified": False,
         "logic_path": "function_call", "applies": {"instructions": "session", "voice": "session"},
         "prompt_style": "short"},   # short prompt; the steps are in the tool descriptions and results (2026-10-14)
     # Eleven Realtime (2026-10-20): one speech-to-speech model that calls the tools itself, like Gemini. The user
@@ -101,6 +102,27 @@ APPLY_LABELS = {"session": "接続のときに指定する（公式資料のと�
 # USD per 1M tokens (input, cached input, output), official pricing page read 2026-10-07.
 DELEGATION_PRICES = {"gpt-6-luna": (0.10, 0.01, 0.50), "gpt-6-sol": (2.00, 0.20, 10.00),
                      "gpt-5.6-luna": (0.20, 0.02, 1.20), "gpt-5.6-terra": (2.00, 0.20, 12.00)}
+# Gemini Live, USD per 1M tokens by modality (official pricing page, read 2026-10-29). Each usageMetadata Gemini
+# sends is one answer's bill: its prompt is the whole context read again (Google, 2026-05-11).
+GEMINI_LIVE_USD_PER_M = {"prompt": {"AUDIO": 3.00, "TEXT": 0.75}, "response": {"AUDIO": 12.00, "TEXT": 4.50}}
+
+
+def gemini_usage_usd(u: dict) -> float:
+    """One usageMetadata in USD. Tokens without a modality breakdown are priced as text; thoughts as text output."""
+    usd = 0.0
+    for side, total_key, details_key in (("prompt", "promptTokenCount", "promptTokensDetails"),
+                                         ("response", "responseTokenCount", "responseTokensDetails")):
+        rates, total = GEMINI_LIVE_USD_PER_M[side], int(u.get(total_key) or 0)
+        listed = 0
+        for d in u.get(details_key) or []:
+            n = int(d.get("tokenCount") or 0)
+            listed += n
+            usd += n * rates.get(str(d.get("modality", "")).upper(), rates["TEXT"]) / 1e6
+        usd += max(0, total - listed) * rates["TEXT"] / 1e6
+    usd += int(u.get("thoughtsTokenCount") or 0) * GEMINI_LIVE_USD_PER_M["response"]["TEXT"] / 1e6
+    return usd
+
+
 # In-app limits per session. They stop the session; they do not cap what the vendor bills.
 MAX_TOOL_CALLS = 40            # business-logic tool calls
 MAX_BACKEND_RESPONSES = 60     # GPT-Live backend responses (counted from response.event)

@@ -419,6 +419,10 @@ class ReceptionService:
             self._event(call_id, "ai_used", {"candidate": candidate, "name": name, "voice": snap["voice"]["label"],
                                         **({"note": note} if note else {})})
 
+    def note_ai_usage(self, call_id: str, data: dict) -> None:
+        """The AI vendor's own usage report for the call, priced (the browser lab, Gemini)."""
+        self._event(call_id, "ai_usage", data)
+
     def caller_utterance(self, call_id: str, text: str, utterance_id: str | int | None = None) -> dict:
         """A final caller transcript event. forward=False means: do not send it (or anything after it) to the AI.
 

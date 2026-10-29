@@ -30,6 +30,22 @@ def common_ai_call() -> cm.Money:
             + cm.summary("anthropic_haiku45"))
 
 
+def live_rebilled_usd(pr: dict, dur: float) -> float:
+    """Gemini Live: every answer re-reads the whole context (instructions, tools and all the audio so far) at the
+    input prices (Google, 2026-05-11). The audio in the context grows evenly over the call, so the turns read on
+    average half of it, plus the setup each time. Output audio and the transcripts are billed once."""
+    tok_s, rb = pr["audio_tokens_per_s"], pr.get("rebill")
+    out_audio = pr["audio_out_usd_per_min"] * dur * cm.AI_SPEECH_SHARE
+    if not rb:
+        return pr["audio_in_usd_per_min"] * dur + out_audio
+    turns = rb["turns_per_min"] * dur
+    in_tok = tok_s * 60 * dur                              # the mic, silence included
+    out_tok = tok_s * 60 * dur * cm.AI_SPEECH_SHARE        # the AI's own voice is in the context too
+    audio_read = turns * (in_tok + out_tok) * (turns + 1) / (2 * turns)
+    return (audio_read * pr["audio_in_usd_per_m"] / 1e6 + turns * rb["setup_tokens"] * pr["text_in_usd_per_m"] / 1e6
+            + out_audio + rb["transcript_tokens_per_min"] * dur * pr["text_out_usd_per_m"] / 1e6)
+
+
 def ai_part(c: dict, cache: bool = True) -> cm.Money:
     """The candidate's own AI cost for one 3-minute call (known part in USD plus symbols)."""
     pr, dur = c["price"], cm.DUR_MIN
@@ -38,8 +54,7 @@ def ai_part(c: dict, cache: bool = True) -> cm.Money:
     if kind == "per_min":
         return cm.Money(usd=pr["usd_per_min"] * dur, terms=terms)
     if kind == "live_tokens":
-        return cm.Money(usd=pr["audio_in_usd_per_min"] * dur + pr["audio_out_usd_per_min"] * dur * cm.AI_SPEECH_SHARE,
-                        terms=terms)
+        return cm.Money(usd=live_rebilled_usd(pr, dur), terms=terms)
     if kind == "inworld":
         return cm.Money(usd=pr["stt_usd_per_hour"] / 60 * dur + pr["tts_usd_per_m_chars"] * cm.TTS_CHARS_PER_CALL / 1e6,
                         terms=terms)

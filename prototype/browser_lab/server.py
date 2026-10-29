@@ -45,7 +45,7 @@ from . import vendors, wsclient
 from .config import (APPLY_LABELS, CANDIDATES, DELEGATION_PRICES, LAB_LIMITS, LAB_LIMITS_BY_STAGE, LAB_PERSONA,
                      LAB_RULES, LAB_STAGES, LOGIC_PATHS, MAX_BACKEND_RESPONSES, MAX_MINT_FAILURES, MAX_RESPONSE_CREATES,
                      MAX_SESSION_MIN, MAX_TOOL_CALLS, SESSION_GRACE_S, SESSIONS, apply_modes, delegation_model,
-                     public_candidates, released, session_reserve_usd, voice_applies)
+                     gemini_usage_usd, public_candidates, released, session_reserve_usd, voice_applies)
 from ..reception.settings import VOICE_CATALOG, voice_type
 
 STATIC = pathlib.Path(__file__).resolve().parent / "static"
@@ -383,6 +383,9 @@ class Lab:
             usage.append({"kind": "session_closed", "data": final_usage})
         self._set(sid, status=status, ended_at=iso(now_jst()), end_reason=reason or "試験者が終了",
                   close_confirmed=1 if close_confirmed else row["close_confirmed"], usage=dumps(usage))
+        reported = next((u for u in usage if u.get("kind") == "voice_usage"), None)
+        if reported:   # what the vendor itself reported for this call, kept in the call's record (2026-10-29)
+            self.service.note_ai_usage(row["call_id"], {**reported, "minutes": round(max(0.0, duration_s) / 60, 2)})
         self.service.end_call(row["call_id"], reason or "試験者が終了")
         if not row["rid"]:
             return {"estimated_usd": 0.0}
@@ -460,6 +463,22 @@ class Lab:
                                                   counts_request=False, model=model, input_tokens=tin, cached_tokens=tcached,
                                                   output_tokens=tout, reported_by_vendor=True)
             usage.append({"kind": "backend_usage", "model": model, "usd": round(usd, 6), "data": data})
+            self._set(sid, usage=dumps(usage))
+        elif kind == "voice_usage":   # Gemini's usageMetadata, one per answer: kept as a running total
+            tot = next((u for u in usage if u.get("kind") == "voice_usage"), None)
+            if tot is None:
+                tot = {"kind": "voice_usage", "reports": 0, "usd": 0.0,
+                       "tokens": {"prompt_audio": 0, "prompt_text": 0, "response_audio": 0, "response_text": 0}}
+                usage.append(tot)
+            tot["reports"] += 1
+            tot["usd"] = round(tot["usd"] + gemini_usage_usd(data), 6)
+            for side, key in (("prompt", "promptTokensDetails"), ("response", "responseTokensDetails")):
+                listed = 0
+                for d in data.get(key) or []:
+                    n = int(d.get("tokenCount") or 0)
+                    listed += n
+                    tot["tokens"][f"{side}_{'audio' if str(d.get('modality', '')).upper() == 'AUDIO' else 'text'}"] += n
+                tot["tokens"][f"{side}_text"] += max(0, int(data.get(f"{side}TokenCount") or 0) - listed)
             self._set(sid, usage=dumps(usage))
         elif kind == "session_closed":
             usage.append({"kind": "session_closed", "data": data})
@@ -552,7 +571,7 @@ class Lab:
 
     def sessions_view(self) -> list[dict]:
         rows = self.store.q("SELECT id, candidate, stage, status, started_at, ended_at, end_reason, tool_calls, "
-                            "backend_responses, stop_reason, close_confirmed, vendor_session_id FROM lab_sessions "
+                            "backend_responses, stop_reason, close_confirmed, vendor_session_id, usage FROM lab_sessions "
                             "ORDER BY started_ts DESC LIMIT 50")
         for r in rows:
             r["counted"] = r["status"] in COUNTED
@@ -561,6 +580,8 @@ class Lab:
             r["why_counted"] = ("業者の会話が作られたため、回数から外せません（料金が発生している可能性があります）"
                                 if r["counted"] and r["vendor_session"] else "")
             r["status_label"] = STATUS_LABELS.get(r["status"].removesuffix("_reset"), r["status"])
+            reported = next((u for u in json.loads(r.pop("usage") or "[]") if u.get("kind") == "voice_usage"), None)
+            r["reported_usd"] = reported["usd"] if reported else None
         return rows
 
     def ledger_summary(self) -> dict:

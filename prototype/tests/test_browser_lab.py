@@ -64,12 +64,12 @@ class LabTest(unittest.TestCase):
         self.assertEqual(s["credentials"]["token"], "auth_tokens/abc")
         self.assertEqual(lab.http.calls[0]["headers"]["x-goog-api-key"], "secret-key")
         led = lab.ledger("google_lab")
-        self.assertAlmostEqual(led.totals()["held_usd"], config.MAX_SESSION_MIN * 0.06)
+        self.assertAlmostEqual(led.totals()["held_usd"], config.MAX_SESSION_MIN * config.CANDIDATES["gemini-3.8-live"]["upper_usd_per_min"])
         out = lab.end(s["session_id"], 61.0)
         self.assertEqual(out["billed_s"], 120)               # rounded up to whole minutes
         t = led.totals()
         self.assertEqual(t["open_reservations"], 1)          # an estimate does not release the reservation
-        self.assertAlmostEqual(t["est_cost_usd"], config.MAX_SESSION_MIN * 0.06)
+        self.assertAlmostEqual(t["est_cost_usd"], config.MAX_SESSION_MIN * config.CANDIDATES["gemini-3.8-live"]["upper_usd_per_min"])
         from prototype.engines.budget import reconcile
         rid = led.open_reservations()[0]["rid"]
         reconcile(led, rid, 0.03, "利用画面で確認（試験）")
@@ -508,6 +508,28 @@ class LabSessionControlTest(unittest.TestCase):
         self.assertEqual(led.totals()["requests"], 1)               # still one session, not two requests
         lab.end(sid, 60)
         self.assertIn("session_id", lab.start("gpt-live-1"))        # the second planned session can start
+
+    def test_gemini_usage_reports_are_priced_and_kept_on_the_call(self):
+        # 2026-10-29 (user: 「geminiの料金の計算は正しいの？」): every answer re-reads the whole context, so the
+        # page sends each usageMetadata and the server adds them up by modality
+        lab = self.lab({"GEMINI_API_KEY": "k"}, {"auth_tokens": {"name": "auth_tokens/abc"}})
+        sid = lab.start("gemini-3.8-live")["session_id"]
+        turn = {"promptTokenCount": 5_000, "responseTokenCount": 300,
+                "promptTokensDetails": [{"modality": "AUDIO", "tokenCount": 1_500}, {"modality": "TEXT", "tokenCount": 3_500}],
+                "responseTokensDetails": [{"modality": "AUDIO", "tokenCount": 250}]}
+        lab.vendor_event(sid, "voice_usage", turn)
+        lab.vendor_event(sid, "voice_usage", turn)
+        one = (1_500 * 3.00 + 3_500 * 0.75 + 250 * 12.00 + 50 * 4.50) / 1e6   # 50 response tokens without a modality
+        self.assertAlmostEqual(config.gemini_usage_usd(turn), one)
+        view = next(r for r in lab.sessions_view() if r["id"] == sid)
+        self.assertAlmostEqual(view["reported_usd"], round(2 * one, 6))
+        call_id = lab._row(sid)["call_id"]
+        lab.end(sid, 90)
+        ev = next(e for e in lab.service.call_view(call_id)["events"] if e["kind"] == "ai_usage")
+        self.assertEqual(ev["data"]["reports"], 2)
+        self.assertEqual(ev["data"]["tokens"], {"prompt_audio": 3_000, "prompt_text": 7_000, "response_audio": 500,
+                                                "response_text": 100})
+        self.assertEqual(ev["data"]["minutes"], 1.5)
 
     def test_tool_calls_are_capped_separately_from_backend_responses(self):
         lab = self.lab({"OPENAI_API_KEY": "k"}, self.LIVE)

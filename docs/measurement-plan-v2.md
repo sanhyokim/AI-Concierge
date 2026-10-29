@@ -108,7 +108,7 @@ GPT-Liveの裏方のモデル（gpt-6-luna）は、典型（10応答×入力6,00
 | 候補 | 1回の見込み（声＋裏方の典型） | 1回の最大（声は上限の分単価×最大時間、裏方は厳しめ） | 10回の例（見込み／最大） | 30回の例（見込み／最大） | 記号で残す費用 |
 | --- | --- | --- | --- | --- | --- |
 | OpenAI GPT-Live 1 | 約$0.158（声 $0.150＋裏方 $0.007） | $0.528 | 約$1.58／$5.28 | 約$4.73／$15.84 | L_live |
-| Google Gemini 3.8 Live | 約$0.039（声 $0.039） | $0.300 | 約$0.39／$3.00 | 約$1.18／$9.00 | Ctx_gem |
+| Google Gemini 3.8 Live | 約$0.264（声 $0.264） | $1.000 | 約$2.64／$10.00 | 約$7.93／$30.00 | — |
 | ElevenLabs Eleven Realtime v1 Max | 約$0.240（声 $0.240） | $1.000 | 約$2.40／$10.00 | 約$7.20／$30.00 | Tok_erx |
 | ElevenLabs Eleven Realtime v1 Mini | 約$0.240（声 $0.240） | $1.000 | 約$2.40／$10.00 | 約$7.20／$30.00 | Tok_erm |
 | xAI Grok Voice 3.0 | 約$0.240（声 $0.240） | $0.500 | 約$2.40／$5.00 | 約$7.20／$15.00 | T_grok |
@@ -122,7 +122,7 @@ GPT-Liveの裏方のモデル（gpt-6-luna）は、典型（10応答×入力6,00
 | --- | --- | --- |
 | L_live | GPT-Liveの裏方のモデルに渡る量 | 入力は指示文（最大16,384トークン）と会話の履歴。渡る量が公式に書かれていないため、典型と厳しめの仮定を並べるだけで、上限は確定しない |
 | — | GPT-Liveの日本語 | 公式の言語の一覧がない。声の追加の表は英語・ポルトガル語だけ。実際に話して確かめる |
-| Ctx_gem | Gemini Liveの履歴の再計算 | 会話が長いほど増える。接続の設定で履歴を短く保つ（contextWindowCompression） |
+| — | Gemini Liveの履歴の再計算 | 返事の回数と通話の長さで増える（6分で3分の約3倍）。試験の記録の「AIの料金」（Googleの報告の合計）で確かめる |
 | — | Geminiの無料枠の上限 | 回数・量の上限はAI Studioの画面だけに表示される |
 | Tok_erx・Tok_erm | Eleven Realtime の文字の量の料金 | 1通話のトークンの量が公式に書かれていない。受付の指示の長さからの見込みは、3分で v1 Max 約10円・v1 Mini 約1円。ElevenLabsの画面の目安（2026-10-21、利用者のアカウント）は、1分あたり v1 Max ~$0.0135・v1 Mini ~$0.0030（接続の$0.08とは別） |
 | — | Eleven Realtime の日本語 | 評価の数字（Big Bench Audio など）は英語。実際に話して確かめる |
@@ -150,7 +150,7 @@ GPT-Liveの裏方のモデル（gpt-6-luna）は、典型（10応答×入力6,00
 | 業者 | 契約するプラン | 含まれる分数・クレジット | 無料枠の適用条件 | 超過料金 | 期限・集計の遅れ・税 | 出典 |
 | --- | --- | --- | --- | --- | --- | --- |
 | OpenAI（GPT-Live 1） | プランなし（従量）。前払いクレジット（最低$5） | なし（GPT-Liveに無料枠はない） | 無料枠なし | 従量。GPT-Live $0.05/分（秒単位）。裏方のモデル（delegation）は別料金（トークン単価） | 前払いクレジットは1年で失効・返金なし。集計の遅れの間の利用は、残高のマイナスとして次の購入から引かれる。前払いの残高を即時の停止に頼らない、との記載。消費税10%（直接契約の日本の顧客） | [1](https://developers.openai.com/api/docs/models/gpt-live-1) [2](https://help.openai.com/en/articles/8264644-setting-up-and-managing-prepaid-api-billing) [3](https://help.openai.com/en/articles/10242647-the-japanese-consumption-tax-on-your-openai-invoices) |
-| Google（Gemini 3.8 Live） | 無料枠、または有料枠（Cloud Billing＋前払い$5から） | 無料枠：入出力とも無料（回数・量の上限はAI Studioの画面だけに表示＝未確認） | 無料枠の入出力は、Googleの製品の改善に使われ、人が読むことがある。有料枠では使われない | 有料枠：音声入力$3・出力$12（1Mトークン）。履歴はターンごとに再計算されて課金（記号 Ctx_gem） | 前払いは12か月で失効・返金なし。課金の集計に約10分の遅れがあり、その間は残高を超えて使われることがある（マイナスは次の購入から引かれる）。残高0でHTTP 402。消費税10%（日本の顧客。価格は税抜） | [1](https://ai.google.dev/gemini-api/docs/pricing) [2](https://ai.google.dev/gemini-api/terms) [3](https://ai.google.dev/gemini-api/docs/billing) [4](https://ai.google.dev/gemini-api/docs/live-api/best-practices) |
+| Google（Gemini 3.8 Live） | 無料枠、または有料枠（Cloud Billing＋前払い$5から） | 無料枠：入出力とも無料（回数・量の上限はAI Studioの画面だけに表示＝未確認） | 無料枠の入出力は、Googleの製品の改善に使われ、人が読むことがある。有料枠では使われない | 有料枠：音声入力$3・出力$12（1Mトークン）。返事のたびに、それまでの音声と指示の全部をもう一度課金（Googleの回答、2026-05-11）。3分で約$0.26の見込み | 前払いは12か月で失効・返金なし。課金の集計に約10分の遅れがあり、その間は残高を超えて使われることがある（マイナスは次の購入から引かれる）。残高0でHTTP 402。消費税10%（日本の顧客。価格は税抜） | [1](https://ai.google.dev/gemini-api/docs/pricing) [2](https://ai.google.dev/gemini-api/terms) [3](https://ai.google.dev/gemini-api/docs/billing) [4](https://ai.google.dev/gemini-api/docs/live-api/best-practices) |
 | ElevenLabs（Eleven Realtime） | 無料（従量）または月額のプラン（Starter $6／Creator $22 など） | プランごとに含まれる分（料金表で v1 Max 約12・59・216分…。プランとの対応は表に書かれていない＝未確認） | 無料のプランでRealtimeが使えるかは明記がない（未確認）。架空のデータだけで話す | 接続1分$0.08＋トークン（v1 Max：入力$1.80・出力$9.00、v1 Mini：$0.20・$6.00／1Mトークン）。同時通話の上限を超えた分は1分$0.16 | 集計の遅れ・残高での停止の記載は未確認。価格は税抜（消費税の扱いは未確認） | [1](https://elevenlabs.io/pricing/api) [2](https://elevenlabs.io/docs/eleven-agents/customization/realtime-models) |
 | xAI（Grok Voice 3.0） | プランなし（従量）。前払いのクレジット（最低額は未確認） | 新しいアカウントに$25のクレジット・30日（第三者の記事。公式の料金表に記載なし＝未確認） | データ共有の制度（会話のデータを渡すと毎月のクレジット）は使わない（お客様の会話を渡さない） | 接続1分$0.08（無音の時間も含む）。テキストの入力は1件$0.004 | 月の上限・通知（50%・75%・90%）・自動の補充の設定がある（第三者の記事）。集計の遅れは未確認。価格は税抜（消費税の扱いは未確認） | [1](https://x.ai/news/grok-voice-3) [2](https://docs.x.ai/developers/pricing) [3](https://radar.apideck.com/blog/how-to-get-your-grok-xai-api-key) |
 

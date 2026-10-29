@@ -61,18 +61,25 @@
       "browser": "一時トークン（POST v1beta/auth_tokens、既定30分・1回）で、BidiGenerateContentConstrained のWebSocketにつなぐ",
       "phone": "サーバーのWebSocketで中継",
       "unconfirmed": [
-        "会話の履歴がターンごとに課金されるか（記号 Ctx_gem）",
+        "返事の回数・指示の量・無音の音声が履歴に入るか（料金が大きく変わる。試験の記録の実測で確かめる）",
         "無料枠でのデータの扱い（試験は有料枠を前提）"
       ],
       "price": {
         "kind": "live_tokens",
         "audio_in_usd_per_min": 0.005,
         "audio_out_usd_per_min": 0.018,
+        "audio_in_usd_per_m": 3.0,
+        "text_in_usd_per_m": 0.75,
+        "text_out_usd_per_m": 4.5,
+        "audio_tokens_per_s": 25,
+        "rebill": {
+          "turns_per_min": 6,
+          "setup_tokens": 3500,
+          "transcript_tokens_per_min": 500,
+          "source": "Googleの担当者の回答（2026-05-11、開発者の掲示板）：過去の音声は、返事のたびに音声入力の単価でもう一度課金される。文字起こしはテキスト出力の単価"
+        },
         "status": "confirmed",
-        "note": "入力音声は通話全体の3分、出力はAIが話す45%を公式の分あたりの目安で計算",
-        "symbols": {
-          "Ctx_gem": "会話の履歴・テキストの課金／通話（未確認）"
-        }
+        "note": "返事のたびに、指示と業務処理の説明（約3,500トークン）と、それまでの音声の全部をもう一度読む。返事は1分に6回、マイクの音声は無音も含めて履歴に入る、と仮定（2026-10-20 の C1 の記録は2分半でAIの返事13回・業務処理5回）"
       },
       "build": "自社の中継・業務処理が要る",
       "reason": "日本語の明記があり、トークン単価が安い会話モデル。安い構成の代表として比べる",
@@ -81,6 +88,8 @@
         "https://ai.google.dev/gemini-api/docs/live-api/capabilities",
         "https://ai.google.dev/gemini-api/docs/ephemeral-tokens",
         "https://ai.google.dev/gemini-api/docs/pricing",
+        "https://discuss.ai.google.dev/t/pricing-of-speech-to-speech-live-model/140340",
+        "https://discuss.ai.google.dev/t/does-gemini-live-native-audio-bill-cumulative-prompt-tokens-on-every-turn-cost-seems-to-scale-with-turn-count-not-call-duration/173248",
         "https://ai.google.dev/gemini-api/docs/models/gemini-3.8-live-extended-thinking"
       ]
     },
