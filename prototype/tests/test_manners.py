@@ -12,7 +12,7 @@ from prototype.reception.service import ReceptionService
 from prototype.reception.store import Store
 
 # words the instructions tell the AI not to use; the phrases this app writes itself must not use them either
-FORBIDDEN = ("マル", "〇", "もしもし", "少々確認", "確認しましょう", "了解", "なるほど", "よろしかった", "になります",
+FORBIDDEN = ("マル", "〇", "もしもし", "さようでございますか", "承って", "少々確認", "確認しましょう", "了解", "なるほど", "よろしかった", "になります",
              "頂戴", "お声が遠い", "AI受付です", "伺えますか")
 
 

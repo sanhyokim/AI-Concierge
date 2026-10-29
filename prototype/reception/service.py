@@ -11,6 +11,8 @@
 """
 from __future__ import annotations
 
+import csv
+import io
 import json
 import os
 import re
@@ -50,10 +52,14 @@ SOURCES = {"demo": "架空の着信テスト", "browser_lab": "ブラウザー�
 # 厨房フードか焼肉屋の上引きフードかわからない）。また焼肉屋だと対象のものが何基あるか必ず確認する。」
 _CLEAR_HOOD = ("厨房", "キッチン", "調理", "焼肉", "上引き", "うわびき", "上びき", "ロースター", "レンジ")
 _YAKINIKU = ("ロースター", "上引き", "うわびき", "上びき", "焼肉", "無煙")
+# 2026-10-29 (Grok, 「点検」 at 「焼肉ほのか」): 「清掃の対象は、何基ございますか」 for an inspection. The count is asked
+# for a cleaning or a named object only.
+_COUNT_JOB = ("清掃", "掃除", "洗浄", "ロースター", "フード", "ダクト", "上引き", "うわびき", "上びき")
 _COUNT_SAID = re.compile(r"(\d+|[一二三四五六七八九十何数]+)\s*(基|台|卓|つ|個)")
 FOLLOW_UPS = {
     "request_target": lambda req, shop: bool(req) and "フード" in req and not any(w in req for w in _CLEAR_HOOD),
     "request_count": lambda req, shop: (bool(req) and any(w in req + shop for w in _YAKINIKU)
+                                        and any(w in req for w in _COUNT_JOB)
                                         and not _COUNT_SAID.search(unicodedata.normalize("NFKC", req))),
 }
 FOLLOW_UP_LABELS = {"request_target": "清掃の対象（厨房のフードか、焼肉の上引きフードか）", "request_count": "対象の数（何基か）"}
@@ -61,6 +67,14 @@ FOLLOW_UP_LABELS = {"request_target": "清掃の対象（厨房のフードか�
 
 def _label(field: str) -> str:
     return FOLLOW_UP_LABELS.get(field) or S.FIELD_LABELS[field]
+
+EMERGENCY_LABELS = {"obvious": "明白な危険", "ambiguous": "曖昧（要注意）", "undetermined": "判断できない（要注意）"}
+
+
+def fmt_at(value: str | None) -> str:
+    """2026-10-29T15:00:54+09:00 → 2026-10-29 15:00:54 (Japan time, as on the screens)."""
+    return (value or "").replace("T", " ").replace("+09:00", "")
+
 
 class HandledConflict(Exception):
     """The handling state changed after the screen read it (someone else took or changed the call first)."""
@@ -534,6 +548,9 @@ class ReceptionService:
                             res.update(self._greet_and_go_on(sess, self._still_to_ask(sess, snap), call["caller_id"]))
                         else:
                             res.update(self._request_followup(sess, snap, call["caller_id"]))
+                    # 2026-10-29 (Grok): after a confirmation it made up 「次は、お名前です。」: the next question too
+                    if name == "confirm_field" and res.get("ok") and not self._readback_open(sess):
+                        res.update(self._request_followup(sess, snap, call["caller_id"]))
             else:
                 res = {"ok": False, "reason": f"unknown tool {name}"}
             self._event(call_id, "tool", {"name": name, "args": logged_args, "result": res})
@@ -577,6 +594,13 @@ class ReceptionService:
         elif not pending:
             res.update(self._request_followup(sess, snap, (call or {}).get("caller_id")))
         return res, logged
+
+    @staticmethod
+    def _readback_open(sess: CallSession) -> bool:
+        """A number or a date still to be read back or answered: the next question waits for it."""
+        fields = sess.tools.store.fields
+        return any(sess.tools.needs_readback(f) or (f in fields and fields[f].status == Status.AWAITING)
+                   for f in READBACK_FIELDS)
 
     @staticmethod
     def _has(sess: CallSession, field: str) -> bool:
@@ -634,6 +658,11 @@ class ReceptionService:
         """The words that close the intake, made here so every AI says the same correct Japanese (2026-10-22,
         user: 「GeminiとElevenLabsが設計上同じならAIのセリフや対応も統一できますよね？」; Gemini had said
         「承りました内容は、…の田中様より、…のご希望でございます」)."""
+        if not any(self._has(sess, f) for f in S.FIELD_KEYS):
+            # 2026-10-29 (C3): the caller only asked whether the inspection is free and said 「以上です」; the AI was handed
+            # 「どのようなご用件でしょうか」 again. A call with questions only ends with the goodbye.
+            return {"ok": True, "nothing_to_take": True,
+                    "then": "うけたまわる用件はありません。お客様が終えようとしていれば、最後のあいさつを言って end_call を呼ぶ"}
         left = self._still_to_ask(sess, snap, required_only=True)
         if left:
             return {"ok": False, "missing": [_label(f) for f in left], "say": for_speech(ASK_FOR[left[0]])}
@@ -983,6 +1012,38 @@ class ReceptionService:
                         "summary": summ["text"] if summ else "", "summary_version": summ["version"] if summ else None,
                         "notifications": {n["status"]: n["n"] for n in notes}})
         return out
+
+    # 2026-10-29 (user): 「受付一覧に記録のエクスポート機能がほしい」. One row per call, for Excel: UTF-8 with a BOM
+    # (Excel on Japanese Windows reads a CSV without it as Shift_JIS) and CRLF line ends.
+    EXPORT_COLUMNS = ("受付ID", "着信日時", "終了日時", "種類", "経路", "AI", "回線の番号", "店舗名", "店舗名の確認", "お名前",
+                      "お名前の確認", "折り返し先", "折り返し先の確認", "用件", "用件の確認", "希望日時", "希望日時の確認",
+                      "確認事項", "緊急", "対応", "担当", "要約", "会話")
+
+    def export_calls_csv(self) -> str:
+        from .summary import STATUS_LABELS, display_value
+        out = io.StringIO()
+        w = csv.writer(out, lineterminator="\r\n")
+        w.writerow(self.EXPORT_COLUMNS)
+        # a cell that starts like a formula is written as text, so a caller's words never run in Excel
+        safe = lambda v: "'" + v if isinstance(v, str) and v[:1] in ("=", "+", "-", "@") else ("" if v is None else v)
+        for c in self.store.q("SELECT * FROM calls ORDER BY started_at DESC, rowid DESC"):
+            fields, snap = self._fields(c["id"]), json.loads(c["snapshot"])
+            row = [c["id"], fmt_at(c["started_at"]), fmt_at(c["ended_at"]), SOURCES.get(c["source"], c["source"]),
+                   snap["decision"]["route_label"], (snap.get("ai") or {}).get("name", ""),
+                   c["caller_id"] or "非通知・不明"]
+            for name in ("shop_name", "caller_name", "callback_number", "request", "preferred_datetime"):
+                f = fields.get(name)
+                has = bool(f and f["value"])
+                row += [display_value(name, f["value"]) if has else "",
+                        STATUS_LABELS.get(f["status"], f["status"]) if has else "未取得"]
+            summ = self.store.q1("SELECT text FROM summaries WHERE call_id = ? ORDER BY version DESC LIMIT 1", (c["id"],))
+            talk = [("お客様：" if e["kind"] == "caller" else "AI：") + (json.loads(e["data"] or "{}").get("text") or "")
+                    for e in self.store.q("SELECT kind, data FROM call_events WHERE call_id = ? AND kind IN ('caller', "
+                                          "'ai') ORDER BY id", (c["id"],))]
+            row += ["／".join(json.loads(c["open_questions"] or "[]")), EMERGENCY_LABELS.get(c["emergency"], ""),
+                    c["handled_status"], c["handled_by"] or "", summ["text"] if summ else "", "\n".join(talk)]
+            w.writerow([safe(v) for v in row])
+        return "\ufeff" + out.getvalue()
 
     def status(self) -> dict:
         vid, cfg, meta = self.config()

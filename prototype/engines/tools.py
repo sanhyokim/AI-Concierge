@@ -182,9 +182,15 @@ class ToolHandler:
                 result = {"ok": True, **{k: v for k, v in self.start_readback(field, t_ms).items() if k != "field"}}
         elif name == "confirm_field":
             state = self.store.get(field)
-            if (state.status == Status.CONFIRMED and state.value is not None
-                    and self._normalize(field, args.get("value", "")) == state.value):
+            if state.status == Status.CONFIRMED and state.value is not None:
+                # 2026-10-29 (Grok): the caller said 「午後」, the date was saved as 「2026-11-03 午後」 and confirmed by the
+                # 「はい」, but the AI sent confirm_field with its own 「2026-11-03T14:00」. That was refused as 「this reply was
+                # already used」, and the AI read the date back three times. What was read back and confirmed stands.
                 result = {"ok": True, "reason": "already confirmed by the server from the read-back and the reply"}
+                if self._normalize(field, args.get("value", "")) != state.value:
+                    result["confirmed_value"] = self._reading(field, state.value)
+                    result["note"] = ("この値で確認済みです。お客様が別の値をおっしゃったときだけ、save_field で保存し直します。"
+                                      "伺い直さないでください")
             elif self._utt_seq in self._consumed:
                 result = {"ok": False, "reason": "this reply was already used to confirm another item; ask again"}
             else:

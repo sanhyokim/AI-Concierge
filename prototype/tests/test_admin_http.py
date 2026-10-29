@@ -64,7 +64,8 @@ class AdminHttpTest(unittest.TestCase):
         return status, cookie, json.loads(data)["csrf"]
 
     def test_nothing_without_login(self):
-        for path in ("/api/config", "/api/calls", "/api/faqs", "/api/targets", "/api/audit", "/lab/api/candidates"):
+        for path in ("/api/config", "/api/calls", "/api/faqs", "/api/targets", "/api/audit", "/lab/api/candidates",
+                     "/export/calls.csv"):
             self.assertIn(self.req("GET", path)[0], (401, 302), path)
         status, _, r = self.req("GET", "/")
         self.assertEqual((status, r.getheader("Location")), (302, "/login"))

@@ -361,6 +361,13 @@ def make_handler(app: AdminApp, allowed_hosts: set[str], log_requests: bool = Tr
             if path == "/favicon.ico":
                 return self._send(204, b"", "image/x-icon")
             user = app.auth.session(self._token())
+            if path == "/export/calls.csv":   # 2026-10-29: the call list for Excel
+                if not user:
+                    return self._redirect("/login")
+                # an ASCII name: Chromium dropped a Japanese one (filename*) and saved the file as 「download」
+                name = "calls-" + app.service.clock().strftime("%Y%m%d-%H%M") + ".csv"
+                return self._send(200, app.service.export_calls_csv().encode("utf-8"), "text/csv; charset=utf-8",
+                                  {"Content-Disposition": f'attachment; filename="{name}"'})
             if path.startswith("/api/"):
                 if not user:
                     return self._json(HTTPStatus.UNAUTHORIZED, {"error": "ログインが必要です"})

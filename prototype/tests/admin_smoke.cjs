@@ -135,6 +135,15 @@ const lastAi = (page) => page.$$eval("#chat .msg.ai", (els) => (els.at(-1) || {}
     check("forwarded call: utterance not sent to the AI", (await page.textContent("#chat")).includes("AIへは送っていません"));
     await shot(page, "pc-demo-forward");
 
+    // the call list as a file for Excel (2026-10-29)
+    await page.goto(url + "/#/calls");
+    await page.waitForSelector("a[href='/export/calls.csv']");
+    const csvDl = page.waitForEvent("download");
+    await page.click("a[href='/export/calls.csv']");
+    const file = await csvDl;
+    const csvText = fs.readFileSync(await file.path(), "utf8");
+    check("the call list is saved as a CSV for Excel", csvText.startsWith("\ufeff受付ID,着信日時") && /^calls-\d{8}-\d{4}\.csv$/.test(file.suggestedFilename()));
+
     // --- FAQ and voice screens ----------------------------------------------------------------------------
     // a question no FAQ answers is listed; the administrator's answer is used from the next call (2026-10-29)
     check("AI call for the FAQ feedback", (await demoCall(page, url, "2026-10-05T18:00")) === "AI受付");

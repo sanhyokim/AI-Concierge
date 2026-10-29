@@ -57,7 +57,7 @@ class PromptTextTest(unittest.TestCase):
 
     def test_gemini_gets_short_tool_rules_and_the_dates_but_not_the_faq(self):
         text = self.svc.voice_instructions(self.cid, LAB_PERSONA, backend=False)
-        self.assertLess(len(text), 2850)   # 2026-10-22: the fixed questions and more words in kana; 10-26: go on after the name
+        self.assertLess(len(text), 2900)   # 2026-10-22: the fixed questions and more words in kana; 10-26: go on after the name; 10-29: words not to use
         for words in ("0は「ゼロ」と言います", "失礼いたします。」と言い、end_call を呼びます", "必ず lookup_faq を呼び",
                       "read_back_now.say を一字一句そのまま読みます", "まず offer_line_number を呼び",
                       "- 10/16（金）：明後日・今週の金曜", "save_field には、2026-10-16"):

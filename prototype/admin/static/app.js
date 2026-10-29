@@ -267,7 +267,9 @@ function callsTable(calls) {
 }
 routes.calls = async () => {
   const { calls } = await api("/api/calls");
-  view.innerHTML = `${head("受付履歴", "試験（文字で試す・声で話す）の記録です（会社の回線の着信はありません）。日時を押すと詳しく見られます。")}<section class="card">${callsTable(calls)}</section>`;
+  // 2026-10-29 (user): 「受付一覧に記録のエクスポート機能がほしい」
+  view.innerHTML = `${head("受付履歴", "試験（文字で試す・声で話す）の記録です（会社の回線の着信はありません）。日時を押すと詳しく見られます。",
+    `<a class="button" href="/export/calls.csv" download title="すべての受付を1行ずつ、店舗名・用件・会話などと一緒に保存します">一覧をファイルに保存（Excelで開けます）</a>`)}<section class="card">${callsTable(calls)}</section>`;
 };
 
 function eventText(e) {
