@@ -19,7 +19,8 @@ RECEPTION_TOOLS = TOOLS + [
     {
         "type": "function",
         "name": "lookup_faq",
-        "description": "料金・条件・対応範囲などを聞かれたときに呼ぶ。返ってきた answer の範囲だけで答える。",
+        "description": ("料金・条件・対応範囲などを聞かれたときに呼ぶ。返ってきた answer の範囲だけで答える。found が false なら、"
+                        "how のとおり、candidates から同じことを聞いているものの answer を読むか、if_none を読む。"),
         "parameters": {"type": "object", "properties": {"question": {"type": "string"}}, "required": ["question"]},
     },
     {

@@ -410,6 +410,9 @@ class Lab:
         # the voice model says the answer aloud: the misread words in kana, as in its instructions (2026-10-22)
         if isinstance(res.get("answer"), str):
             res = {**res, "answer": for_speech(res["answer"])}
+        if isinstance(res.get("candidates"), list):
+            res = {**res, "candidates": [{**c, "answer": for_speech(c["answer"])} for c in res["candidates"]],
+                   "if_none": for_speech(res.get("if_none", ""))}
         return res
 
     def utterance(self, sid: str, text: str, seq) -> dict:

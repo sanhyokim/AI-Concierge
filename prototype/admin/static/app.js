@@ -45,6 +45,7 @@ async function refreshAlerts() {
   if (bad) out.push(`<div class="alert bad">通知の障害があります：失敗 ${p.counts.failed_stopped || 0}件・結果不明 ${p.counts.unknown || 0}件・停止中 ${p.counts.channel_stopped || 0}件。<a href="#/notify">通知の画面で確認</a></div>`);
   for (const c of p.stopped_channels) out.push(`<div class="alert bad">通知の経路「${esc(c.channel)}」が停止中：${esc(c.reason)}</div>`);
   const home = !(location.hash.split("/")[1] || "");   // the standing notes only on the home screen, not on every page
+  if (home && s.faq_misses_open) out.push(`<div class="alert warn">FAQで答えられなかった質問が ${s.faq_misses_open}件あります。<a href="#/faq">FAQの画面で回答を書く</a></div>`);
   if (home && s.provisional) out.push(`<div class="alert info">FAQは暫定・架空の値です。本番の決定済みの設定ではありません。</div>`);
   if (home && s.retention_unset) out.push(`<div class="alert info">受付記録の保存期間が未設定です（<a href="#/mode">基本設定</a>で設定できます。自動削除は未実装）。</div>`);
   document.getElementById("alerts").innerHTML = out.join("");
@@ -116,33 +117,81 @@ routes.mode = async () => {
 
 // --- FAQ --------------------------------------------------------------------------------------------------
 routes.faq = async () => {
-  const { faqs } = await api("/api/faqs");
+  const { faqs, misses } = await api("/api/faqs");
+  const byCode = Object.fromEntries(faqs.map((f) => [f.code, f]));
+  const examplesOf = (f) => String(f.examples || "").split("\n").filter((e) => e.trim());
+  const faqOptions = `<option value="">足す先のFAQを選ぶ</option>` + faqs.map((f) => `<option value="${f.id}">${esc(f.code)}　${esc(f.question)}</option>`).join("");
+  const waiting = misses.filter((m) => m.status === "open" || m.status === "ai_answered");
+  const done = misses.filter((m) => !(m.status === "open" || m.status === "ai_answered"));
+  // 2026-10-29 (user): 「答えられなかった質問はフィードバックで回答に追加できる流れが必要かもね」「FAQで回答できなかった内容を
+  // いれて、管理者が回答を記入したら使えるようにするとか？」
+  const missCard = (m) => {
+    const chosen = m.status === "ai_answered" && byCode[m.faq_code];
+    const when = `<p class="sub">${esc(fmt(m.at))}・<a href="#/call/${encodeURIComponent(m.call_id)}">この受付の記録</a>${m.ai_question && m.ai_question.replace(/[?？。、\s]/g, "") !== m.question.replace(/[?？。、\s]/g, "") ? `・AIの聞き取り「${esc(m.ai_question)}」` : ""}</p>`;
+    const writeAnswer = `<div class="miss-way"><b>回答を書いて、新しいFAQにする</b>
+        <label>質問 <input data-m="question" value="${esc(m.question)}"></label>
+        <label>回答（AIはこの文だけで答えます）<textarea data-m="answer" rows="2" placeholder="例：はい、福岡市は対応しています。"></textarea></label>
+        <div class="form-actions"><button class="primary small" data-miss-answer="${m.id}">新しいFAQにする</button></div></div>`;
+    const addTo = `<div class="miss-way"><b>同じ意味のFAQがあるときは、似た質問として足す</b>
+        <div class="row"><select data-m="faq" class="inline" aria-label="足す先のFAQ">${faqOptions}</select><button class="small" data-miss-add="${m.id}">このFAQに足す</button></div></div>`;
+    return `<section class="card" data-miss="${m.id}">
+      <div class="card-head"><div class="row"><b>「${esc(m.question)}」</b>${statusBadge(chosen ? "heard" : "awaiting_confirmation", m.status_label)}</div>
+        <button class="small" data-miss-dismiss="${m.id}" title="この質問にはFAQで答えない（担当者が折り返しで答える）">FAQにしない</button></div>
+      ${when}
+      ${chosen ? `<div class="alert info">AIは、意味の近い <b>${esc(chosen.code)}「${esc(chosen.question)}」</b> の回答で答えました。<br>回答：${esc(chosen.answer)}
+          <div class="form-actions"><button class="primary small" data-miss-ok="${m.id}">合っている（似た質問として足す）</button></div></div>
+        <details class="fold"><summary>違う答えにしたいとき</summary>${writeAnswer}${addTo}</details>`
+        : `${writeAnswer}${addTo}`}</section>`;
+  };
   view.innerHTML = `${head("FAQ", "有効なFAQだけを、AIが答える範囲に使います。変更は<b>次の会話から</b>反映されます。すべて未承認の推奨案・試作です。")}
+    <section class="card"><div class="card-head"><h2>答えられなかった質問（${waiting.length}件）</h2></div>
+      <p class="sub">お客様の質問に、言い方の合うFAQがなかったものです。回答を書くか、同じ意味のFAQに「似た質問」として足すと、次の会話から、同じような聞き方にもAIが答えます。</p>
+      ${waiting.length ? "" : `<p class="muted">いまはありません。</p>`}</section>
+    <div class="stack-gap">${waiting.map(missCard).join("")}</div>
+    ${done.length ? `<section class="card"><details><summary>反映したもの・FAQにしないもの（${done.length}件）</summary>
+      <ul class="sub">${done.map((m) => `<li>${esc(fmt(m.handled_at || m.at))}「${esc(m.question)}」：${esc(m.status_label)}${m.faq_code ? `（${esc(m.faq_code)}）` : ""}</li>`).join("")}</ul></details></section>` : ""}
     <section class="card"><details><summary>＋ FAQを追加する</summary>
       <label>質問の例 <input id="newQ"></label><label>回答 <textarea id="newA" rows="3"></textarea></label>
+      <label>似た質問（1行に1つ。お客様の言い方の例）<textarea id="newE" rows="2"></textarea></label>
       <label>探すための語（読点・カンマ区切り）<input id="newK" placeholder="例：駐車場,車,ある|止め|置け"></label>
       <p class="sub">「いくら|料金|値段」のように「|」でつないだ語は、どれかが質問に入っていないと、そのFAQは選ばれません（「無煙ロースター」とだけ言った日程の質問に、料金の答えが返らないようにするため）。</p>
       <div class="form-actions"><button class="primary" id="addFaq">追加</button></div></details></section>
     <div id="faqList" class="stack-gap">${faqs.map((f) => `<section class="card" data-id="${f.id}">
       <div class="card-head"><div class="row"><b>${esc(f.code)}</b><span class="badge warn">${esc(f.approval)}</span></div>
         <div class="row"><label class="inline"><input type="checkbox" data-toggle="${f.id}" ${f.enabled ? "checked" : ""}> 有効</label><button class="small" data-edit="${f.id}">編集</button></div></div>
-      <div class="view-mode"><p><b>Q.</b> ${esc(f.question)}</p><p><b>A.</b> ${esc(f.answer)}</p><p class="sub">探す語：${esc(f.keywords)}</p></div>
+      <div class="view-mode"><p><b>Q.</b> ${esc(f.question)}</p><p><b>A.</b> ${esc(f.answer)}</p>
+        ${examplesOf(f).length ? `<p class="sub">似た質問：${examplesOf(f).map(esc).join("／")}</p>` : ""}<p class="sub">探す語：${esc(f.keywords)}</p></div>
       <div class="edit-mode hidden"><label>質問の例 <input data-f="question" value="${esc(f.question)}"></label>
         <label>回答 <textarea data-f="answer" rows="3">${esc(f.answer)}</textarea></label>
+        <label>似た質問（1行に1つ）<textarea data-f="examples" rows="2">${esc(f.examples || "")}</textarea></label>
         <label>探す語 <input data-f="keywords" value="${esc(f.keywords)}"></label>
         <div class="form-actions"><button class="primary small" data-save="${f.id}">保存</button></div></div></section>`).join("")}</div>`;
   const byId = Object.fromEntries(faqs.map((f) => [String(f.id), f]));
   document.getElementById("addFaq").addEventListener("click", () => guarded(async () => {
-    await api("/api/faqs", { question: document.getElementById("newQ").value, answer: document.getElementById("newA").value, keywords: document.getElementById("newK").value, enabled: true });
+    await api("/api/faqs", { question: document.getElementById("newQ").value, answer: document.getElementById("newA").value, examples: document.getElementById("newE").value, keywords: document.getElementById("newK").value, enabled: true });
     toast("追加しました。次の会話から使われます"); render();
   }));
+  const miss = (id, body, msg) => guarded(async () => { await api(`/api/faq-misses/${id}`, body); toast(msg); render(); });
   view.addEventListener("click", (e) => {
     const t = e.target;
-    if (t.dataset.edit) { const card = t.closest("[data-id]"); card.querySelector(".view-mode").classList.add("hidden"); card.querySelector(".edit-mode").classList.remove("hidden"); }
+    const card = t.closest("[data-miss]");
+    if (t.dataset.missAnswer) {
+      const answer = card.querySelector("[data-m=answer]").value.trim();
+      if (!answer) { toast("回答を入力してください"); return; }
+      miss(t.dataset.missAnswer, { action: "answer", question: card.querySelector("[data-m=question]").value, answer }, "新しいFAQにしました。次の会話から使われます");
+    }
+    if (t.dataset.missAdd) {
+      const faqId = Number(card.querySelector("[data-m=faq]").value);
+      if (!faqId) { toast("足す先のFAQを選んでください"); return; }
+      miss(t.dataset.missAdd, { action: "add_to", faq_id: faqId }, "似た質問として足しました。次の会話から使われます");
+    }
+    if (t.dataset.missOk) miss(t.dataset.missOk, { action: "add_to" }, "似た質問として足しました。次の会話から使われます");
+    if (t.dataset.missDismiss) miss(t.dataset.missDismiss, { action: "dismiss" }, "FAQにしないものにしました");
+    if (t.dataset.edit) { const c = t.closest("[data-id]"); c.querySelector(".view-mode").classList.add("hidden"); c.querySelector(".edit-mode").classList.remove("hidden"); }
     if (t.dataset.save) guarded(async () => {
-      const card = t.closest("[data-id]"); const f = byId[t.dataset.save];
-      const val = (k) => card.querySelector(`[data-f=${k}]`).value;
-      await api(`/api/faqs/${f.id}`, { question: val("question"), answer: val("answer"), keywords: val("keywords"), enabled: !!f.enabled });
+      const c = t.closest("[data-id]"); const f = byId[t.dataset.save];
+      const val = (k) => c.querySelector(`[data-f=${k}]`).value;
+      await api(`/api/faqs/${f.id}`, { question: val("question"), answer: val("answer"), examples: val("examples"), keywords: val("keywords"), enabled: !!f.enabled });
       toast("保存しました。次の会話から使われます"); render();
     });
   });

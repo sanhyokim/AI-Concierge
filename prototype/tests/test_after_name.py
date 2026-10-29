@@ -44,7 +44,7 @@ class AfterTheNameTest(unittest.TestCase):
         svc, cid = call()
         svc.tool(cid, "save_fields", {"caller_name": "田中"})
         res = svc.tool(cid, "save_fields", {"caller_name": "田中", "shop_name": "焼肉ほのか博多店"})
-        self.assertNotIn("say", res)
+        self.assertNotIn("お世話になっております", res.get("say", ""))   # the next question only
 
 
 class NoMistakeTest(unittest.TestCase):

@@ -78,7 +78,7 @@ class AdminApp:
                     "labels": {"routes": S.ROUTE_LABELS, "fields": S.FIELD_LABELS,
                                "failure_actions": S.FAILURE_LABELS}}
         if path == "/api/faqs":
-            return {"faqs": svc.faqs()}
+            return {"faqs": svc.faqs(), "misses": svc.faq_misses()}
         if path == "/api/voices":
             vid, cfg, _ = svc.config()
             return {"catalog": svc.voice_catalog(), "voices": cfg["voices"], "active_voice": cfg["active_voice"]}
@@ -145,6 +145,9 @@ class AdminApp:
         m = re.fullmatch(r"/api/faqs/(\d+)", path)
         if m:
             return {"id": svc.save_faq(body, who, int(m.group(1)))}
+        m = re.fullmatch(r"/api/faq-misses/(\d+)", path)
+        if m:
+            return svc.handle_faq_miss(int(m.group(1)), body, who)
         m = re.fullmatch(r"/api/calls/([\w-]+)/correct", path)
         if m:
             return svc.correct_field(m.group(1), body.get("field", ""), body.get("value", ""), who,

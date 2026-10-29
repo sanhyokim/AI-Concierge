@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import datetime as dt
+import re
+import unicodedata
 
 from ..concierge.readings import WEEKDAY_KANJI
 from .settings import FALLBACK_ANSWER
@@ -15,14 +17,37 @@ def _norm(text: str) -> str:
     return text.replace(" ", "").replace("　", "").replace("？", "?")
 
 
-def faq_lookup(faqs: list[dict], question: str) -> dict:
-    """Best keyword match among the enabled FAQ of this call. No match -> FAQ-10 and an open question.
+SIMILAR = 0.8          # a question this close to an FAQ's question or one of its similar questions is that FAQ
+MAX_CANDIDATES = 30    # the FAQ handed to the AI to choose from when nothing matched
+_PUNCT = re.compile(r"[\s、。，,．.!！?？「」『』（）()・…〜~]")
 
-    A keyword written as 「いくら|料金|値段」 is a required group: one of its words must be in the question, or that
-    FAQ is not chosen. It keeps a question that only names the subject (「無煙ロースターの清掃に明後日来られますか」)
-    from getting a price answer (2026-10-13, browser test C1).
-    """
-    q = _norm(question)
+
+def _plain(text: str) -> str:
+    return _PUNCT.sub("", unicodedata.normalize("NFKC", text or ""))
+
+
+def _bigrams(text: str) -> set[str]:
+    return {text[i:i + 2] for i in range(len(text) - 1)} or ({text} if text else set())
+
+
+def similarity(a: str, b: str) -> float:
+    """How alike two questions are written (0 to 1): shared pairs of characters, punctuation ignored."""
+    x, y = _bigrams(_plain(a)), _bigrams(_plain(b))
+    return 2 * len(x & y) / (len(x) + len(y)) if x and y else 0.0
+
+
+def contains_share(whole: str, part: str) -> float:
+    """How much of `part` is in `whole` (0 to 1): used to tell which FAQ answer the AI read out."""
+    x, y = _bigrams(_plain(whole)), _bigrams(_plain(part))
+    return len(x & y) / len(y) if y else 0.0
+
+
+def examples_of(faq: dict) -> list[str]:
+    """The similar questions an administrator added to an FAQ (one per line)."""
+    return [e.strip() for e in str(faq.get("examples") or "").splitlines() if e.strip()]
+
+
+def _keyword_match(faqs: list[dict], q: str) -> dict | None:
     best, best_score = None, 0
     for f in faqs:
         words = [k.strip() for k in (f.get("keywords") or "").replace("、", ",").split(",") if k.strip()]
@@ -32,15 +57,51 @@ def faq_lookup(faqs: list[dict], question: str) -> dict:
         score = sum(1 for k in words if "|" not in k and k in q) + len(groups)
         if score > best_score:
             best, best_score = f, score
-    if best is None:
+    return best
+
+
+def faq_lookup(faqs: list[dict], question: str, said: str = "") -> dict:
+    """The FAQ for a question, in three steps.
+
+    1. The keywords. A keyword written as 「いくら|料金|値段」 is a required group: one of its words must be in the
+       question, or that FAQ is not chosen. It keeps a question that only names the subject (「無煙ロースターの清掃に
+       明後日来られますか」) from getting a price answer (2026-10-13, browser test C1).
+    2. The wording: the AI's question or the caller's own words (`said`) written almost like the FAQ's question or
+       one of the similar questions an administrator added to it (2026-10-29, the feedback from the admin page).
+    3. Nothing matched: the enabled FAQ go back to the AI as candidates. It understands meaning, so it can answer
+       a question asked another way from an approved answer (user 2026-10-29: 「類似の質問も答えられる必要性もあり
+       ます」; 「福岡市は対応してますか」 is FAQ-06 「どの地域に来てもらえますか」). If none fits, it says FAQ-10 and
+       the question is kept for an administrator to answer.
+    """
+    best = _keyword_match(faqs, _norm(question))
+    if best is not None:
+        return {"ok": True, "found": True, "faq": best["code"], "answer": best["answer"]}
+    asked = [t for t in (question, said) if t and t.strip()]
+    scored = []
+    for f in faqs:
+        score = max((similarity(a, e) for a in asked for e in [f["question"], *examples_of(f)]), default=0.0)
+        scored.append((score, f))
+    scored.sort(key=lambda sf: -sf[0])
+    if scored and scored[0][0] >= SIMILAR:
+        f = scored[0][1]
+        return {"ok": True, "found": True, "faq": f["code"], "answer": f["answer"], "matched_by": "similar_question"}
+    if not faqs:
         return {"ok": True, "found": False, "answer": FALLBACK_ANSWER,
                 "note": "FAQにないため、担当者への確認事項として記録しました"}
-    return {"ok": True, "found": True, "faq": best["code"], "answer": best["answer"]}
+    return {"ok": True, "found": False,
+            "candidates": [{"faq": f["code"], "question": f["question"], "answer": f["answer"]}
+                           for _, f in scored[:MAX_CANDIDATES]],
+            "how": ("お客様の質問が、candidates のどれかと同じことを聞いていれば、その answer だけを読みます（言い換えず、"
+                    "足さない）。どれとも違うことなら、if_none を読みます。"),
+            "if_none": FALLBACK_ANSWER,
+            "note": "FAQに同じ言い方がないため、答えられなかった質問として記録しました"}
 
 
 def faq_block(faqs: list[dict]) -> str:
     lines = ["【FAQ（この通話の開始時に有効だったもの。未承認の推奨案を含む試作）】"]
-    lines += [f"- {f['question']} → {f['answer']}" for f in faqs]
+    for f in faqs:
+        more = examples_of(f)
+        lines.append(f"- {f['question']}" + (f"（似た質問：{'／'.join(more[:5])}）" if more else "") + f" → {f['answer']}")
     lines.append(f"- FAQにないこと → 「{FALLBACK_ANSWER}」と答え、lookup_faq で確認事項として記録する")
     return "\n".join(lines)
 
@@ -48,13 +109,14 @@ def faq_block(faqs: list[dict]) -> str:
 TOOL_RULES = """\
 【業務処理（ツール）】
 - 業務処理を呼ぶ前に、お客様への返事を先に短く話します（「かしこまりました。」など）。業務処理のあいだ黙り込まないでください。
-- 電話番号と希望日時は、聞いたらすぐ save_field で保存します。結果の read_back_now.say を、一字一句そのまま読んで復唱します。
+- 電話番号と希望日時は、聞いたらすぐ save_field で保存します（「来週ぐらい」のような日にちのないご希望も、そのまま）。結果の read_back_now.say を、一字一句そのまま読んで復唱します。
   保存する前に、自分で番号や日時を復唱しません。数字を自分で読み替えません（0を「マル」と読む、「〇」と書く、など）。
 - 店名・お名前・用件は、まとまったところで save_fields を1回だけ呼んで、まとめて保存します（結果に read_back_now や say があれば、それも読みます）。
   訂正された値は、save_field（1項目）で保存し直します。
 - 復唱した値にお客様が「はい」とはっきり答えたら、サーバーが確認済みにします。confirm_field は呼ばなくてもかまいません。
   もう一つ復唱が残っていれば（read_back_later）、その後で request_readback を呼び、返ってきた say を読みます。
 - 料金・条件・対応範囲の質問だけ lookup_faq を呼び、返ってきた answer の範囲だけで答えます。
+  found が false なら、how のとおり candidates から同じ意味の answer を選んで読むか、if_none を読みます。
   日程の空きや、来てもらえるかは FAQ ではないので呼ばず、「担当の者から折り返しお電話して、日程をご相談いたします。」と伝えます。
 - 受付が終わったら、【終わり方（終話）】のとおりに話し、最後のあいさつの後で end_call を呼びます。
 - 火や煙が出ているなど明白な危険は flag_emergency(level="obvious")、曖昧なら "ambiguous"、判断できなければ "undetermined" を呼び、
@@ -70,7 +132,7 @@ DIRECT_TOOL_RULES = """\
 - 保存の前の返事は「かしこまりました。」だけにし、保存のことは言いません。結果の後に返事を繰り返しません。
 - 結果の do_not_ask_again の項目は伺い直さず、still_to_ask の項目だけを伺います。
 - 「明後日」などは下の表で日付に直して保存します。候補の日付を並べて話しません。
-- 電話番号と日時は、聞いたらすぐ save_field で保存し、返ってきた read_back_now.say を一字一句そのまま読みます。
+- 電話番号と日時（「来週ぐらい」も）は、すぐ save_field で保存し、read_back_now.say を一字一句そのまま読みます。
 - 店舗名・お名前・ご用件は、そろったところで save_fields を1回呼んで保存します。訂正された値は save_field で保存し直します。
 - 結果に say があれば、返事を待たずにそのまま読みます。
 - 復唱にお客様が「はい」と答えたら、確認は済んでいます。復唱が残っていれば（read_back_later）、request_readback を呼び、
@@ -111,12 +173,13 @@ BACKEND_RULES = """\
   ご用件・ご希望の日時・店舗名・お名前・折り返しのお電話番号を伺い、確認も済んだら、request_summary を呼び、
   返ってきた say を「そのまま読む文：」で返します（まとめと締めの言葉は、どのAIでも同じ文にする。2026-10-22）。
 【業務処理（ツール）】
-- 電話番号と希望日時は、受け取ったらすぐ save_field で保存し、read_back_now.say を返します。
+- 電話番号と希望日時は、受け取ったらすぐ save_field で保存し、read_back_now.say を返します（「来週ぐらい」もそのまま保存）。
 - 店舗名・お名前・ご用件は save_fields でまとめて保存します（結果に read_back_now や say があれば、その say を返します）。
   訂正された値は、save_field（1項目）で保存し直します。
 - 復唱にお客様が「はい」と答えたと伝えられたら、サーバーが確認済みにしています。confirm_field は呼ばなくてかまいません。
   まだ復唱していない値があれば（read_back_later）、request_readback を呼び、返ってきた say を返します。
-- 料金・条件・対応範囲の質問は lookup_faq を呼び、answer の範囲だけで返します。
+- 料金・条件・対応範囲の質問は lookup_faq を呼び、answer の範囲だけで返します。found が false なら、how のとおり
+  candidates から同じ意味の answer を選ぶか、if_none を返します。
   日程の空きや訪問の可否は FAQ ではないので呼ばず、「担当の者から折り返しお電話して、日程をご相談いたします。」と返します。
 - 火や煙が出ているなど明白な危険は flag_emergency(level="obvious")、曖昧なら "ambiguous"、判断できなければ "undetermined" を呼び、
   返ってきた指示を返します。安全とは断定せず、訪問や時刻を約束しません。

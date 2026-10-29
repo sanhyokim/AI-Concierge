@@ -235,7 +235,7 @@ class RuleAgent:
             return ["承知いたしました。"] + self._next_question()
         if any(m in text for m in ("ですか", "ますか", "?", "？", "いくら", "何時")):
             res = self._tool("lookup_faq", question=text)
-            return [res.get("answer", "")] + self._next_question()
+            return [res.get("answer") or res.get("if_none", "")] + self._next_question()
         if self.unclear_day:
             days, self.unclear_day = self.unclear_day, []
             return ["恐れ入ります。" + "と、".join(f"{d.month}月{d.day}日（{'月火水木金土日'[d.weekday()]}）" for d in days)

@@ -49,7 +49,7 @@ class FollowUpTest(unittest.TestCase):
         res = svc.tool(cid, "save_field", {"field": "request", "value": "フードの清掃"})
         self.assertEqual(res["say"], for_speech(ASK_FOR["request_target"]))
         res = svc.tool(cid, "save_field", {"field": "request", "value": "厨房のフードの清掃"})
-        self.assertNotIn("say", res)   # a kitchen hood: no count needed
+        self.assertEqual(res.get("say"), for_speech(ASK_FOR["preferred_datetime"]))   # a kitchen hood: no count; the next item
 
     def test_uwabiki_is_said_in_kana(self):   # 2026-10-26 (user): 「上引き＝うわびきです」
         self.assertIn("焼肉のうわびきフード", for_speech(ASK_FOR["request_target"]))
@@ -64,12 +64,12 @@ class FollowUpTest(unittest.TestCase):
         self.assertEqual(res["say"], for_speech(ASK_FOR["request_count"]))
         svc.ai_utterance(cid, ASK_FOR["request_count"])
         res = svc.tool(cid, "save_field", {"field": "request", "value": "無煙ロースターの清掃"})   # 「分かりません」
-        self.assertNotIn("say", res)
+        self.assertEqual(res.get("say"), for_speech(ASK_FOR["preferred_datetime"]))
 
     def test_a_count_in_the_request_needs_no_question(self):
         svc, cid = call()
         res = svc.tool(cid, "save_field", {"field": "request", "value": "無煙ロースター12基の清掃"})
-        self.assertNotIn("say", res)
+        self.assertEqual(res.get("say"), for_speech(ASK_FOR["preferred_datetime"]))
 
     def test_a_yakiniku_shop_name_asks_the_count_next(self):
         svc, cid = call()

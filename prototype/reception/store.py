@@ -1,6 +1,6 @@
 """SQLite storage for the reception app (standard library only).
 
-One file holds settings (versioned), FAQ, calls with their fields and events, staff corrections,
+One file holds settings (versioned), FAQ and the questions it could not answer, calls with their fields and events, staff corrections,
 summaries, notification targets and the notification outbox, users and sessions, and the audit log.
 Writes go through one connection guarded by a lock; ``tx()`` groups writes into one transaction so a
 call record and its outbox rows are committed together.
@@ -28,7 +28,10 @@ CREATE TABLE IF NOT EXISTS config_versions(
 CREATE TABLE IF NOT EXISTS faqs(
   id INTEGER PRIMARY KEY AUTOINCREMENT, code TEXT, question TEXT NOT NULL, answer TEXT NOT NULL,
   keywords TEXT NOT NULL DEFAULT '', enabled INTEGER NOT NULL DEFAULT 1, approval TEXT NOT NULL DEFAULT '未承認',
-  generated TEXT, position INTEGER NOT NULL DEFAULT 0, updated_at TEXT, updated_by TEXT);
+  generated TEXT, position INTEGER NOT NULL DEFAULT 0, updated_at TEXT, updated_by TEXT, examples TEXT NOT NULL DEFAULT '');
+CREATE TABLE IF NOT EXISTS faq_misses(
+  id INTEGER PRIMARY KEY AUTOINCREMENT, call_id TEXT NOT NULL, at TEXT NOT NULL, question TEXT NOT NULL,
+  ai_question TEXT, status TEXT NOT NULL DEFAULT 'open', faq_code TEXT, handled_by TEXT, handled_at TEXT);
 CREATE TABLE IF NOT EXISTS users(
   id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE NOT NULL, pw_hash TEXT NOT NULL, salt TEXT NOT NULL,
   iterations INTEGER NOT NULL, role TEXT NOT NULL DEFAULT 'admin', created_at TEXT);
@@ -116,6 +119,9 @@ class Store:
                           ("handled_version", "INTEGER NOT NULL DEFAULT 0")):
             if col not in have:
                 self.db.execute(f"ALTER TABLE calls ADD COLUMN {col} {decl}")
+        # 2026-10-29: the similar questions an administrator adds to an FAQ
+        if "examples" not in {r["name"] for r in self.db.execute("PRAGMA table_info(faqs)")}:
+            self.db.execute("ALTER TABLE faqs ADD COLUMN examples TEXT NOT NULL DEFAULT ''")
 
     @contextmanager
     def tx(self):

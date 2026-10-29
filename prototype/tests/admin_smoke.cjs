@@ -136,9 +136,24 @@ const lastAi = (page) => page.$$eval("#chat .msg.ai", (els) => (els.at(-1) || {}
     await shot(page, "pc-demo-forward");
 
     // --- FAQ and voice screens ----------------------------------------------------------------------------
+    // a question no FAQ answers is listed; the administrator's answer is used from the next call (2026-10-29)
+    check("AI call for the FAQ feedback", (await demoCall(page, url, "2026-10-05T18:00")) === "AI受付");
+    await say(page, "駐車場はありますか？");
     await page.goto(url + "/#/faq");
     await page.waitForSelector("[data-toggle]");
+    check("the unanswered question is listed", (await page.textContent("main")).includes("「駐車場はありますか？」"));
     await shot(page, "pc-faq");
+    const missCard = page.locator("[data-miss]").filter({ hasText: "駐車場はありますか" }).first();
+    await missCard.locator("[data-m=answer]").fill("お店の前の道に、作業の車を止めさせていただくことがあります。");
+    const answered = page.waitForResponse((r) => r.url().includes("/api/faq-misses/"));
+    await missCard.locator("[data-miss-answer]").click();
+    await answered;
+    await page.waitForFunction(() => document.querySelectorAll("[data-miss]").length === 0);
+    check("the answer became an FAQ", (await page.textContent("#faqList")).includes("お店の前の道に、作業の車を"));
+    check("demo call for the new FAQ", (await demoCall(page, url, "2026-10-05T18:00")) === "AI受付");
+    await say(page, "駐車場はありますか？");
+    check("the next call answers it", (await lastAi(page)).includes("どのようなご用件") &&
+          (await page.textContent("#chat")).includes("お店の前の道に"));
     await page.goto(url + "/#/voice");
     await page.waitForSelector("#voiceRows tr");
     const voiceText = await page.textContent("main");

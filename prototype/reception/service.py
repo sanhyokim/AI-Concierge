@@ -26,7 +26,7 @@ from ..concierge.readings import digits_only
 from ..engines.tools import READBACK_FIELDS, ToolHandler
 from . import settings as S
 from .faq import (BACKEND_RULES, DELEGATION_POLICY, DIRECT_TOOL_RULES, TOOL_RULES, backend_line_block,
-                  date_block, faq_block, faq_lookup, line_block, today_line, voice_line_hint)
+                  contains_share, date_block, faq_block, faq_lookup, line_block, today_line, voice_line_hint)
 from .speech_consent import detect as detect_spoken_consent
 from .notify import Outbox
 from .routing import Decision, decide
@@ -66,6 +66,7 @@ class HandledConflict(Exception):
     """The handling state changed after the screen read it (someone else took or changed the call first)."""
 
 
+FAQ_READ_SHARE = 0.6   # this much of a candidate FAQ answer in the AI's words: the AI read that answer
 CONFIRM_WAIT_S = 2.5   # a reply transcript may arrive after the model's confirm_field call (Gemini: 2026-10-20)
 
 
@@ -75,6 +76,7 @@ class CallSession:
         self.new_utterance = threading.Condition(self.lock)
         self.date_asked = False   # the AI has asked for the wished date: a caller with no wish is not asked again
         self.asked: set[str] = set()   # follow-up questions on the request the AI has asked (request_target/count)
+        self.faq_choice: dict | None = None   # a question no FAQ matched, and the FAQ handed to the AI to choose from
 
 
 def _flow_dump(f: CallFlow) -> dict:
@@ -111,6 +113,15 @@ class ReceptionService:
                     self.store.x("INSERT INTO faqs(code, question, answer, keywords, enabled, approval, generated, "
                                  "position, updated_at, updated_by) VALUES(?, ?, ?, ?, 1, '未承認（推奨案）', ?, ?, ?, ?)",
                                  (code, q, a, kw, None, i, now, "system"))
+            # the questions the FAQ could not answer, from calls made before the list existed (2026-10-29)
+            if not self.store.q1("SELECT value FROM meta WHERE key = 'faq_misses_from_calls'"):
+                for c in self.store.q("SELECT id, started_at, open_questions, snapshot FROM calls ORDER BY started_at"):
+                    if not json.loads(c["snapshot"])["config"].get("store_transcript", True):
+                        continue
+                    for q in json.loads(c["open_questions"] or "[]"):
+                        self.store.x("INSERT INTO faq_misses(call_id, at, question, ai_question) VALUES(?, ?, ?, ?)",
+                                     (c["id"], c["started_at"], q, q))
+                self.store.x("INSERT INTO meta(key, value) VALUES('faq_misses_from_calls', ?)", (now,))
             # FAQ-04 used to be generated from the schedule: give it its own (editable) answer
             self.store.x("UPDATE faqs SET answer = ?, generated = NULL WHERE generated = 'hours'", (S.HOURS_ANSWER,))
             if not self.store.q1("SELECT id FROM notify_targets LIMIT 1"):
@@ -154,6 +165,7 @@ class ReceptionService:
         q, a = str(data.get("question", "")).strip(), str(data.get("answer", "")).strip()
         kw = ",".join(k.strip() for k in str(data.get("keywords", "")).replace("、", ",").split(",") if k.strip())
         enabled = 1 if data.get("enabled", True) else 0
+        examples = "\n".join(e.strip() for e in str(data.get("examples", "")).splitlines() if e.strip())
         now = iso(self.clock())
         with self.store.tx():
             if fid is None:
@@ -162,8 +174,8 @@ class ReceptionService:
                 pos = (self.store.q1("SELECT MAX(position) AS m FROM faqs")["m"] or 0) + 1
                 code = f"FAQ-U{pos}"
                 fid = self.store.x("INSERT INTO faqs(code, question, answer, keywords, enabled, approval, position, "
-                                   "updated_at, updated_by) VALUES(?, ?, ?, ?, ?, '未承認（試作で追加）', ?, ?, ?)",
-                                   (code, q, a, kw, enabled, pos, now, user)).lastrowid
+                                   "updated_at, updated_by, examples) VALUES(?, ?, ?, ?, ?, '未承認（試作で追加）', ?, ?, ?, ?)",
+                                   (code, q, a, kw, enabled, pos, now, user, examples)).lastrowid
                 self.store.audit(user, "faq_add", str(fid), {"question": q})
             else:
                 row = self.store.q1("SELECT * FROM faqs WHERE id = ?", (fid,))
@@ -171,16 +183,65 @@ class ReceptionService:
                     raise ValueError("FAQが見つかりません")
                 q, a = q or row["question"], a or row["answer"]
                 kw = kw if "keywords" in data else row["keywords"]
+                examples = examples if "examples" in data else row["examples"]
                 self.store.x("UPDATE faqs SET question = ?, answer = ?, keywords = ?, enabled = ?, updated_at = ?, "
-                             "updated_by = ? WHERE id = ?", (q, a, kw, enabled, now, user, fid))
+                             "updated_by = ?, examples = ? WHERE id = ?", (q, a, kw, enabled, now, user, examples, fid))
                 self.store.audit(user, "faq_update", str(fid), {"enabled": bool(enabled)})
         return fid
 
     def snapshot_faqs(self, cfg: dict) -> list[dict]:
         out = []
         for r in self.store.q("SELECT * FROM faqs WHERE enabled = 1 ORDER BY position, id"):
-            out.append({"code": r["code"], "question": r["question"], "answer": r["answer"], "keywords": r["keywords"]})
+            out.append({"code": r["code"], "question": r["question"], "answer": r["answer"], "keywords": r["keywords"],
+                        "examples": r["examples"]})
         return out
+
+    # --- the questions the FAQ could not answer (2026-10-29) -----------------------------------------------
+    # User: 「答えられなかった質問はフィードバックで回答に追加できる流れが必要かもね」「FAQで回答できなかった内容を
+    # いれて、管理者が回答を記入したら使えるようにするとか？」. Each question no FAQ answered is listed on the FAQ
+    # screen; an administrator writes an answer (a new FAQ) or adds it to an FAQ as a similar question.
+    MISS_LABELS = {"open": "未回答", "ai_answered": "AIが近いFAQで答えた（確認待ち）", "new_faq": "新しいFAQにした",
+                   "added": "FAQに似た質問として足した", "dismissed": "FAQにしない"}
+
+    def faq_misses(self, limit: int = 200) -> list[dict]:
+        rows = self.store.q("SELECT * FROM faq_misses ORDER BY CASE WHEN status IN ('open', 'ai_answered') THEN 0 "
+                            "ELSE 1 END, id DESC LIMIT ?", (limit,))
+        for r in rows:
+            r["status_label"] = self.MISS_LABELS.get(r["status"], r["status"])
+        return rows
+
+    def handle_faq_miss(self, mid: int, data: dict, user: str | None) -> dict:
+        row = self.store.q1("SELECT * FROM faq_misses WHERE id = ?", (mid,))
+        if not row:
+            raise ValueError("その質問が見つかりません")
+        action, now = data.get("action"), iso(self.clock())
+        with self.store.tx():
+            if action == "answer":            # a new FAQ: the caller's question and the administrator's answer
+                question = str(data.get("question") or row["question"]).strip()
+                fid = self.save_faq({"question": question, "answer": data.get("answer", ""),
+                                     "keywords": data.get("keywords", ""), "examples": row["question"]
+                                     if row["question"] != question else ""}, user)
+                status, code = "new_faq", self.store.q1("SELECT code FROM faqs WHERE id = ?", (fid,))["code"]
+            elif action == "add_to":          # the same question as an FAQ already there, asked another way
+                faq = (self.store.q1("SELECT * FROM faqs WHERE id = ?", (int(data.get("faq_id") or 0),))
+                       or self.store.q1("SELECT * FROM faqs WHERE code = ?", (row["faq_code"] or "",)))
+                if not faq:
+                    raise ValueError("足す先のFAQを選んでください")
+                have = [e for e in (faq["examples"] or "").splitlines() if e.strip()]
+                if row["question"] not in have and row["question"] != faq["question"]:
+                    have.append(row["question"])
+                self.save_faq({"question": faq["question"], "answer": faq["answer"], "keywords": faq["keywords"],
+                               "enabled": bool(faq["enabled"]), "examples": "\n".join(have)}, user, faq["id"])
+                status, code = "added", faq["code"]
+            elif action == "dismiss":
+                status, code = "dismissed", row["faq_code"]
+            else:
+                raise ValueError("操作が正しくありません")
+            self.store.x("UPDATE faq_misses SET status = ?, faq_code = ?, handled_by = ?, handled_at = ? WHERE id = ?",
+                         (status, code, user, now, mid))
+            self.store.audit(user, "faq_miss_" + action, str(mid), {"faq": code})
+        return {"ok": True, "status": status, "faq_code": code,
+                "note": "次の会話から使われます" if status in ("new_faq", "added") else ""}
 
     # --- voices ----------------------------------------------------------------------------------------
     def voice_catalog(self) -> list[dict]:
@@ -410,6 +471,8 @@ class ReceptionService:
                 sess.asked.add("request_count")
             if "厨房" in text and ("上引き" in text or "うわびき" in text):
                 sess.asked.add("request_target")
+            if sess.faq_choice:
+                self._faq_answered(call, sess, text)
             wrong = sess.tools.ai_said(text)
             for name, said in wrong.items():
                 self._event(call_id, "read_back_mismatch", {"field": name, "said": said})
@@ -433,9 +496,15 @@ class ReceptionService:
             args = dict(args or {})
             logged_args = args
             if name == "lookup_faq":
-                res = faq_lookup(snap["faqs"], str(args.get("question", "")))
+                question = str(args.get("question", ""))
+                said = sess.tools.last_caller_utterance
+                res = faq_lookup(snap["faqs"], question, said)
+                sess.faq_choice = None
                 if not res["found"]:
-                    self._add_open_question(call, str(args.get("question", ""))[:200], snap)
+                    mid = self._add_open_question(call, question[:200], snap, said[:200])
+                    if res.get("candidates"):
+                        sess.faq_choice = {"miss_id": mid, "question": question[:200],
+                                           "answers": [(c["faq"], c["answer"]) for c in res["candidates"]]}
             elif name == "flag_emergency":
                 res = self._emergency(call, args)
             elif name == "save_fields":
@@ -457,9 +526,14 @@ class ReceptionService:
                            "say": "この項目は、設定により伺いません。次の質問へ進んでください。"}
                     logged_args = {"field": field, "value": "（保存しない設定のため記録しない）"}
                 else:
+                    had_name = self._has(sess, "caller_name")
                     res = sess.tools.handle(name, args)
-                    if name == "save_field" and field in ("request", "shop_name") and "read_back_now" not in res:
-                        res.update(self._request_followup(sess, snap))
+                    if name == "save_field" and field in ("request", "shop_name", "caller_name") \
+                            and "read_back_now" not in res:
+                        if field == "caller_name" and not had_name and self._has(sess, "caller_name"):
+                            res.update(self._greet_and_go_on(sess, self._still_to_ask(sess, snap), call["caller_id"]))
+                        else:
+                            res.update(self._request_followup(sess, snap, call["caller_id"]))
             else:
                 res = {"ok": False, "reason": f"unknown tool {name}"}
             self._event(call_id, "tool", {"name": name, "args": logged_args, "result": res})
@@ -470,7 +544,7 @@ class ReceptionService:
         """Several heard values in one tool call (an empty string = not heard). One call instead of one per
         value: each tool call is a pause before the AI speaks again (2026-10-13: six calls in a row)."""
         saved, skipped, logged = {}, [], {}
-        had_name = bool(sess.tools.store.fields.get("caller_name") and sess.tools.store.fields["caller_name"].value)
+        had_name = self._has(sess, "caller_name")
         for field in S.FIELD_KEYS:
             value = str(args.get(field) or "").strip()
             if not value:
@@ -501,14 +575,26 @@ class ReceptionService:
         if "caller_name" in saved and not had_name and not pending:
             res.update(self._greet_and_go_on(sess, left, (call or {}).get("caller_id")))
         elif not pending:
-            res.update(self._request_followup(sess, snap))
+            res.update(self._request_followup(sess, snap, (call or {}).get("caller_id")))
         return res, logged
 
-    def _request_followup(self, sess: CallSession, snap: dict) -> dict:
-        """What to ask about the request right away: which hood, and how many (FOLLOW_UPS)."""
+    @staticmethod
+    def _has(sess: CallSession, field: str) -> bool:
+        state = sess.tools.store.fields.get(field)
+        return bool(state and state.value)
+
+    def _request_followup(self, sess: CallSession, snap: dict, line_number: str | None = None) -> dict:
+        """What to ask next, in the server's words: which hood and how many (FOLLOW_UPS), else the next item.
+        2026-10-29 (Grok): handed nothing after the shop 「焼肉田中」, it made up 「お名前は、田中様でよろしいでしょうか」."""
         left = self._still_to_ask(sess, snap)
-        if not left or left[0] not in FOLLOW_UPS:
+        if not left:
             return {}
+        if left[0] not in FOLLOW_UPS:
+            if left[0] == "callback_number" and line_number:
+                return {"then": "offer_line_number を呼ぶ"}
+            if left[0] == "shop_name" and self._has(sess, "caller_name"):
+                return {"say": for_speech("恐れ入りますが、店舗名をお伺いしてもよろしいでしょうか。")}
+            return {"say": for_speech(ASK_FOR[left[0]])}
         return {"say": for_speech(ASK_FOR[left[0]]),
                 "how": ("お答えをご用件に足し、save_field で request を保存し直します"
                         "（例：「焼肉の上引きフードの清掃、3基」）。分からないと言われたら、そのまま次へ進みます")}
@@ -584,11 +670,35 @@ class ReceptionService:
         return {"ok": True, "read_back_now": now,
                 "if_no": "別の番号をおっしゃったら save_field で保存し、返ってきた say で復唱します"}
 
-    def _add_open_question(self, call: dict, question: str, snap: dict) -> None:
+    def _add_open_question(self, call: dict, question: str, snap: dict, said: str = "") -> int | None:
+        """A question for the staff (the summary's 確認事項) and, with the transcript kept, for the FAQ screen. The
+        caller's own words are listed there when we have them: they are what the next caller may say."""
         qs = json.loads(call["open_questions"])
-        text = question if snap["config"]["store_transcript"] else "（FAQにない質問。文字起こしを保存しない設定）"
-        qs.append(text)
+        keep = snap["config"]["store_transcript"]
+        qs.append(question if keep else "（FAQにない質問。文字起こしを保存しない設定）")
         self.store.x("UPDATE calls SET open_questions = ? WHERE id = ?", (dumps(qs), call["id"]))
+        if not keep:
+            return None
+        return self.store.x("INSERT INTO faq_misses(call_id, at, question, ai_question) VALUES(?, ?, ?, ?)",
+                            (call["id"], iso(self.clock()), (said or question).strip(), question)).lastrowid
+
+    def _faq_answered(self, call: dict, sess: CallSession, text: str) -> None:
+        """No FAQ matched the words, and the AI chose one of the candidates by meaning: which one, if it read its
+        answer out. The question is then no longer open for the staff; it waits on the FAQ screen for an
+        administrator to confirm the choice (and add the words to that FAQ)."""
+        choice = sess.faq_choice
+        best = max(((contains_share(text, for_speech(a)), code) for code, a in choice["answers"]), default=(0, None))
+        if best[0] < FAQ_READ_SHARE:
+            return
+        sess.faq_choice = None
+        qs = json.loads(call["open_questions"])
+        if choice["question"] in qs:
+            qs.remove(choice["question"])
+            self.store.x("UPDATE calls SET open_questions = ? WHERE id = ?", (dumps(qs), call["id"]))
+        if choice["miss_id"]:
+            self.store.x("UPDATE faq_misses SET status = 'ai_answered', faq_code = ? WHERE id = ? AND status = 'open'",
+                         (best[1], choice["miss_id"]))
+        self._event(call["id"], "faq_chosen_by_ai", {"faq": best[1], "question": choice["question"]})
 
     def _emergency(self, call: dict, args: dict) -> dict:
         level = args.get("level")
@@ -881,4 +991,6 @@ class ReceptionService:
                 "ai_failure_action": cfg["ai_failure_action"],
                 "ai_failure_label": S.FAILURE_LABELS[cfg["ai_failure_action"]], "provisional": cfg["provisional"],
                 "retention_unset": cfg["retention_days"] is None, "notification_problems": self.outbox.problems(),
-                "line_connected": False, "phone_line_connected": False}
+                "line_connected": False, "phone_line_connected": False,
+                "faq_misses_open": self.store.q1("SELECT COUNT(*) AS n FROM faq_misses WHERE status IN ('open', "
+                                                 "'ai_answered')")["n"]}
