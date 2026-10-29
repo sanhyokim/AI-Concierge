@@ -122,6 +122,38 @@ class LabTest(unittest.TestCase):
         self.assertNotIn("伺", creds["greeting"] + creds["opening_request"])   # kana for misread words
         self.assertIsNotNone(lab.ledger("xai_lab").totals()["held_usd"])
 
+    def test_phonic_gets_a_session_token_and_the_page_sends_the_config(self):
+        # 2026-10-29 (user: 「すぐにテストしたい」). The browser opens the STS WebSocket with ?session_token=
+        lab = self.lab({"PHONIC_API_KEY": "ph-secret"},
+                       {"api.phonic.ai/v1/auth/session_token": {"session_token": "ph_session_1"}})
+        s = lab.start("phonic-1")
+        self.assertNotIn("ph-secret", json.dumps(s))
+        creds = s["credentials"]
+        self.assertEqual(creds["ws_url"], "wss://api.phonic.ai/v1/sts/ws?session_token=ph_session_1")
+        call = lab.http.calls[0]
+        self.assertEqual(call["headers"]["Authorization"], "Bearer ph-secret")
+        self.assertEqual(call["body"], {"ttl_seconds": 60})   # no conversation_ids: such a token cannot open STS
+        conf = creds["config"]
+        self.assertEqual((conf["type"], conf["model"], conf["default_language"]), ("config", "phonic-1", "ja"))
+        self.assertEqual((conf["input_format"], conf["output_format"]), ("pcm_24000", "pcm_24000"))
+        self.assertEqual(conf["voice_id"], "hikari")                     # the admin's registered voice
+        self.assertIn("株式会社野田", conf["welcome_message"])           # the opening (A-01), said as it is
+        self.assertFalse(conf["generate_welcome_message"])
+        self.assertNotIn("伺", conf["welcome_message"])                  # kana for misread words
+        self.assertLessEqual(len(conf["welcome_message"]), 1000)        # Phonic's limit
+        self.assertEqual({t["tool_schema"]["function"]["name"] for t in conf["tools"]}, {t["name"] for t in config.TOOLS})
+        self.assertEqual({t["type"] for t in conf["tools"]}, {"custom_websocket"})
+        self.assertTrue(all(len(k) <= 50 for k in conf["boosted_keywords"]))
+        self.assertIn("lookup_faq", s["applied"]["instructions"])        # the short prompt
+        self.assertTrue(creds["say"])                                    # the server's words are said as they are
+        minimal = creds["config_minimal"]
+        self.assertNotIn("boosted_keywords", minimal)
+        self.assertEqual(minimal["system_prompt"], conf["system_prompt"])
+        self.assertIsNotNone(lab.ledger("phonic_lab").totals()["held_usd"])
+        with self.assertRaises(vendors.VendorError):
+            vendors.mint(config.CANDIDATES["phonic-1"], {"PHONIC_API_KEY": "k"},
+                         FakeHttp({"session_token": {"expires_at": "x"}}), instructions="指示")
+
     def test_grok_token_in_another_shape_and_a_missing_one(self):
         cfg = config.CANDIDATES["grok-voice-3"]
         for resp in ({"client_secret": {"value": "a1"}}, {"client_secret": "a1"}, {"token": "a1"}):

@@ -18,12 +18,14 @@ from .auth import hash_password
 from ..reception.store import Store
 
 MIN_PASSWORD = 8
-KEYS = (   # the two candidates of the first connection check (user decision 2026-10-07), Eleven Realtime (2026-10-21), Grok (2026-10-23)
+KEYS = (   # the first two candidates (2026-10-07), Eleven Realtime (2026-10-21), Grok (2026-10-23), Phonic (2026-10-29)
     ("OPENAI_API_KEY", "OpenAI（GPT-Live 1）のAPIキー", ("sk-",)),
     # AI Studio has made "auth keys" (AQ.…) since 2026-05-28; keys made before that start with AIza
     ("GEMINI_API_KEY", "Google AI Studio（Gemini 3.8 Live）のAPIキー", ("AQ.", "AIza")),
     ("ELEVENLABS_API_KEY", "ElevenLabs（Eleven Realtime）のAPIキー", ("sk_",)),
     ("XAI_API_KEY", "xAI（Grok Voice 3.0）のAPIキー", ("xai-",)),   # added by the user, 2026-10-23
+    # added by the user, 2026-10-29. Phonic does not document the shape of its keys: any long string is taken
+    ("PHONIC_API_KEY", "Phonic（Phonic-1）のAPIキー", ()),
 )
 
 Ask = Callable[[str], str]
@@ -78,6 +80,17 @@ def reset_password(store: Store, ask: Ask = getpass.getpass, say: Say = print) -
     return True
 
 
+def _key_shape(value: str, prefixes: tuple) -> str:
+    """How a well-formed key is described on screen ("xai- で始まる 64 文字"); "" when it is not a key.
+    A vendor that does not document its key's shape (no prefixes) only needs a long string without spaces."""
+    if len(value) < 20 or any(c.isspace() for c in value):
+        return ""
+    if not prefixes:
+        return f"{len(value)} 文字"
+    prefix = next((p for p in prefixes if value.startswith(p)), None)
+    return f"{prefix} で始まる {len(value)} 文字" if prefix else ""
+
+
 def ask_keys(env: dict | None = None, ask: Ask = getpass.getpass, say: Say = print, tries: int = 3,
              saved: dict | None = None, keep: Callable[[dict], None] | None = None) -> dict:
     """Ask for each key not already set. Empty input skips it (that candidate cannot be chosen).
@@ -95,30 +108,29 @@ def ask_keys(env: dict | None = None, ask: Ask = getpass.getpass, say: Say = pri
         say("  キーはこのPCのメモリーにだけ置き、ファイルには書きません（次に起動したときは、もう一度入力します）。")
     say("  まだキーがない・使わない場合は、何も入力せずに Enter を押してください（オフラインの模擬だけで動かせます）。")
     for name, label, prefixes in KEYS:
-        shape = "・".join(prefixes)
+        shape = "・".join(prefixes) + " で始まり、" if prefixes else ""
         if env.get(name):
             say(f"- {label}：設定済み（このPCの環境変数）")
             got[name] = "env"
             continue
         value = saved.get(name, "")
-        prefix = next((p for p in prefixes if value.startswith(p)), None)
-        if prefix:
+        if _key_shape(value, prefixes):
             env[name] = value
             got[name] = "saved"
-            say(f"- {label}：保存したキーを使います（{prefix} で始まる {len(value)} 文字）")
+            say(f"- {label}：保存したキーを使います（{_key_shape(value, prefixes)}）")
             continue
         for attempt in range(tries):
-            value = _clean(ask(f"- {label}（{'… か '.join(prefixes)}… で始まる）："))
+            hint = f"（{'… か '.join(prefixes)}… で始まる）" if prefixes else ""
+            value = _clean(ask(f"- {label}{hint}："))
             if not value:
                 say("  → 入力なし。この候補は選べません。")
                 break
-            prefix = next((p for p in prefixes if value.startswith(p)), None)
-            if not prefix or len(value) < 20 or any(c.isspace() for c in value):
-                say(f"  → 形が違うようです（{shape} で始まり、空白のない長い文字列のはずです）。もう一度貼り付けてください。")
+            if not _key_shape(value, prefixes):
+                say(f"  → 形が違うようです（{shape}空白のない長い文字列のはずです）。もう一度貼り付けてください。")
                 continue
             env[name] = value
             got[name] = "typed"
-            say(f"  → 受け付けました（{prefix} で始まる {len(value)} 文字）。")
+            say(f"  → 受け付けました（{_key_shape(value, prefixes)}）。")
             break
         else:
             say(f"  → {tries}回とも形が違ったため、この候補は選べません。キーを確かめて、起動し直してください。")

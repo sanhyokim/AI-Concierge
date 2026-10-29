@@ -141,6 +141,8 @@ def mint(cfg: dict, env: dict, http: Http = http_json, instructions: str = LAB_I
         if cfg["vendor"] == "xai_lab":
             return mint_grok_voice(cfg, env, http, instructions, voice)
         return mint_openai_realtime_ws(cfg, env, http, instructions, voice)
+    if adapter == "phonic":
+        return mint_phonic(cfg, env, http, instructions, voice)
     if adapter == "elevenlabs":
         url = ("https://api.elevenlabs.io/v1/convai/conversation/get-signed-url?agent_id="
                + urllib.request.quote(env["ELEVENLABS_AGENT_ID"]))
@@ -231,6 +233,55 @@ def mint_grok_voice(cfg: dict, env: dict, http: Http, instructions: str, voice: 
             "protocols": [f"xai-client-secret.{token}"], "vendor": "xai",
             "session_update": grok_session(instructions, voice), "force_message": True, "truncate": False,
             "greeting": for_speech(OPENING_ANNOUNCEMENT + OPENING_QUESTION), "opening_request": OPENING_REQUEST}
+
+
+PHONIC_STS_URL = "wss://api.phonic.ai/v1/sts/ws"
+PHONIC_DEFAULT_VOICE = "hikari"    # Phonic's voice list: female, "Moderate Japanese Accent" (2026-10-29)
+PHONIC_TOOL_TIMEOUT_MS = 20000     # the page may wait for the caller's words, and C5 slows the tools down on purpose
+
+
+def phonic_tools() -> list:
+    """The reception tools as Phonic inline WebSocket tools (docs, WebSocket Tools: tool_schema in OpenAI's
+    function shape). sync: the model waits for the result before it answers."""
+    return [{"type": "custom_websocket", "execution_mode": "sync",
+             "tool_call_output_timeout_ms": PHONIC_TOOL_TIMEOUT_MS,
+             "tool_schema": {"type": "function", "function": {
+                 "name": t["name"], "description": t["description"], "parameters": t["parameters"]}}}
+            for t in openai_tools()]
+
+
+def phonic_config(cfg: dict, instructions: str, voice: str | None, minimal: bool = False) -> dict:
+    """The STS "config" message (API reference, Conversations WebSocket, 2026-10-29). The opening (A-01) is the
+    welcome message, said as it is and not cut off by the caller. minimal=True keeps only what the reception
+    needs, for when Phonic refuses one of the other fields."""
+    config = {"type": "config", "model": cfg["model"], "system_prompt": instructions,
+              "welcome_message": for_speech(OPENING_ANNOUNCEMENT + OPENING_QUESTION),
+              "generate_welcome_message": False, "voice_id": voice or PHONIC_DEFAULT_VOICE,
+              "input_format": "pcm_24000", "output_format": "pcm_24000", "default_language": "ja",
+              "tools": phonic_tools()}
+    if minimal:
+        return config
+    config.update({"is_welcome_message_interruptible": False,
+                   "intelligence_level": cfg.get("intelligence_level", "high"),   # the benchmarked setting
+                   "boosted_keywords": GROK_KEYTERMS,
+                   "no_input_end_conversation_sec": int(MAX_SESSION_MIN * 60)})
+    return config
+
+
+def mint_phonic(cfg: dict, env: dict, http: Http, instructions: str, voice: str | None) -> dict:
+    """A session token (60 s, the shortest Phonic allows) from POST /v1/auth/session_token; the browser opens the
+    STS WebSocket with it as ?session_token=. A token limited to conversation_ids cannot open the STS WebSocket
+    (Phonic docs), so none is given; it only lives on this PC for one test call. The server's fixed words (the
+    read-backs, the closing) are said as they are with Phonic's "say" message."""
+    _, data = http("POST", "https://api.phonic.ai/v1/auth/session_token",
+                   {"Authorization": f"Bearer {env['PHONIC_API_KEY']}", "Content-Type": "application/json"},
+                   {"ttl_seconds": 60})
+    token = data.get("session_token") if isinstance(data, dict) else None
+    if not token:
+        raise VendorError("auth/session_token: no 'session_token' in the response")
+    return {"ws_url": f"{PHONIC_STS_URL}?session_token={urllib.request.quote(token, safe='')}", "vendor": "phonic",
+            "config": phonic_config(cfg, instructions, voice),
+            "config_minimal": phonic_config(cfg, instructions, voice, minimal=True), "say": True}
 
 
 ELEVEN_REALTIME_URL = "wss://api.elevenlabs.io/v1/convai/realtime"

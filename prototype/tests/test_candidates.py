@@ -83,10 +83,11 @@ class CandidateFrameTest(unittest.TestCase):
         self.assertEqual(limits, {"gpt-live-1": None, "gemini-3.8-live": None, "gpt-realtime-2.1": 0,
                                   "elevenagents": 0, "cartesia-agents": 0,      # user decision 2026-10-08
                                   "eleven-realtime-max": None, "eleven-realtime-mini": None,   # added 2026-10-21
-                                  "grok-voice-3": None})                                       # added 2026-10-23
+                                  "grok-voice-3": None,                                        # added 2026-10-23
+                                  "phonic-1": None})                                           # added 2026-10-29
         self.assertEqual({v: c for v, c in est["ledger_caps_usd"].items() if c != 0},
                          {"openai_lab": None, "google_lab": None, "elevenlabs_lab": None,   # 2026-10-21: Eleven Realtime
-                          "xai_lab": None})                                                  # 2026-10-23: Grok
+                          "xai_lab": None, "phonic_lab": None})                              # Grok, Phonic
         live = next(r for r in est["rows"] if r["id"] == "gpt-live-1")
         self.assertGreater(live["backend_strict_usd"], live["backend_typical_usd"])   # two assumptions, both shown
         self.assertEqual(est["max_session_min"], 5.0)

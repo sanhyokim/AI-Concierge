@@ -97,6 +97,7 @@
 | `GEMINI_API_KEY` | Gemini 3.8 Live。Google AI Studio で作る |
 | `ELEVENLABS_API_KEY` | Eleven Realtime（v1 Max・v1 Mini）。ElevenLabs の「API Keys」で作る（`sk_` で始まる。ElevenAgents の権限） |
 | `XAI_API_KEY` | Grok Voice 3.0（2026-10-23〜）。xAI の console.x.ai の「API Keys」で作る（`xai-` で始まる） |
+| `PHONIC_API_KEY` | Phonic-1（2026-10-29〜）。phonic.ai の「API Keys」で作る（何の文字で始まるかは資料にない） |
 | `GPT_LIVE_DELEGATION_MODEL` | 任意。GPT-Liveの裏方のモデル（既定 `gpt-6-luna`）。単価が登録されたモデルだけ使える。高いモデルにすると、台帳の上限で開始できない |
 | `LAB_RELEASE_HOLD` | 保留の候補を解く（例：`elevenagents`）。利用者の承認の後だけ。回数と台帳の上限も決め直すまでは0回のまま |
 | `ELEVENLABS_OVERRIDES` | 保留中の ElevenAgents だけ。ElevenLabsの画面で上書きを許可した項目（`prompt`、`voice`） |

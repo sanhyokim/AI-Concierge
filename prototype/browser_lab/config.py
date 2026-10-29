@@ -89,6 +89,15 @@ CANDIDATES = {
         "prompt_style": "short",   # the user chose to try it (2026-10-23, 「Grok Voice 3.0を使ってみたい」)
         "note": "1つのAIで聞く・考える・話す・業務処理を呼ぶ。日本語は公式に対応（日本語専用の声はない）。"
                 "復唱とまとめは、決まった文をそのまま読む機能（force_message）で読む。料金は接続1分$0.08（無音も含む）"},
+    # Phonic-1 (Phonic, 2026-10-29): one speech-to-speech model that calls the tools itself, like Grok, over
+    # Phonic's own WebSocket (adapter phonic.js). The user asked to test it the day it came out (「すぐにテストしたい」).
+    "phonic-1": {
+        "name": "Phonic Phonic-1", "adapter": "phonic", "env": ["PHONIC_API_KEY"], "vendor": "phonic_lab",
+        "model": "phonic-1", "upper_usd_per_min": 0.10, "increment_s": 60, "verified": False,
+        "logic_path": "function_call", "applies": {"instructions": "session", "voice": "session"},
+        "prompt_style": "short",
+        "note": "1つのAIで聞く・考える・話す・業務処理を呼ぶ。日本語は公式の対応言語に入っている（日本語の評価はまだない）。"
+                "冒頭の案内は welcome_message、復唱とまとめは決まった文をそのまま話させる say で読む。料金は1分$0.07"},
 }
 LOGIC_PATHS = {"client_tools": "ブラウザーのclient tools → この端末のサーバー",
                "delegation_responses": "delegation（Responses）の関数呼び出し → ブラウザー → この端末のサーバー",
@@ -158,13 +167,13 @@ def delegation_model(cfg: dict, env: dict) -> str:
 # candidates (2026-10-08); sessions are still counted for the record. Held candidates get none until released.
 SESSIONS = {stage: {"gpt-live-1": None, "gemini-3.8-live": None, "eleven-realtime-max": None,
                     "eleven-realtime-mini": None, "elevenagents": 0, "cartesia-agents": 0, "gpt-realtime-2.1": 0,
-                    "grok-voice-3": None}
+                    "grok-voice-3": None, "phonic-1": None}
             for stage in ("connection", "detailed")}   # Eleven Realtime: no limit, like the two others (2026-10-21)
 _NO_CAP = Limits(max_requests=None, max_audio_seconds=None, max_cost_usd=None)   # user decision 2026-10-08
 _HELD = Limits(max_requests=0, max_audio_seconds=0, max_cost_usd=0.0)
 LAB_LIMITS_BY_STAGE = {   # the ledger still records every session and its reservation; it no longer refuses
     stage: {"openai_lab": _NO_CAP, "google_lab": _NO_CAP, "elevenlabs_lab": _NO_CAP, "cartesia_lab": _HELD,
-            "xai_lab": _NO_CAP}
+            "xai_lab": _NO_CAP, "phonic_lab": _NO_CAP}
     for stage in ("connection", "detailed")
 }
 LAB_STAGES = {"connection": "接続の予備試験", "detailed": "詳しい会話比較"}
@@ -175,6 +184,7 @@ ENV_SETUP = {   # shown on the lab page: how to set a variable on the tester's P
     "GEMINI_API_KEY": "Google AI Studio で作るAPIキー",
     "ELEVENLABS_API_KEY": "ElevenLabs の画面（Developers → API Keys）で作るAPIキー。ElevenAgents の権限を付ける",
     "XAI_API_KEY": "xAI の画面（console.x.ai → API Keys）で作るAPIキー",
+    "PHONIC_API_KEY": "Phonic の画面（phonic.ai にサインイン → API Keys）で作るAPIキー",
     "GPT_LIVE_DELEGATION_MODEL": "任意。GPT-Liveの裏方のモデル（既定 gpt-6-luna）",
 }
 

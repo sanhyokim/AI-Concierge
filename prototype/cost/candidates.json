@@ -218,6 +218,45 @@
       ]
     },
     {
+      "id": "phonic-1",
+      "name": "Phonic Phonic-1",
+      "type": "会話モデル（音声）",
+      "wave": "追加の試験（利用者の決定、2026-10-29）",
+      "model": "phonic-1（config の model で名前を固定する）",
+      "confirmed": [
+        "2026-10-29発表。音声から音声へ直接返すモデル（1つのモデルが聞く・考える・話す・業務処理を呼ぶ）",
+        "Artificial Analysis（第三者）の総合点で1位 87.1（Grok Voice 3.0 は 86.9）。最初の声までの時間 0.61秒。英語の試験と見られる",
+        "独自の WebSocket（wss://api.phonic.ai/v1/sts/ws）。業務処理は tool_call と tool_call_output。SIP（Twilio・Telnyx）",
+        "最初のあいさつを決まった文で話す welcome_message と、決まった文をそのまま話させる say がある",
+        "料金：1分$0.07（Starter）・$0.065（Pro、月$200から）。料金のページのよくある質問には$0.06とあり食い違う。LLMの追加の料金はない"
+      ],
+      "japanese": "公式の対応言語（51〜52）に日本語（ja）。日本語の評価はまだない。日本語のための声とは書かれていない（hikari は「日本語のなまり」の女性の声）",
+      "browser": "セッショントークン（POST v1/auth/session_token、60秒）を ?session_token= で渡す。設定は接続の後に config で送る",
+      "phone": "電話向けの符号化（μ-law 8kHz）・SIP（Twilio・Telnyx）・Amazon Connect",
+      "unconfirmed": [
+        "日本語での正確さ・発音（出て1日目で、日本語の記事・評価がない）",
+        "say が業務処理の結果の後に使えるか。AIが同じ文を重ねて話さないか",
+        "料金の$0.07と$0.06のどちらが適用されるか",
+        "新しいアカウントの$250のクレジット（11月30日までの登録。毎月か1回かがあいまい）",
+        "セッショントークンを会話の制限なしで発行したときの扱い（その組織の会話を読める）"
+      ],
+      "price": {
+        "kind": "per_min",
+        "usd_per_min": 0.07,
+        "status": "confirmed",
+        "note": "1分$0.07（Starter）。LLM・トークンの追加の料金はない（公式）"
+      },
+      "build": "自社の中継・業務処理が要る（Grokと同じく、モデルが業務処理を直接呼ぶ）",
+      "reason": "第三者の総合点で最上位、最初の声が速い、Grokより安い。決まった文をそのまま話させる say があり、番号の復唱を正確にできる見込み",
+      "sources": [
+        "https://phonic.ai/blog/phonic-1",
+        "https://phonic.ai/pricing",
+        "https://docs.phonic.ai/api-reference/conversations/conversations",
+        "https://docs.phonic.ai/docs/build/agents/supported_languages",
+        "https://artificialanalysis.ai/speech-to-speech"
+      ]
+    },
+    {
       "id": "elevenagents",
       "name": "ElevenLabs ElevenAgents（Expressive mode）",
       "type": "会話サービス",

@@ -13,6 +13,7 @@
 | ElevenLabs Eleven Realtime v1 Max | 会話モデル（音声） | モデルの資料は90以上の言語（Eleven v4の言語の表に日本語がある）。Realtimeでの日本語の明記はない | 一時の鍵（POST v1/convai/realtime/client_secrets）で、OpenAI互換のWebSocketにつなぐ（WebRTCはない） | $0.08/分 | 追加の試験（利用者の決定、2026-10-21） |
 | ElevenLabs Eleven Realtime v1 Mini | 会話モデル（音声） | モデルの資料は90以上の言語（Eleven v4の言語の表に日本語がある）。Realtimeでの日本語の明記はない | 一時の鍵（POST v1/convai/realtime/client_secrets）で、OpenAI互換のWebSocketにつなぐ（WebRTCはない） | $0.08/分 | 追加の試験（利用者の決定、2026-10-21） |
 | xAI Grok Voice 3.0 | 会話モデル（音声） | 公式の対応言語に日本語（language_hint で ja）。日本語専用の声はない（どの声も多言語） | 一時トークン（POST v1/realtime/client_secrets）を、WebSocketのサブプロトコル xai-client-secret. で渡す。設定は接続の後に session.update で送る | $0.08/分 | 追加の試験（利用者の決定、2026-10-23） |
+| Phonic Phonic-1 | 会話モデル（音声） | 公式の対応言語（51〜52）に日本語（ja）。日本語の評価はまだない。日本語のための声とは書かれていない（hikari は「日本語のなまり」の女性の声） | セッショントークン（POST v1/auth/session_token、60秒）を ?session_token= で渡す。設定は接続の後に config で送る | $0.07/分 | 追加の試験（利用者の決定、2026-10-29） |
 | ElevenLabs ElevenAgents（Expressive mode） | 会話サービス | Expressive modeの資料が日本語を明記 | @elevenlabs/client。署名付きURL（15分）またはWebRTCのトークンをサーバーで発行 | $0.08/分（から） | 保留（費用が高い。性能に大差がなければ使わない） |
 | Cartesia Managed Agents（Ink-2＋LLM＋Sonic-3.6） | 会話サービス（部品統合） | Ink-2・Sonic-3.6のモデル資料に日本語（ja） | 一時トークン（POST /access-token）で wss://api.cartesia.ai/agents/stream/{agent_id}?access_token= につなぐ | $0.06/分 | 保留（費用が高い。性能に大差がなければ使わない） |
 | OpenAI GPT-Realtime-2.1（比較の基準） | 会話モデル（音声） | 公式の言語の一覧はない。日本語のお客様対応の評価（Gen-AX、2026-07-17）で、業務処理の実行93〜100%・返事まで平均1.35秒。数字の聞き取りの誤りの指摘あり。日本語の声はない | WebSocket（一時キーをサブプロトコルで渡す） | 旧費用表と同じトークン単価 | 基準（保留） |
@@ -79,6 +80,17 @@
 - 自社で作るもの：自社の中継・業務処理が要る（Geminiと同じく、モデルが業務処理を直接呼ぶ）
 - 位置づけの理由：公式に日本語に対応し、評価の数字が最上位。決まった文をそのまま読ませられるので、番号の復唱を正確にできる見込み
 - 出典：[1](https://x.ai/news/grok-voice-3)、[2](https://docs.x.ai/developers/model-capabilities/audio/speech-to-speech)、[3](https://docs.x.ai/developers/model-capabilities/audio/ephemeral-tokens)、[4](https://x.ai/news/new-flagship-voices)、[5](https://docs.x.ai/developers/pricing)
+
+### Phonic Phonic-1（追加の試験（利用者の決定、2026-10-29））
+
+- モデル・構成：phonic-1（config の model で名前を固定する）
+- 公式で確認：2026-10-29発表。音声から音声へ直接返すモデル（1つのモデルが聞く・考える・話す・業務処理を呼ぶ）／Artificial Analysis（第三者）の総合点で1位 87.1（Grok Voice 3.0 は 86.9）。最初の声までの時間 0.61秒。英語の試験と見られる／独自の WebSocket（wss://api.phonic.ai/v1/sts/ws）。業務処理は tool_call と tool_call_output。SIP（Twilio・Telnyx）／最初のあいさつを決まった文で話す welcome_message と、決まった文をそのまま話させる say がある／料金：1分$0.07（Starter）・$0.065（Pro、月$200から）。料金のページのよくある質問には$0.06とあり食い違う。LLMの追加の料金はない
+- 日本語：公式の対応言語（51〜52）に日本語（ja）。日本語の評価はまだない。日本語のための声とは書かれていない（hikari は「日本語のなまり」の女性の声）
+- 接続：ブラウザーはセッショントークン（POST v1/auth/session_token、60秒）を ?session_token= で渡す。設定は接続の後に config で送る。電話は電話向けの符号化（μ-law 8kHz）・SIP（Twilio・Telnyx）・Amazon Connect
+- 未確認：日本語での正確さ・発音（出て1日目で、日本語の記事・評価がない）／say が業務処理の結果の後に使えるか。AIが同じ文を重ねて話さないか／料金の$0.07と$0.06のどちらが適用されるか／新しいアカウントの$250のクレジット（11月30日までの登録。毎月か1回かがあいまい）／セッショントークンを会話の制限なしで発行したときの扱い（その組織の会話を読める）
+- 自社で作るもの：自社の中継・業務処理が要る（Grokと同じく、モデルが業務処理を直接呼ぶ）
+- 位置づけの理由：第三者の総合点で最上位、最初の声が速い、Grokより安い。決まった文をそのまま話させる say があり、番号の復唱を正確にできる見込み
+- 出典：[1](https://phonic.ai/blog/phonic-1)、[2](https://phonic.ai/pricing)、[3](https://docs.phonic.ai/api-reference/conversations/conversations)、[4](https://docs.phonic.ai/docs/build/agents/supported_languages)、[5](https://artificialanalysis.ai/speech-to-speech)
 
 ### ElevenLabs ElevenAgents（Expressive mode）（保留（費用が高い。性能に大差がなければ使わない））
 
@@ -204,6 +216,7 @@
 | ElevenLabs Eleven Realtime v1 Max | 追加の試験（利用者の決定、2026-10-21） | 速さと正確さが評価表で最上位。Geminiと同じ1つのモデルの構成で、受付の業務処理の確実さを比べる |
 | ElevenLabs Eleven Realtime v1 Mini | 追加の試験（利用者の決定、2026-10-21） | 会話の自然さ（相づち・割り込み）の比較用。業務処理の成功率が低く、受付の本命ではない |
 | xAI Grok Voice 3.0 | 追加の試験（利用者の決定、2026-10-23） | 公式に日本語に対応し、評価の数字が最上位。決まった文をそのまま読ませられるので、番号の復唱を正確にできる見込み |
+| Phonic Phonic-1 | 追加の試験（利用者の決定、2026-10-29） | 第三者の総合点で最上位、最初の声が速い、Grokより安い。決まった文をそのまま話させる say があり、番号の復唱を正確にできる見込み |
 | ElevenLabs ElevenAgents（Expressive mode） | 保留（費用が高い。性能に大差がなければ使わない） | 独自の発話区切りのモデルと、会話向けの日本語の声を持つ会話サービスの代表 |
 | Cartesia Managed Agents（Ink-2＋LLM＋Sonic-3.6） | 保留（費用が高い。性能に大差がなければ使わない） | 費用面で有力な部品統合型。日本語のSTT・TTSを公式資料で確認できた |
 | OpenAI GPT-Realtime-2.1（比較の基準） | 基準（保留） | 比較の基準。GPT-Liveと同じ構成とはみなさない |
@@ -213,6 +226,7 @@
 - 最初の接続の確認は GPT-Live 1 と Gemini 3.8 Live の2つだけで行う（2026-10-07）。保留の候補は、採用の候補からは外していない。
 - 2026-10-21、Eleven Realtime（v1 Max・v1 Mini）を試験に加えた（利用者の決定。ElevenLabsのアカウントを作る）。受付の本命は v1 Max（業務処理の成功率87.1%）。v1 Mini は会話の自然さの比較用。
 - 2026-10-23、Grok Voice 3.0 を試験に加えた（利用者の決定「Grok Voice 3.0を使ってみたい」。xAIのアカウントを作る）。日本語に公式に対応し、決まった文をそのまま話させる機能（force_message）で番号の復唱を正確にできる見込み。
+- 2026-10-29、Phonic-1 を試験に加えた（利用者の依頼「すぐにテストしたい」。Phonicのアカウントを作る）。日本語は公式の対応言語にあるが、日本語の評価はまだない。決まった文をそのまま話させる say で番号の復唱を読ませる。
 - GPT-Liveは、日本語の受付を最初に確かめる。業務処理を受け持つ裏方のモデル（delegation）も確かめる。
 - Inworldは、接続の調査を優先して進める（ブラウザーからは中継が要り、提供段階がResearch previewのため、会話試験は2回目）。
 - Grok・Deepgram・Retell・Vapiは、初回の結果と未確認の点の確認の後に比べる。

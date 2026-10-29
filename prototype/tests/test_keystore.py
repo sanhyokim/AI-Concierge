@@ -9,6 +9,7 @@ OPENAI = "sk-proj-" + "a" * 40
 GEMINI = "AQ." + "b" * 36
 ELEVEN = "sk_" + "e" * 48
 XAI = "xai-" + "f" * 60
+PHONIC = "ph_" + "g" * 40
 
 
 def enc(data: bytes) -> bytes:      # stands in for DPAPI on this test machine
@@ -65,9 +66,9 @@ class AskKeysTest(unittest.TestCase):
 
     def test_typed_keys_are_saved_for_the_next_start(self):
         kept = []
-        env, got, asked, said = self.run_ask([OPENAI, GEMINI, ELEVEN, XAI], keep=kept.append)
+        env, got, asked, said = self.run_ask([OPENAI, GEMINI, ELEVEN, XAI, PHONIC], keep=kept.append)
         self.assertEqual(kept, [{"OPENAI_API_KEY": OPENAI, "GEMINI_API_KEY": GEMINI, "ELEVENLABS_API_KEY": ELEVEN,
-                                 "XAI_API_KEY": XAI}])
+                                 "XAI_API_KEY": XAI, "PHONIC_API_KEY": PHONIC}])
         self.assertIn("暗号化して保存しました", said)
         self.assertIn("APIキーを入れ直す", said)
         self.assertNotIn(OPENAI, said)
@@ -75,11 +76,12 @@ class AskKeysTest(unittest.TestCase):
     def test_saved_keys_are_used_without_asking(self):
         kept = []
         env, got, asked, said = self.run_ask([], saved={"OPENAI_API_KEY": OPENAI, "GEMINI_API_KEY": GEMINI,
-                                                     "ELEVENLABS_API_KEY": ELEVEN, "XAI_API_KEY": XAI},
+                                                     "ELEVENLABS_API_KEY": ELEVEN, "XAI_API_KEY": XAI,
+                                                     "PHONIC_API_KEY": PHONIC},
                                              keep=kept.append)
         self.assertEqual(asked, [])
         self.assertEqual(env, {"OPENAI_API_KEY": OPENAI, "GEMINI_API_KEY": GEMINI, "ELEVENLABS_API_KEY": ELEVEN,
-                               "XAI_API_KEY": XAI})
+                               "XAI_API_KEY": XAI, "PHONIC_API_KEY": PHONIC})
         self.assertEqual(set(got.values()), {"saved"})
         self.assertEqual(kept, [])                       # nothing new to save
         self.assertIn("保存したキーを使います（sk- で始まる", said)
@@ -88,39 +90,41 @@ class AskKeysTest(unittest.TestCase):
     def test_a_missing_key_is_asked_and_saved_with_the_other(self):
         kept = []
         env, got, asked, said = self.run_ask([GEMINI], saved={"OPENAI_API_KEY": OPENAI, "ELEVENLABS_API_KEY": ELEVEN,
-                                                              "XAI_API_KEY": XAI}, keep=kept.append)
+                                                              "XAI_API_KEY": XAI, "PHONIC_API_KEY": PHONIC},
+                                             keep=kept.append)
         self.assertEqual(len(asked), 1)
         self.assertEqual(kept, [{"OPENAI_API_KEY": OPENAI, "GEMINI_API_KEY": GEMINI, "ELEVENLABS_API_KEY": ELEVEN,
-                                 "XAI_API_KEY": XAI}])
+                                 "XAI_API_KEY": XAI, "PHONIC_API_KEY": PHONIC}])
 
     def test_a_key_added_later_is_asked_once_and_saved_with_the_saved_ones(self):
-        # 2026-10-23: the xAI key was added after the user had saved the three others on Windows
+        # 2026-10-29: the Phonic key was added after the user had saved the four others on Windows
         kept = []
-        env, got, asked, said = self.run_ask([XAI], saved={"OPENAI_API_KEY": OPENAI, "GEMINI_API_KEY": GEMINI,
-                                                           "ELEVENLABS_API_KEY": ELEVEN}, keep=kept.append)
+        env, got, asked, said = self.run_ask([PHONIC], saved={"OPENAI_API_KEY": OPENAI, "GEMINI_API_KEY": GEMINI,
+                                                              "ELEVENLABS_API_KEY": ELEVEN, "XAI_API_KEY": XAI},
+                                             keep=kept.append)
         self.assertEqual(len(asked), 1)
-        self.assertIn("Grok", asked[0])
+        self.assertIn("Phonic", asked[0])
         self.assertEqual(kept, [{"OPENAI_API_KEY": OPENAI, "GEMINI_API_KEY": GEMINI, "ELEVENLABS_API_KEY": ELEVEN,
-                                 "XAI_API_KEY": XAI}])
-        self.assertNotIn(XAI, said)
+                                 "XAI_API_KEY": XAI, "PHONIC_API_KEY": PHONIC}])
+        self.assertNotIn(PHONIC, said)
 
     def test_a_skipped_key_is_not_saved(self):
         kept = []
-        env, got, asked, said = self.run_ask([OPENAI, "", "", ""], keep=kept.append)
+        env, got, asked, said = self.run_ask([OPENAI, "", "", "", ""], keep=kept.append)
         self.assertEqual(kept, [{"OPENAI_API_KEY": OPENAI}])
 
     def test_a_saved_key_of_the_wrong_shape_is_asked_again(self):
-        env, got, asked, said = self.run_ask([OPENAI, GEMINI, "", ""], saved={"OPENAI_API_KEY": "broken"},
+        env, got, asked, said = self.run_ask([OPENAI, GEMINI, "", "", ""], saved={"OPENAI_API_KEY": "broken"},
                                              keep=lambda k: None)
-        self.assertEqual(len(asked), 4)
+        self.assertEqual(len(asked), 5)
 
     def test_saving_fails_but_the_keys_work_for_this_start(self):
         def fail(_keys):
             raise OSError("DPAPI error 5")
-        env, got, asked, said = self.run_ask([OPENAI, GEMINI, "", ""], keep=fail)
+        env, got, asked, said = self.run_ask([OPENAI, GEMINI, "", "", ""], keep=fail)
         self.assertEqual(env["OPENAI_API_KEY"], OPENAI)
         self.assertIn("保存できませんでした", said)
 
     def test_without_a_store_the_keys_stay_in_memory(self):     # Mac and other systems
-        env, got, asked, said = self.run_ask([OPENAI, GEMINI, "", ""])
+        env, got, asked, said = self.run_ask([OPENAI, GEMINI, "", "", ""])
         self.assertIn("メモリーにだけ置き", said)

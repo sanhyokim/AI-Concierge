@@ -30,6 +30,7 @@ DEFAULT_CONFIG = {
         {"id": "v3", "candidate": "fake", "voice": "tone", "label": "オフラインの模擬（音声の評価には使えない）"},
         {"id": "v4", "candidate": "gpt-live-1", "voice": "shida", "label": "GPT-Liveの日本語の声（男性・shida）"},
         {"id": "v5", "candidate": "grok-voice-3", "voice": "ara", "label": "Grokの声（女性・ara）"},   # 2026-10-23
+        {"id": "v6", "candidate": "phonic-1", "voice": "hikari", "label": "Phonicの声（女性・hikari）"},   # 2026-10-29
     ],
     "active_voice": "v1",
     "fields": {k: {"store": True, "summary": True, "notify": True} for k in FIELD_KEYS},
@@ -138,6 +139,11 @@ VOICE_CATALOG = {
     "grok-voice-3": {"voices": ["ara", "eve", "leo", "rex", "sal"],
                      "how": "接続のあとに session.update で指定する。どの声も日本語を話す（日本語専用の声はない）。"
                             "ara・eve は女性、leo・rex・sal は男性（第三者の資料）"},
+    # Phonic (voice list, 2026-10-29): 39 voices, none said to be made for Japanese. hikari: female, "Moderate Japanese
+    # Accent"; tomoya: male (no accent given); sabrina: Phonic's default voice
+    "phonic-1": {"voices": ["hikari", "tomoya", "sabrina"],
+                 "how": "接続のときに config の voice_id で指定する。日本語のための声とは書かれていない。"
+                        "hikari は女性（説明に「日本語のなまり」）、tomoya は男性、sabrina は業者の既定の声"},
     "elevenagents": {"voices": [], "how": "ElevenLabsの画面でエージェントの声を選ぶ。声のIDを入力して登録（上書きの許可が要る）"},
     "cartesia-agents": {"voices": [], "how": "Cartesiaの画面でエージェントの声を選ぶ。声のIDを入力して記録する"},
 }
@@ -160,6 +166,9 @@ VOICE_TYPES = {
     "grok-voice-3": {"ara": ("女性", "明るい", "非公式"), "eve": ("女性", "落ち着いた", "非公式"),
                      "leo": ("男性", "きびきび", "非公式"), "rex": ("男性", "落ち着いた", "非公式"),
                      "sal": ("男性", "低くなめらか", "非公式")},
+    # Phonic's own voice list (docs.phonic.ai, Voices, 2026-10-29)
+    "phonic-1": {"hikari": ("女性", "日本語のなまり（業者の説明）", "公式"), "tomoya": ("男性", "説明なし", "公式"),
+                 "sabrina": ("資料なし", "業者の既定の声", "")},
 }
 
 

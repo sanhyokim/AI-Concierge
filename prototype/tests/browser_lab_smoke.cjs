@@ -30,7 +30,7 @@ function fail(msg) { console.error("FAIL:", msg); process.exitCode = 1; }
   const wav = path.join(tmp, "caller.wav");
   writeWav(wav);
   const env = { ...process.env };
-  for (const k of ["OPENAI_API_KEY", "GEMINI_API_KEY", "ELEVENLABS_API_KEY", "ELEVENLABS_AGENT_ID", "CARTESIA_API_KEY", "CARTESIA_AGENT_ID"]) delete env[k];
+  for (const k of ["OPENAI_API_KEY", "GEMINI_API_KEY", "ELEVENLABS_API_KEY", "ELEVENLABS_AGENT_ID", "CARTESIA_API_KEY", "CARTESIA_AGENT_ID", "XAI_API_KEY", "PHONIC_API_KEY"]) delete env[k];
   const srv = spawn("python3", ["-m", "prototype.browser_lab", "--port", "0", "--results-dir", path.join(tmp, "results"),
                                 "--ledger", path.join(tmp, "ledger.jsonl"), "--db", path.join(tmp, "lab.db")], { env });
   const url = await new Promise((resolve, reject) => {
