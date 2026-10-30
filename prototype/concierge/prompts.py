@@ -68,6 +68,7 @@ SPEECH_MANNERS = """\
 VOICE_RULES = """\
 【話し方】
 - 落ち着いた声で、ゆっくり話します。会社の受付として、丁寧語と謙譲語で話します。
+- 日本語だけで話します。業務処理の結果にある英語の説明は、読み上げません。
 - 一文を短くし、一度に一つだけ伺います。お客様が話し終えるまで、次の質問をしません。
 - 相づちは「はい」「かしこまりました」「承知いたしました」から選び、同じ言葉を続けません。
 - お客様が話し始めたら、すぐに話すのをやめて聞きます。訂正されたら「失礼いたしました。」と言います。
@@ -100,7 +101,8 @@ VOICE_RULES = """\
 # 2026-10-20: the AI says it in its own voice (「GPTでもGEMINIでもAIと同じ声質にしてほしい」), not a recording.
 # 2026-10-22 (user): the first wording used 「ございます」 four times and sounded long and stiff
 # 2026-10-23: the user's own wording (「以下に変更」), and a last sentence that welcomes questions too (user's choice)
-OPENING_ANNOUNCEMENT = ("お電話ありがとうございます。株式会社野田のAIオペレーターでございます。"
+# 2026-10-30 (user): 「株式会社野田のAIオペレーター」 → 「株式会社野田、AIオペレーター」
+OPENING_ANNOUNCEMENT = ("お電話ありがとうございます。株式会社野田、AIオペレーターでございます。"
                         "ご用件を承りまして、担当の者から折り返しご連絡いたします。"
                         "通話は内容確認と品質向上のため録音させていただきます。")
 OPENING_QUESTION = "それでは、ご依頼のご相談やご質問など、お気軽にお話しください。"
@@ -130,7 +132,7 @@ def voice_rules(end: str, summary: str) -> str:
                               goodbye=GOODBYE)
 # 2026-10-20 (Gemini): the caller's 「もしもし」 got no answer for 30 seconds: the AI was only told to wait
 OPENING_NOTE = ("【はじめ】通話の最初に、渡された案内を一字一句そのまま一度だけ話し、お客様のお話を待ちます。"
-                "「もしもし」だけなら「はい、株式会社野田のAIオペレーターでございます。」と応じます。")
+                "「もしもし」だけなら「はい、株式会社野田、AIオペレーターでございます。」と応じます。")
 
 # Words the voice models misread, written in kana in what they are told to say (2026-10-20, Gemini: 「承りました」
 # was said 「しょうりました」). 承知 (しょうち) is read correctly and stays.
@@ -155,7 +157,7 @@ OPENING_REQUEST = for_speech("通話がつながりました。最初に、次�
 
 # The AI's first words (the lab and the offline agent). Business phone manners: the company name with
 # 「でございます」, then that this is an AI reception (2026-10-13; the old 「AI受付です。ご用件をお伺いします。」 sounded abrupt).
-GREETING = "お電話ありがとうございます。株式会社野田のAIオペレーターでございます。どのようなご用件でしょうか。"
+GREETING = "お電話ありがとうございます。株式会社野田、AIオペレーターでございます。どのようなご用件でしょうか。"
 # A-07 (spec 4-2): the last words of a call taken by the offline agent
 CLOSING = ("承りました内容は担当の者に申し伝え、折り返しお電話いたします。"
            "お電話ありがとうございました。失礼いたします。")

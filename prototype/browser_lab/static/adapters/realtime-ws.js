@@ -122,6 +122,9 @@ export async function connect(ctx) {
     if (!responseOver || inflight > 0 || !outputs.length) return;
     const done = outputs; outputs = [];
     if (hangup) return;   // end_call: no new response
+    // 2026-10-30: a refusal that only says 「wait for the caller」 was answered aloud in English; the caller's
+    // reply starts the next answer by itself
+    if (done.every((o) => o.result && o.result.wait_silently)) return;
     const words = force ? done.map((o) => wordsToRead(o.name, o.result)).filter(Boolean).join("") : "";
     if (words) speak(words); else send({ type: "response.create" });
   }

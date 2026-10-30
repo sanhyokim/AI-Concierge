@@ -112,7 +112,9 @@ export async function connect(ctx) {
       try {
         for (const fc of ev.toolCall.functionCalls || []) {
           const result = await ctx.toolCall(fc.name, fc.args || {});
-          responses.push({ id: fc.id, name: fc.name, response: { result } });
+          // a 「wait for the caller」 refusal: tell Gemini not to answer it (scheduling SILENT, Live API reference)
+          responses.push({ id: fc.id, name: fc.name, response: { result },
+                           ...(result && result.wait_silently ? { scheduling: "SILENT" } : {}) });
         }
       } finally { toolsPending--; }
       send({ toolResponse: { functionResponses: responses } });

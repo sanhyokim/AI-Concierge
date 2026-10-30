@@ -81,7 +81,8 @@ class HandledConflict(Exception):
 
 
 FAQ_READ_SHARE = 0.6   # this much of a candidate FAQ answer in the AI's words: the AI read that answer
-CONFIRM_WAIT_S = 2.5   # a reply transcript may arrive after the model's confirm_field call (Gemini: 2026-10-20)
+CONFIRM_WAIT_S = 4.0   # a reply transcript may arrive after the model's confirm_field call (Gemini: 2026-10-20;
+                       # 2026-10-30 Grok: the 「はい」 came 0.15 s after a 2.5 s wait)
 
 
 class CallSession:
@@ -557,6 +558,10 @@ class ReceptionService:
                         res.update(self._request_followup(sess, snap, call["caller_id"]))
             else:
                 res = {"ok": False, "reason": f"unknown tool {name}"}
+            # 2026-10-30 (Grok): the AI answered this refusal aloud in English (「Waiting for the customer's
+            # response.」). The page sends it without asking for a new answer; the caller's reply starts the next one.
+            if name == "confirm_field" and not res.get("ok") and str(res.get("reason", "")).startswith("no caller reply"):
+                res["wait_silently"] = True
             self._event(call_id, "tool", {"name": name, "args": logged_args, "result": res})
             self._persist(call_id, sess)
             return res

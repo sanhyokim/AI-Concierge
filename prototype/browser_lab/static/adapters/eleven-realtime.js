@@ -105,7 +105,8 @@ export async function connect(ctx) {
       const result = await ctx.toolCall(ev.name, args);
       send({ type: "conversation.item.create", item: { type: "function_call_output", call_id: ev.call_id,
              output: JSON.stringify(result) } });
-      if (!(result && result.hangup)) send({ type: "response.create" });   // end_call: no new response
+      // end_call: no new response; a 「wait for the caller」 refusal: the caller's reply starts the next one
+      if (!(result && (result.hangup || result.wait_silently))) send({ type: "response.create" });
     } else if (ev.type === "error") {
       ctx.log("vendor_error", ev.error || ev);
     }

@@ -35,7 +35,7 @@ class PromptTextTest(unittest.TestCase):
 
     def test_gpt_live_voice_model_gets_a_short_prompt_without_tools_faq_or_digits(self):
         voice = self.svc.voice_instructions(self.cid, LAB_PERSONA, backend=True)
-        self.assertLess(len(voice), 2150)   # 2026-10-20: a few words in kana (for_speech) made it longer; 10-26: which hood, how many
+        self.assertLess(len(voice), 2200)   # 2026-10-20: a few words in kana (for_speech) made it longer; 10-26: which hood, how many; 10-30: Japanese only
         self.assertLess(len(voice), len(self.full) / 2)
         for words in ("0は「ゼロ」と言います", "裏方にまとめを頼み", "失礼いたします。」と言い、裏方に",
                       "【裏方への頼み方】", "「そのまま読む文：」は、一字一句変えずに読みます", "「次にすること：」は声に出さず",
@@ -57,7 +57,7 @@ class PromptTextTest(unittest.TestCase):
 
     def test_gemini_gets_short_tool_rules_and_the_dates_but_not_the_faq(self):
         text = self.svc.voice_instructions(self.cid, LAB_PERSONA, backend=False)
-        self.assertLess(len(text), 2900)   # 2026-10-22: the fixed questions and more words in kana; 10-26: go on after the name; 10-29: words not to use
+        self.assertLess(len(text), 2950)   # 2026-10-22: the fixed questions and more words in kana; 10-26: go on after the name; 10-29: words not to use; 10-30: Japanese only
         for words in ("0は「ゼロ」と言います", "失礼いたします。」と言い、end_call を呼びます", "必ず lookup_faq を呼び",
                       "read_back_now.say を一字一句そのまま読みます", "まず offer_line_number を呼び",
                       "- 10/16（金）：明後日・今週の金曜", "save_field には、2026-10-16"):
