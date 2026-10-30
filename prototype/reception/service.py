@@ -27,7 +27,8 @@ from ..concierge.prompts import ASK_FOR, BASE_INSTRUCTIONS, CLOSING_WORDS, SPEEC
 from ..concierge.readings import digits_only
 from ..engines.tools import READBACK_FIELDS, ToolHandler
 from . import settings as S
-from .faq import (BACKEND_RULES, DELEGATION_POLICY, DIRECT_TOOL_RULES, SAY_ONLY_RULES, TOOL_RULES, backend_line_block,
+from .faq import (BACKEND_RULES, DELEGATION_POLICY, DIRECT_TOOL_RULES, SAY_ONLY_ASKING, SAY_ONLY_RULES, SAY_ONLY_TONE,
+                  TOOL_RULES, backend_line_block,
                   contains_share, date_block, faq_block, faq_lookup, line_block, today_line, voice_line_hint)
 from .speech_consent import detect as detect_spoken_consent
 from .notify import Outbox
@@ -63,6 +64,14 @@ FOLLOW_UPS = {
                                         and not _COUNT_SAID.search(unicodedata.normalize("NFKC", req))),
 }
 FOLLOW_UP_LABELS = {"request_target": "清掃の対象（厨房のフードか、焼肉の上引きフードか）", "request_count": "対象の数（何基か）"}
+
+
+def say_only_rules(rules: str) -> str:
+    """Eleven Realtime (2026-10-30): no list of questions to pick from, and no 「落ち着いた声」 (it turned the tone dark)."""
+    head, rest = rules.split("【伺うこと】", 1)
+    rest = rest[rest.index("【守ること】"):]
+    head = "\n".join(SAY_ONLY_TONE if line.startswith("- 落ち着いた声") else line for line in head.split("\n"))
+    return head + SAY_ONLY_ASKING + rest
 
 
 def _label(field: str) -> str:
@@ -389,8 +398,11 @@ class ReceptionService:
                                  summary="裏方にまとめを頼み、返ってきた文を一字一句そのまま読みます"), DELEGATION_POLICY,
                      voice_line_hint(has_line), today_line(at) + "。日付や曜日は自分で計算せず、裏方に確かめます。"]
         else:
-            parts = [voice_rules(end="end_call を呼びます",
-                                 summary="request_summary を呼び、返ってきた say を一字一句そのまま読みます"), DIRECT_TOOL_RULES, line_block(has_line),
+            rules = voice_rules(end="end_call を呼びます",
+                                summary="request_summary を呼び、返ってきた say を一字一句そのまま読みます")
+            if say_only:
+                rules = say_only_rules(rules)
+            parts = [rules, DIRECT_TOOL_RULES, line_block(has_line),
                      date_block(at, brief=True)] + ([SAY_ONLY_RULES] if say_only else [])
         # the words the voice models misread are given in kana (2026-10-20: 「承りました」 said 「しょうりました」)
         return for_speech("\n".join(part.rstrip() for part in [preamble, *parts]))

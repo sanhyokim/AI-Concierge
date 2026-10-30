@@ -155,6 +155,19 @@ SAY_ONLY_RULES = """\
 - 業務処理が要らないお話（「えーっと」など）には「はい。」とだけ答えて待ちます。
 """
 
+# 2026-10-30 (v1 Mini, record 20261030-111750): after 「無煙ロースターの清掃お願いしたいんですが」 it said
+# 「はい、かしこまりました。どのようなご用件でしょうか。」 without a tool call, taking the question from the list of
+# questions (v1 Max did the same at 10:57:22). For Eleven that list is replaced: the tools' says pick the question.
+SAY_ONLY_ASKING = """\
+【伺うこと】次に伺うことと、その言葉は、業務処理の結果（say・still_to_ask）が決めます。自分で質問を選びません。
+- ご用件・日時・店舗名・お名前をおっしゃったら、伺い直さずに save_field で保存します。
+- 伺う順は、ご用件、ご希望の日時、店舗名とお名前、折り返しのお電話番号です。お客様が先におっしゃった項目は伺いません。
+"""
+
+# 2026-10-30 (Boss: 「声のトーンが突然暗くなる」): Eleven marks its tone itself (「[calm] …」 in its transcripts) and
+# 「落ち着いた声」 reads as asking for that calm tone; for Eleven the tone is asked to stay bright and the same.
+SAY_ONLY_TONE = "- 明るく感じのよい声で、はっきり話します。最初から最後まで同じ声の調子で話し、暗い調子にしません。"
+
 # GPT-Live: the voice model only decides when to hand work to its backend (delegation policy of OpenAI's guide).
 DELEGATION_POLICY = """\
 【裏方への頼み方】

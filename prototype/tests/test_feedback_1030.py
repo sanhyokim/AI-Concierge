@@ -29,6 +29,20 @@ class ElevenSayOnlyTest(unittest.TestCase):
         self.assertIn("話す言葉は結果の say だけ", strict)
         self.assertIn("呼ぶ前には何も話しません", strict)
 
+    def test_eleven_gets_no_list_of_questions_and_no_calm_tone(self):
+        # record 20261030-111750 (v1 Mini): 「要件を言ってるのに、どうのような要件ですかっておかしくない？」
+        # 「声のトーンが突然暗くなる」
+        svc = ReceptionService(Store(":memory:"))
+        cid = svc.start_call(at="2026-10-30T11:17")["id"]
+        plain = svc.voice_instructions(cid, "", backend=False)
+        strict = svc.voice_instructions(cid, "", backend=False, say_only=True)
+        self.assertIn("どのようなご用件でしょうか", plain)
+        self.assertNotIn("どのようなご用件でしょうか", strict)
+        self.assertNotIn("落ち着いた声", strict)
+        self.assertIn("暗い調子にしません", strict)
+        self.assertIn("自分で質問を選びません", strict)
+        self.assertIn("【守ること】", strict)
+
 
 class NoEnglishTest(unittest.TestCase):
     def test_a_refusal_that_only_waits_for_the_caller_asks_for_no_new_answer(self):
