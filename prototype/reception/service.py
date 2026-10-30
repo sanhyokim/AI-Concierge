@@ -70,6 +70,11 @@ _REQUEST_WORDS = ("清掃", "掃除", "洗浄", "点検", "見積", "修理", "�
 FOLLOW_UP_LABELS = {"request_target": "清掃の対象（厨房のフードか、焼肉の上引きフードか）", "request_count": "対象の数（何基か）"}
 
 
+def _flat(text: str) -> str:
+    """For comparing what the AI said with a say: the kana words, without spaces and commas."""
+    return re.sub(r"[\s、，,]", "", for_speech(unicodedata.normalize("NFKC", text)))
+
+
 def say_only_rules(rules: str) -> str:
     """Eleven Realtime (2026-10-30): no list of questions to pick from, and no 「落ち着いた声」 (it turned the tone dark)."""
     head, rest = rules.split("【伺うこと】", 1)
@@ -107,6 +112,7 @@ class CallSession:
         self.faq_choice: dict | None = None   # a question no FAQ matched, and the FAQ handed to the AI to choose from
         self.caller_texts: list[str] = []   # what the caller said, in order (a request said but never saved)
         self.echo = ""   # the caller's answer to a follow-up on the request, said back before the next words
+        self.ai_since_caller: list[str] = []   # what the AI said since the caller last spoke
 
 
 def _flow_dump(f: CallFlow) -> dict:
@@ -459,6 +465,7 @@ class ReceptionService:
                 return {"forward": True, "stop_ai": False, "duplicate": True}
             store = json.loads(call["snapshot"])["config"]["store_transcript"]
             sess.caller_texts.append(text)
+            sess.ai_since_caller = []
             self._event(call_id, "caller", {"text": text if store else "（文字起こしを保存しない設定）",
                                             "seq": sess.tools.utterance_seq})
             sess.new_utterance.notify_all()
@@ -503,6 +510,9 @@ class ReceptionService:
             if self._ai_block_reason(call, sess):
                 return {"recorded": False}
             store = json.loads(call["snapshot"])["config"]["store_transcript"]
+            sess.ai_since_caller.append(text)
+            if sess.echo and _flat(sess.echo) in _flat(text):
+                sess.echo = ""   # said already: not again in the summary
             self._event(call_id, "ai", {"text": text if store else "（文字起こしを保存しない設定）"})
             if "日時" in text or "にちじ" in text:
                 sess.date_asked = True
@@ -571,6 +581,8 @@ class ReceptionService:
                     res = sess.tools.handle(name, args)
                     if name == "save_field" and field == "request" and before and res.get("ok"):
                         sess.echo = self._follow_up_echo(sess, before, str(args.get("value") or ""))
+                        if sess.echo and _flat(sess.echo) in _flat("".join(sess.ai_since_caller)):
+                            sess.echo = ""   # the AI said it before the tool call
                     if name == "save_field" and field in ("request", "shop_name", "caller_name") \
                             and "read_back_now" not in res:
                         if field == "caller_name" and not had_name and self._has(sess, "caller_name"):
@@ -586,6 +598,8 @@ class ReceptionService:
             # response.」). The page sends it without asking for a new answer; the caller's reply starts the next one.
             if name == "confirm_field" and not res.get("ok") and str(res.get("reason", "")).startswith("no caller reply"):
                 res["wait_silently"] = True
+            if name != "request_summary":
+                self._drop_said(sess, res)
             self._event(call_id, "tool", {"name": name, "args": logged_args, "result": res})
             self._persist(call_id, sess)
             return res
@@ -668,6 +682,25 @@ class ReceptionService:
                 if any(w in after for w in words) and not any(w in before for w in words):
                     return f"{name}でございますね。"
         return ""
+
+    @staticmethod
+    def _drop_said(sess: CallSession, res: dict) -> None:
+        """Leave out of the say the sentences the AI has just said itself (2026-10-30, Grok: 「25基でございますね。」
+        before the tool call, then the say 「25基でございますね。作業に…」; user: 「なぜ2回言うの？」)."""
+        say = res.get("say")
+        if not say or not sess.ai_since_caller:
+            return
+        said = _flat("".join(sess.ai_since_caller))
+        parts = re.findall(r"[^。？！?!]+[。？！?!]?", say)
+        while parts and _flat(parts[0]) and _flat(parts[0]) in said:
+            parts.pop(0)
+        if len(parts) == len(re.findall(r"[^。？！?!]+[。？！?!]?", say)):
+            return
+        rest = "".join(parts).strip()
+        if rest:
+            res["say"] = rest
+        else:
+            res.pop("say")
 
     @staticmethod
     def _take_echo(sess: CallSession) -> str:

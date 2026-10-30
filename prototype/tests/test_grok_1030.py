@@ -85,6 +85,44 @@ class CountSaidBackTest(unittest.TestCase):
         self.assertTrue(svc.tool(cid, "request_summary", {})["say"].startswith("それでは"))   # once only
 
 
+class SaidTwiceTest(unittest.TestCase):
+    # record 20261030-131018: 「25基でございますね。」 said by the AI before the tool call, then the say began with it
+    # (「なぜ2回言うの？」)
+    def test_what_the_ai_has_just_said_is_left_out_of_the_say(self):
+        svc = ReceptionService(Store(":memory:"))
+        cid = svc.start_call(at="2026-10-30T13:10")["id"]
+        svc.caller_utterance(cid, "すいません、ロースターの清掃お願いしたいんですが。")
+        svc.ai_utterance(cid, "かしこまりました。")
+        svc.tool(cid, "save_field", {"field": "request", "value": "ロースターの清掃"})
+        svc.ai_utterance(cid, "清掃の対象は、何基ございますか。")
+        svc.caller_utterance(cid, "25基です。")
+        svc.ai_utterance(cid, "25基でございますね。")
+        res = svc.tool(cid, "save_field", {"field": "request", "value": "ロースターの清掃、25基"})
+        self.assertEqual(res["say"], "作業におうかがいするご希望のにちじはございますか。")
+
+    def test_words_said_before_the_callers_last_words_do_not_count(self):
+        svc = ReceptionService(Store(":memory:"))
+        cid = svc.start_call(at="2026-10-30T13:10")["id"]
+        svc.ai_utterance(cid, "清掃の対象は、何基ございますか。")
+        svc.caller_utterance(cid, "え？")
+        res = {"say": "清掃の対象は、何基ございますか。"}
+        ReceptionService._drop_said(svc._session(cid), res)
+        self.assertEqual(res["say"], "清掃の対象は、何基ございますか。")
+
+    def test_the_echo_said_by_the_ai_is_not_said_again_in_the_summary(self):
+        svc, cid = CountSaidBackTest()._to_the_count()
+        svc.tool(cid, "save_fields", {"shop_name": "焼肉田中", "caller_name": "田中"})
+        svc.caller_utterance(cid, "08056442050")
+        say_back(svc, cid, svc.tool(cid, "save_field", {"field": "callback_number", "value": "08056442050"}))
+        svc.caller_utterance(cid, "はい。")
+        svc.tool(cid, "confirm_field", {"field": "callback_number", "value": "08056442050"})
+        svc.ai_utterance(cid, ASK_FOR["preferred_datetime"])
+        svc.caller_utterance(cid, "特にないです。")
+        svc.ai_utterance(cid, "20基でございますね。")
+        svc.tool(cid, "save_field", {"field": "request", "value": "無煙ロースターの清掃、20基"})
+        self.assertTrue(svc.tool(cid, "request_summary", {})["say"].startswith("それでは"))
+
+
 class NoUketamawaruTest(unittest.TestCase):
     # 「しょうりましたと聞こえます」: Grok said 「承りました」 wrong even when given 「うけたまわりました」 in kana
     def test_the_fixed_words_do_not_use_uketamawaru(self):
