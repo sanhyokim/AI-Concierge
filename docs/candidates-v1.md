@@ -54,7 +54,7 @@
 - 公式で確認：2026-10-20発表。音声から音声へ直接返すモデル（1つのモデルが聞く・考える・話す）／答える前に考える。業務処理を何段も続ける仕事向け／Artificial Analysisの測定：話し始め0.57秒、Big Bench Audio 98.8%、業務処理の成功率87.1%、会話の間合い94.1%／OpenAIのRealtime APIと互換（WebSocketだけ）／料金：接続1分$0.08＋トークン（入力100万あたり$1.80・出力$9.00）。同時通話の上限を超えた分は1分$0.16
 - 日本語：モデルの資料は90以上の言語（Eleven v4の言語の表に日本語がある）。Realtimeでの日本語の明記はない
 - 接続：ブラウザーは一時の鍵（POST v1/convai/realtime/client_secrets）で、OpenAI互換のWebSocketにつなぐ（WebRTCはない）。電話はElevenAgentsで電話（Twilio・SIPなど）。互換APIでは自社の中継
-- 未確認：日本語での正確さ・発音（Big Bench Audioは英語）／互換APIで日本語の文字起こし・声のIDの指定が通るか／1通話のトークンの量（記号 Tok_erx）／プランごとの含まれる分（無料のプランで約12分の表示。プランとの対応は未確認）
+- 未確認：日本語での正確さ・発音（Big Bench Audioは英語）／互換APIで日本語の文字起こし・声のIDの指定が通るか／1通話のトークンの量（画面の目安と料金表から1分約$0.0135〜$0.022。実際の請求で確かめる）／プランごとの含まれる分（無料のプランで約12分の表示。プランとの対応は未確認）
 - 自社で作るもの：自社の中継・業務処理が要る（Geminiと同じく、モデルが業務処理を直接呼ぶ）
 - 位置づけの理由：速さと正確さが評価表で最上位。Geminiと同じ1つのモデルの構成で、受付の業務処理の確実さを比べる
 - 出典：[1](https://elevenlabs.io/blog/realtime)、[2](https://elevenlabs.io/realtime)、[3](https://elevenlabs.io/pricing/api)、[4](https://elevenlabs.io/docs/overview/models)、[5](https://elevenlabs.io/docs/eleven-agents/guides/openai-realtime-compatibility)、[6](https://elevenlabs.io/docs/eleven-agents/customization/realtime-models)
@@ -65,7 +65,7 @@
 - 公式で確認：2026-10-20発表。v1 Maxと同じ作りの、速くて安いモデル／Artificial Analysisの測定：話し始め0.62秒、Big Bench Audio 75.9%、業務処理の成功率60.3%、会話の間合い95.8%／OpenAIのRealtime APIと互換（WebSocketだけ）／料金：接続1分$0.08＋トークン（入力100万あたり$0.20・出力$6.00）
 - 日本語：モデルの資料は90以上の言語（Eleven v4の言語の表に日本語がある）。Realtimeでの日本語の明記はない
 - 接続：ブラウザーは一時の鍵（POST v1/convai/realtime/client_secrets）で、OpenAI互換のWebSocketにつなぐ（WebRTCはない）。電話はElevenAgentsで電話（Twilio・SIPなど）。互換APIでは自社の中継
-- 未確認：日本語での正確さ・発音／1通話のトークンの量（記号 Tok_erm）／業務処理の成功率が受付に足りるか（60.3%）
+- 未確認：日本語での正確さ・発音／1通話のトークンの量（画面の目安と料金表から1分約$0.003〜$0.005。実際の請求で確かめる）／業務処理の成功率が受付に足りるか（60.3%）
 - 自社で作るもの：自社の中継・業務処理が要る（Geminiと同じく、モデルが業務処理を直接呼ぶ）
 - 位置づけの理由：会話の自然さ（相づち・割り込み）の比較用。業務処理の成功率が低く、受付の本命ではない
 - 出典：[1](https://elevenlabs.io/blog/realtime)、[2](https://elevenlabs.io/realtime)、[3](https://elevenlabs.io/pricing/api)、[4](https://elevenlabs.io/docs/overview/models)、[5](https://elevenlabs.io/docs/eleven-agents/guides/openai-realtime-compatibility)、[6](https://elevenlabs.io/docs/eleven-agents/customization/realtime-models)

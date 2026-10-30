@@ -52,7 +52,8 @@ def ai_part(c: dict, cache: bool = True) -> cm.Money:
     terms = {k: 1 for k in pr.get("symbols", {})}
     kind = pr["kind"]
     if kind == "per_min":
-        return cm.Money(usd=pr["usd_per_min"] * dur, terms=terms)
+        # token_usd_per_min_est: tokens on top of the minute price, estimated from the vendor's own figures
+        return cm.Money(usd=(pr["usd_per_min"] + pr.get("token_usd_per_min_est", 0.0)) * dur, terms=terms)
     if kind == "live_tokens":
         return cm.Money(usd=live_rebilled_usd(pr, dur), terms=terms)
     if kind == "inworld":

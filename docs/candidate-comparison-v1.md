@@ -24,10 +24,10 @@
 | --- | --- | --- | --- | --- | --- | --- |
 | OpenAI GPT-Live 1 | 会話モデル（同時に聞いて話す） | $0.150 | $0.065 | 約35円 | L_live ＋ F | 単価は確認済み |
 | Google Gemini 3.8 Live | 会話モデル（音声） | $0.264 | $0.065 | 約54円 | F | 単価は確認済み。返事のたびに、指示と業務処理の説明（約3,500トークン）と、それまでの音声の全部をもう一度読む。返事は1分に6回、マイクの音声は無音も含めて履歴に入る、と仮定（2026-10-20 の C1 の記録は2分半でAIの返事13回・業務処理5回） |
-| ElevenLabs Eleven Realtime v1 Max | 会話モデル（音声） | $0.240 | $0.065 | 約50円 | Tok_erx ＋ F | 単価は確認済み。接続1分$0.08（プランの含まれる分を超えた分）。文字の量の料金は記号 |
-| ElevenLabs Eleven Realtime v1 Mini | 会話モデル（音声） | $0.240 | $0.065 | 約50円 | Tok_erm ＋ F | 単価は確認済み。接続1分$0.08（プランの含まれる分を超えた分）。文字の量の料金は記号 |
-| xAI Grok Voice 3.0 | 会話モデル（音声） | $0.240 | $0.065 | 約50円 | T_grok ＋ F | 単価は確認済み。接続1分$0.08（無音も含む）。テキストの入力は記号 |
-| Phonic Phonic-1 | 会話モデル（音声） | $0.210 | $0.065 | 約45円 | F | 単価は確認済み。1分$0.07（Starter）。LLM・トークンの追加の料金はない（公式） |
+| ElevenLabs Eleven Realtime v1 Max | 会話モデル（音声） | $0.280 | $0.065 | 約57円 | F | 単価は確認済み。接続1分$0.08＋文字の量（トークン）。トークンは、ElevenLabsの画面の目安（2026-10-21、利用者のアカウント）の1分約$0.0135。料金表の「含まれる分の目安」（Starter $6で約59分）から逆算すると1分約$0.022になる（2026-10-30） |
+| ElevenLabs Eleven Realtime v1 Mini | 会話モデル（音声） | $0.249 | $0.065 | 約52円 | F | 単価は確認済み。接続1分$0.08＋文字の量（トークン）。トークンは、ElevenLabsの画面の目安（2026-10-21、利用者のアカウント）の1分約$0.003。料金表の「含まれる分の目安」（Starter $6で約71分）から逆算すると1分約$0.005になる（2026-10-30） |
+| xAI Grok Voice 3.0 | 会話モデル（音声） | $0.240 | $0.065 | 約50円 | T_grok ＋ F | 単価は確認済み。接続1分$0.08（無音も含む）。ほかに「テキストの入力1件$0.004」とあるが、何が1件かは公式に書かれていない（決まった文を話させる頼みや業務処理の結果が数に入るなら、1通話15件で約$0.06増える。2026-10-30 確認） |
+| Phonic Phonic-1 | 会話モデル（音声） | $0.210 | $0.065 | 約45円 | F | 単価は確認済み。1分$0.07（料金の表の Starter）。よくある質問の欄は$0.06で食い違う（2026-10-30 確認）。LLM・トークンの追加の料金はない（公式） |
 | ElevenLabs ElevenAgents（Expressive mode） | 会話サービス | $0.240 | $0.065 | 約50円 | L_11 ＋ F | 「から」表記（プランで変わる）。月額 P_11 は3章 |
 | Cartesia Managed Agents（Ink-2＋LLM＋Sonic-3.6） | 会話サービス（部品統合） | $0.180 | $0.065 | 約40円 | L_cart ＋ F | 単価は確認済み |
 | OpenAI GPT-Realtime-2.1（比較の基準） | 会話モデル（音声） | $0.162（キャッシュ不成立 $0.755） | $0.065 | 約37円 | F | 単価は確認済み |
@@ -48,8 +48,8 @@
 | --- | --- | --- | --- | --- |
 | OpenAI GPT-Live 1 | 7,306円 | 25,850円 | 58,461円 | 150件×F ＋ 60×L_live ＋ B_fwd ＋ B_num ＋ 2×U_ntt ＋ S_srv ＋ R×17円 |
 | Google Gemini 3.8 Live | 8,437円 | 29,244円 | 67,510円 | 150件×F ＋ B_fwd ＋ B_num ＋ 2×U_ntt ＋ S_srv ＋ R×17円 |
-| ElevenLabs Eleven Realtime v1 Max | 8,197円 | 28,523円 | 65,589円 | 150件×F ＋ 60×Tok_erx ＋ B_fwd ＋ B_num ＋ 2×U_ntt ＋ S_srv ＋ R×17円 |
-| ElevenLabs Eleven Realtime v1 Mini | 8,197円 | 28,523円 | 65,589円 | 150件×F ＋ 60×Tok_erm ＋ B_fwd ＋ B_num ＋ 2×U_ntt ＋ S_srv ＋ R×17円 |
+| ElevenLabs Eleven Realtime v1 Max | 8,598円 | 29,726円 | 68,796円 | 150件×F ＋ B_fwd ＋ B_num ＋ 2×U_ntt ＋ S_srv ＋ R×17円 |
+| ElevenLabs Eleven Realtime v1 Mini | 8,286円 | 28,790円 | 66,302円 | 150件×F ＋ B_fwd ＋ B_num ＋ 2×U_ntt ＋ S_srv ＋ R×17円 |
 | xAI Grok Voice 3.0 | 8,197円 | 28,523円 | 65,589円 | 150件×F ＋ 60×T_grok ＋ B_fwd ＋ B_num ＋ 2×U_ntt ＋ S_srv ＋ R×17円 |
 | Phonic Phonic-1 | 7,900円 | 27,632円 | 63,213円 | 150件×F ＋ B_fwd ＋ B_num ＋ 2×U_ntt ＋ S_srv ＋ R×17円 |
 | ElevenLabs ElevenAgents（Expressive mode） | 8,197円 | 28,523円 | 65,589円 | 150件×F ＋ 60×L_11 ＋ B_fwd ＋ B_num ＋ 2×U_ntt ＋ S_srv ＋ P_11 ＋ R×17円 |
@@ -147,8 +147,8 @@
 | --- | --- | --- | --- | --- |
 | OpenAI GPT-Live 1 | 2,909円 | 12,659円 | 23,284円 | 60×L_live ＋ 60件×ΔF ＋ S_srv ＋ R×17円 |
 | Google Gemini 3.8 Live | 4,040円 | 16,052円 | 32,334円 | 60件×ΔF ＋ S_srv ＋ R×17円 |
-| ElevenLabs Eleven Realtime v1 Max | 3,800円 | 15,332円 | 30,412円 | 60×Tok_erx ＋ 60件×ΔF ＋ S_srv ＋ R×17円 |
-| ElevenLabs Eleven Realtime v1 Mini | 3,800円 | 15,332円 | 30,412円 | 60×Tok_erm ＋ 60件×ΔF ＋ S_srv ＋ R×17円 |
+| ElevenLabs Eleven Realtime v1 Max | 4,201円 | 16,535円 | 33,620円 | 60件×ΔF ＋ S_srv ＋ R×17円 |
+| ElevenLabs Eleven Realtime v1 Mini | 3,889円 | 15,599円 | 31,125円 | 60件×ΔF ＋ S_srv ＋ R×17円 |
 | xAI Grok Voice 3.0 | 3,800円 | 15,332円 | 30,412円 | 60×T_grok ＋ 60件×ΔF ＋ S_srv ＋ R×17円 |
 | Phonic Phonic-1 | 3,503円 | 14,441円 | 28,036円 | 60件×ΔF ＋ S_srv ＋ R×17円 |
 | ［参考］OpenAI GPT-Realtime-2.1（比較の基準） | 3,028円 | 13,017円 | 24,240円 | 60件×ΔF ＋ S_srv ＋ R×17円 |
@@ -177,10 +177,10 @@
 | OpenAI GPT-Live 1 | 回線案2 | 2,909円 | 12,659円 | 23,284円 | 人が受ける通話は今のまま。AIの通話の転送料の差 ΔF だけが増減する |
 | Google Gemini 3.8 Live | 回線案1 | 8,437円 | 29,244円 | 67,510円 | 人が受ける通話もクラウドを通る（Twilioの着信と、かけ直し）。NTTの転送料 F・追加番号 B_num・U_ntt が別に増える |
 | Google Gemini 3.8 Live | 回線案2 | 4,040円 | 16,052円 | 32,334円 | 人が受ける通話は今のまま。AIの通話の転送料の差 ΔF だけが増減する |
-| ElevenLabs Eleven Realtime v1 Max | 回線案1 | 8,197円 | 28,523円 | 65,589円 | 人が受ける通話もクラウドを通る（Twilioの着信と、かけ直し）。NTTの転送料 F・追加番号 B_num・U_ntt が別に増える |
-| ElevenLabs Eleven Realtime v1 Max | 回線案2 | 3,800円 | 15,332円 | 30,412円 | 人が受ける通話は今のまま。AIの通話の転送料の差 ΔF だけが増減する |
-| ElevenLabs Eleven Realtime v1 Mini | 回線案1 | 8,197円 | 28,523円 | 65,589円 | 人が受ける通話もクラウドを通る（Twilioの着信と、かけ直し）。NTTの転送料 F・追加番号 B_num・U_ntt が別に増える |
-| ElevenLabs Eleven Realtime v1 Mini | 回線案2 | 3,800円 | 15,332円 | 30,412円 | 人が受ける通話は今のまま。AIの通話の転送料の差 ΔF だけが増減する |
+| ElevenLabs Eleven Realtime v1 Max | 回線案1 | 8,598円 | 29,726円 | 68,796円 | 人が受ける通話もクラウドを通る（Twilioの着信と、かけ直し）。NTTの転送料 F・追加番号 B_num・U_ntt が別に増える |
+| ElevenLabs Eleven Realtime v1 Max | 回線案2 | 4,201円 | 16,535円 | 33,620円 | 人が受ける通話は今のまま。AIの通話の転送料の差 ΔF だけが増減する |
+| ElevenLabs Eleven Realtime v1 Mini | 回線案1 | 8,286円 | 28,790円 | 66,302円 | 人が受ける通話もクラウドを通る（Twilioの着信と、かけ直し）。NTTの転送料 F・追加番号 B_num・U_ntt が別に増える |
+| ElevenLabs Eleven Realtime v1 Mini | 回線案2 | 3,889円 | 15,599円 | 31,125円 | 人が受ける通話は今のまま。AIの通話の転送料の差 ΔF だけが増減する |
 | xAI Grok Voice 3.0 | 回線案1 | 8,197円 | 28,523円 | 65,589円 | 人が受ける通話もクラウドを通る（Twilioの着信と、かけ直し）。NTTの転送料 F・追加番号 B_num・U_ntt が別に増える |
 | xAI Grok Voice 3.0 | 回線案2 | 3,800円 | 15,332円 | 30,412円 | 人が受ける通話は今のまま。AIの通話の転送料の差 ΔF だけが増減する |
 | Phonic Phonic-1 | 回線案1 | 7,900円 | 27,632円 | 63,213円 | 人が受ける通話もクラウドを通る（Twilioの着信と、かけ直し）。NTTの転送料 F・追加番号 B_num・U_ntt が別に増える |
