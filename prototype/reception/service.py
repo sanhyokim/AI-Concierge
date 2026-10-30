@@ -63,6 +63,10 @@ FOLLOW_UPS = {
                                         and any(w in req for w in _COUNT_JOB)
                                         and not _COUNT_SAID.search(unicodedata.normalize("NFKC", req))),
 }
+# 2026-10-30 (Grok, record 20261030-112731): the AI took 「無煙ロースターの清掃お願いしたいんですが」 without saving it, and
+# the server then handed it 「どのようなご用件でしょうか」 three times (user: 「なんで？」). Words that make an utterance a request.
+_REQUEST_WORDS = ("清掃", "掃除", "洗浄", "点検", "見積", "修理", "交換", "工事", "依頼", "お願い", "相談", "ダクト", "フード",
+                  "ロースター", "排煙", "換気", "料金")
 FOLLOW_UP_LABELS = {"request_target": "清掃の対象（厨房のフードか、焼肉の上引きフードか）", "request_count": "対象の数（何基か）"}
 
 
@@ -101,6 +105,8 @@ class CallSession:
         self.date_asked = False   # the AI has asked for the wished date: a caller with no wish is not asked again
         self.asked: set[str] = set()   # follow-up questions on the request the AI has asked (request_target/count)
         self.faq_choice: dict | None = None   # a question no FAQ matched, and the FAQ handed to the AI to choose from
+        self.caller_texts: list[str] = []   # what the caller said, in order (a request said but never saved)
+        self.echo = ""   # the caller's answer to a follow-up on the request, said back before the next words
 
 
 def _flow_dump(f: CallFlow) -> dict:
@@ -452,6 +458,7 @@ class ReceptionService:
             if not sess.tools.caller_said(text, utterance_id):
                 return {"forward": True, "stop_ai": False, "duplicate": True}
             store = json.loads(call["snapshot"])["config"]["store_transcript"]
+            sess.caller_texts.append(text)
             self._event(call_id, "caller", {"text": text if store else "（文字起こしを保存しない設定）",
                                             "seq": sess.tools.utterance_seq})
             sess.new_utterance.notify_all()
@@ -559,7 +566,11 @@ class ReceptionService:
                     logged_args = {"field": field, "value": "（保存しない設定のため記録しない）"}
                 else:
                     had_name = self._has(sess, "caller_name")
+                    before = sess.tools.store.fields.get("request")
+                    before = (before.value or "") if before else ""
                     res = sess.tools.handle(name, args)
+                    if name == "save_field" and field == "request" and before and res.get("ok"):
+                        sess.echo = self._follow_up_echo(sess, before, str(args.get("value") or ""))
                     if name == "save_field" and field in ("request", "shop_name", "caller_name") \
                             and "read_back_now" not in res:
                         if field == "caller_name" and not had_name and self._has(sess, "caller_name"):
@@ -629,19 +640,56 @@ class ReceptionService:
         state = sess.tools.store.fields.get(field)
         return bool(state and state.value)
 
+    @staticmethod
+    def _ask(sess: CallSession, field: str, before: str = "") -> dict:
+        """The server's question for an item. A request the caller has already said is not asked again: the AI
+        is told to save it (2026-10-30, Grok asked 「どのようなご用件でしょうか」 after 「…清掃お願いしたいんですが」)."""
+        if field == "request":
+            heard = next((t for t in sess.caller_texts if any(w in t for w in _REQUEST_WORDS)), "")
+            if heard:
+                note = (f"ご用件はまだ保存されていません。お客様は「{heard}」とおっしゃっています。伺い直さずに、"
+                        "このご用件を save_field で request に保存します。保存の前には何も話しません")
+                return {"say": for_speech(before), "then": note} if before else {"then": note}
+        return {"say": for_speech(before + ASK_FOR[field])}
+
+    @staticmethod
+    def _follow_up_echo(sess: CallSession, before: str, after: str) -> str:
+        """The part the caller added to the request when asked how many or which hood: 「20基でございますね。」."""
+        if after == before:
+            return ""
+        if "request_count" in sess.asked:
+            had = _COUNT_SAID.search(unicodedata.normalize("NFKC", before))
+            got = _COUNT_SAID.search(unicodedata.normalize("NFKC", after))
+            if got and not had:
+                return f"{got.group(0)}でございますね。"
+        if "request_target" in sess.asked:
+            for words, name in ((("上引き", "うわびき", "上びき", "焼肉"), "焼肉の上引きフード"),
+                                (("厨房", "キッチン", "調理"), "厨房のフード")):
+                if any(w in after for w in words) and not any(w in before for w in words):
+                    return f"{name}でございますね。"
+        return ""
+
+    @staticmethod
+    def _take_echo(sess: CallSession) -> str:
+        """「20基でございますね。」 once, before the next words (2026-10-30, user: 「お客が20基と言ってるなら20基で
+        ございますねと復唱すること」)."""
+        echo, sess.echo = sess.echo, ""
+        return echo
+
     def _request_followup(self, sess: CallSession, snap: dict, line_number: str | None = None) -> dict:
         """What to ask next, in the server's words: which hood and how many (FOLLOW_UPS), else the next item.
         2026-10-29 (Grok): handed nothing after the shop 「焼肉田中」, it made up 「お名前は、田中様でよろしいでしょうか」."""
         left = self._still_to_ask(sess, snap)
-        if not left:
-            return {}
+        if not left:   # the echo waits for the summary (Grok calls request_summary in the same answer)
+            return {"then": "お返事を待たずに、request_summary を呼ぶ"} if sess.echo else {}
+        echo = self._take_echo(sess)
         if left[0] not in FOLLOW_UPS:
             if left[0] == "callback_number" and line_number:
-                return {"then": "offer_line_number を呼ぶ"}
+                return {"say": for_speech(echo), "then": "offer_line_number を呼ぶ"} if echo else {"then": "offer_line_number を呼ぶ"}
             if left[0] == "shop_name" and self._has(sess, "caller_name"):
-                return {"say": for_speech("恐れ入りますが、店舗名をお伺いしてもよろしいでしょうか。")}
-            return {"say": for_speech(ASK_FOR[left[0]])}
-        return {"say": for_speech(ASK_FOR[left[0]]),
+                return {"say": for_speech(echo + "恐れ入りますが、店舗名をお伺いしてもよろしいでしょうか。")}
+            return self._ask(sess, left[0], echo)
+        return {"say": for_speech(echo + ASK_FOR[left[0]]),
                 "how": ("お答えをご用件に足し、save_field で request を保存し直します"
                         "（例：「焼肉の上引きフードの清掃、3基」）。分からないと言われたら、そのまま次へ進みます")}
 
@@ -659,7 +707,7 @@ class ReceptionService:
             return {"say": for_speech(greeting), "then": "お返事を待たずに、offer_line_number を呼ぶ"}
         if left[0] == "shop_name":   # the name came first: ask only for the shop
             return {"say": for_speech(greeting + "恐れ入りますが、店舗名をお伺いしてもよろしいでしょうか。"), "how": how}
-        return {"say": for_speech(greeting + ASK_FOR[left[0]]), "how": how}
+        return {**ReceptionService._ask(sess, left[0], greeting), "how": how}
 
     @staticmethod
     def _still_to_ask(sess: CallSession, snap: dict, required_only: bool = False) -> list[str]:
@@ -687,11 +735,11 @@ class ReceptionService:
                     "then": "うけたまわる用件はありません。お客様が終えようとしていれば、最後のあいさつを言って end_call を呼ぶ"}
         left = self._still_to_ask(sess, snap, required_only=True)
         if left:
-            return {"ok": False, "missing": [_label(f) for f in left], "say": for_speech(ASK_FOR[left[0]])}
+            return {"ok": False, "missing": [_label(f) for f in left], **self._ask(sess, left[0])}
         fields = sess.tools.store.fields
         val = lambda f: (fields[f].value if fields.get(f) and fields[f].value else "")
         who = "の".join(v for v in (val("shop_name"), f"{val('caller_name')}様" if val("caller_name") else "") if v)
-        parts = ["それでは、ご用件を確認いたします。"]
+        parts = [self._take_echo(sess) + "それでは、ご用件を確認いたします。"]
         if who:
             parts.append(f"{who}。")
         parts.append(f"ご用件は、{val('request')}。")
