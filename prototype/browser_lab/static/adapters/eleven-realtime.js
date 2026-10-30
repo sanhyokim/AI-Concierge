@@ -12,6 +12,22 @@ const RATE = 24000;
 const TRANSCRIPT_WAIT_MS = 1500;   // how long a tool call waits for the caller's words that came just before it
 const OPENING_WAIT_MS = 3000;      // the model has this long to start the opening before it is asked another way
 
+// 2026-10-30 (v1 Max, record 20261030-105638; user: 「記録としゃべってる内容がちがう」): a transcript often carried
+// the previous answer's last question again (「かしこまりました。どのようなご用件でしょうか。 作業に…」 right after
+// 「…どのようなご用件でしょうか。」), and once the whole answer twice. Those sentences are left out of the record;
+// the raw text stays in the page log.
+const sentences = (text) => (text.match(/[^。？！?!\s]+[。？！?!]?/g) || []).map((x) => x.trim()).filter(Boolean);
+export function cleanTranscript(words, previous) {
+  const before = sentences(previous || "");
+  const last = before.length ? before[before.length - 1] : null;
+  const kept = [];
+  for (const s of sentences(words)) {
+    if (kept.includes(s) || s === last) continue;
+    kept.push(s);
+  }
+  return kept.length ? kept.join("") : words;
+}
+
 export async function connect(ctx) {
   const { client_secret: secret, ws_url: wsUrl, model, opening_request: opening, session_fallback: fallback } =
     ctx.credentials;
@@ -24,6 +40,7 @@ export async function connect(ctx) {
   let aiItem = null, aiQueuedMs = 0;              // the AI's audio item now playing, and how much of it was queued
   let transcriptWait = null;                       // resolves when the caller's words after a pause arrive
   let responded = false;                           // the model has started a response (the opening or a reply)
+  let lastAi = "";                                 // the AI's last words as recorded
   const ws = new WebSocket(`${wsUrl}?model=${encodeURIComponent(model)}`,
                            ["realtime", `openai-insecure-api-key.${secret}`]);
   const send = (obj) => ws.readyState === WebSocket.OPEN && ws.send(JSON.stringify(obj));
@@ -95,7 +112,11 @@ export async function connect(ctx) {
     } else if (ev.type === "response.output_audio_transcript.done") {
       // the model marks its tone in the transcript (2026-10-21: 「[calm] 失礼いたしました。」); not words it said
       const words = (ev.transcript || "").replace(/\[[a-z _-]+\]\s*/gi, "").trim();
-      if (words) ctx.onTranscript("ai", words);
+      if (!words) return;
+      const clean = cleanTranscript(words, lastAi);
+      if (clean !== words) ctx.log("AIの文字起こし", `前の返事と重なった文を記録から外した（元の文：${words}）`);
+      lastAi = clean;
+      ctx.onTranscript("ai", clean);
     } else if (ev.type === "response.function_call_arguments.done") {
       // the caller's 「はい」 can arrive after the model's tool call: let the server see it first
       const heard = transcriptWait ? await transcriptWait.promise : null;

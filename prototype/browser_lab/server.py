@@ -216,8 +216,9 @@ class Lab:
         if style == "voice_and_backend":
             return (self.service.voice_instructions(call["id"], LAB_PERSONA, backend=True),
                     self.service.backend_instructions(call["id"]))
-        if style == "short":
-            return self.service.voice_instructions(call["id"], LAB_PERSONA, backend=False), None
+        if style in ("short", "short_say_only"):
+            return self.service.voice_instructions(call["id"], LAB_PERSONA, backend=False,
+                                                   say_only=style == "short_say_only"), None
         return self.service.instructions(call["id"], preamble=LAB_RULES), None
 
     def start(self, candidate: str, fake_script: str | None = None, caller_id: str | None = None,

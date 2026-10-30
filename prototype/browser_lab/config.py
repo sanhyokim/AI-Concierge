@@ -51,14 +51,14 @@ CANDIDATES = {
         "name": "ElevenLabs Eleven Realtime v1 Max", "adapter": "eleven-realtime", "env": ["ELEVENLABS_API_KEY"],
         "vendor": "elevenlabs_lab", "model": "eleven_realtime_v1_max", "upper_usd_per_min": 0.20, "increment_s": 60,
         "verified": False, "logic_path": "function_call", "applies": {"instructions": "session", "voice": "session"},
-        "prompt_style": "short",
+        "prompt_style": "short_say_only",   # only the tools' says (2026-10-30: it mixed in its own lines)
         "note": "答える前に考える上位のモデル。業務処理の成功率は公式で87.1%。料金は接続1分$0.08＋文字の量"
                 "（入力100万あたり$1.80・出力$9.00）。日本語の会話は未確認"},
     "eleven-realtime-mini": {
         "name": "ElevenLabs Eleven Realtime v1 Mini", "adapter": "eleven-realtime", "env": ["ELEVENLABS_API_KEY"],
         "vendor": "elevenlabs_lab", "model": "eleven_realtime_v1_mini", "upper_usd_per_min": 0.20, "increment_s": 60,
         "verified": False, "logic_path": "function_call", "applies": {"instructions": "session", "voice": "session"},
-        "prompt_style": "short",
+        "prompt_style": "short_say_only",   # only the tools' says (2026-10-30: it mixed in its own lines)
         "note": "速くて安いモデル。業務処理の成功率は公式で60.3%（受付には低い）。会話の自然さの比較用。"
                 "料金は接続1分$0.08＋文字の量（入力100万あたり$0.20・出力$6.00）"},
     "elevenagents": {

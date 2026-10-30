@@ -117,8 +117,11 @@ class LabPromptTest(unittest.TestCase):
 
     def test_single_model_candidates_get_the_short_prompt(self):
         # 2026-10-23: GPT-Realtime-2.1 and Grok Voice 3.0 call the tools themselves, like Gemini
-        for cid in ("gemini-3.8-live", "eleven-realtime-max", "gpt-realtime-2.1", "grok-voice-3"):
+        for cid in ("gemini-3.8-live", "gpt-realtime-2.1", "grok-voice-3"):
             self.assertEqual(config.CANDIDATES[cid]["prompt_style"], "short", cid)
+        # 2026-10-30: Eleven Realtime mixed its own lines with the server's; it speaks only the tools' says
+        for cid in ("eleven-realtime-max", "eleven-realtime-mini"):
+            self.assertEqual(config.CANDIDATES[cid]["prompt_style"], "short_say_only", cid)
 
 
 if __name__ == "__main__":

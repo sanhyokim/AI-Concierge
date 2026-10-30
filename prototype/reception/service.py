@@ -27,7 +27,7 @@ from ..concierge.prompts import ASK_FOR, BASE_INSTRUCTIONS, CLOSING_WORDS, SPEEC
 from ..concierge.readings import digits_only
 from ..engines.tools import READBACK_FIELDS, ToolHandler
 from . import settings as S
-from .faq import (BACKEND_RULES, DELEGATION_POLICY, DIRECT_TOOL_RULES, TOOL_RULES, backend_line_block,
+from .faq import (BACKEND_RULES, DELEGATION_POLICY, DIRECT_TOOL_RULES, SAY_ONLY_RULES, TOOL_RULES, backend_line_block,
                   contains_share, date_block, faq_block, faq_lookup, line_block, today_line, voice_line_hint)
 from .speech_consent import detect as detect_spoken_consent
 from .notify import Outbox
@@ -376,10 +376,11 @@ class ReceptionService:
         return (preamble.rstrip() + "\n" + SPEECH_MANNERS + "\n" + TOOL_RULES + "\n" + line_block(bool(call["caller_id"]))
                 + "\n" + date_block(at) + "\n" + faq_block(snap["faqs"]))
 
-    def voice_instructions(self, call_id: str, preamble: str, backend: bool) -> str:
+    def voice_instructions(self, call_id: str, preamble: str, backend: bool, say_only: bool = False) -> str:
         """The short conversation prompt (2026-10-14): role, speaking style, what to ask, guardrails, the end.
         backend=True (GPT-Live): when to hand work to the backend model, which gets backend_instructions().
-        backend=False (Gemini): short tool rules and the date table; the FAQ comes only from lookup_faq."""
+        backend=False (Gemini): short tool rules and the date table; the FAQ comes only from lookup_faq.
+        say_only (Eleven Realtime, 2026-10-30): the model speaks only the says the tools return."""
         call = self._call(call_id)
         at = parse_at(json.loads(call["snapshot"])["decision"]["at_jst"])
         has_line = bool(call["caller_id"])
@@ -390,7 +391,7 @@ class ReceptionService:
         else:
             parts = [voice_rules(end="end_call を呼びます",
                                  summary="request_summary を呼び、返ってきた say を一字一句そのまま読みます"), DIRECT_TOOL_RULES, line_block(has_line),
-                     date_block(at, brief=True)]
+                     date_block(at, brief=True)] + ([SAY_ONLY_RULES] if say_only else [])
         # the words the voice models misread are given in kana (2026-10-20: 「承りました」 said 「しょうりました」)
         return for_speech("\n".join(part.rstrip() for part in [preamble, *parts]))
 

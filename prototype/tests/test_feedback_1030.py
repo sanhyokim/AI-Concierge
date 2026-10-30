@@ -18,6 +18,18 @@ class OpeningTest(unittest.TestCase):
             self.assertNotIn("野田のAIオペレーター", text)
 
 
+class ElevenSayOnlyTest(unittest.TestCase):
+    # record 20261030-105638 (v1 Max): 「システムのセリフとイレブンラボが勝手に考えたセリフが混在してるように感じる」
+    def test_only_eleven_is_told_to_speak_only_the_says(self):
+        svc = ReceptionService(Store(":memory:"))
+        cid = svc.start_call(at="2026-10-30T10:56")["id"]
+        plain = svc.voice_instructions(cid, "", backend=False)
+        strict = svc.voice_instructions(cid, "", backend=False, say_only=True)
+        self.assertNotIn("話す言葉は結果の say だけ", plain)
+        self.assertIn("話す言葉は結果の say だけ", strict)
+        self.assertIn("呼ぶ前には何も話しません", strict)
+
+
 class NoEnglishTest(unittest.TestCase):
     def test_a_refusal_that_only_waits_for_the_caller_asks_for_no_new_answer(self):
         # 109.15 s: confirm_field reached the server before the caller's 「はい」 (0.15 s after the wait); the AI

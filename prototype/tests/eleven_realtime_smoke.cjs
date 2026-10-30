@@ -46,6 +46,9 @@ const pcmB64 = (ms) => Buffer.alloc(Math.round(24000 * ms / 1000) * 2, 1).toStri
                                    arguments: JSON.stringify({ question: "料金" }) }));
           setTimeout(() => ws.send(JSON.stringify({ type: "conversation.item.input_audio_transcription.completed",
                                                     transcript: "料金を教えてください" })), 300);
+          // 2026-10-30: a transcript that carries the previous answer's last sentence, and a sentence twice
+          setTimeout(() => ws.send(JSON.stringify({ type: "response.output_audio_transcript.done",
+                         transcript: "はい。お電話ありがとうございます。 料金は目安です。 料金は目安です。" })), 600);
         }, 500);
       }
     });
@@ -95,6 +98,7 @@ const pcmB64 = (ms) => Buffer.alloc(Math.round(24000 * ms / 1000) * 2, 1).toStri
     if (!output || output.item.call_id !== "c1" || !output.item.output.includes("目安です")) fail("tool output not sent back");
     if (types[types.length - 1] !== "response.create") fail("no response.create after the tool output");
     if (!order.includes("ai:お電話ありがとうございます。")) fail("AI transcript missing");
+    if (!order.includes("ai:はい。料金は目安です。")) fail(`the repeated sentences were not left out: ${order}`);
     if (order.some((o) => o.startsWith("closed:"))) fail(`closed unexpectedly: ${order}`);
     if (errors.length) fail(`page errors: ${errors}`);
     console.log(JSON.stringify({ order, sent: types }, null, 1));

@@ -142,6 +142,19 @@ DIRECT_TOOL_RULES = """\
 - 火や煙など危険の訴えがあったら flag_emergency を呼び、返ってきた指示に従います。
 """
 
+# 2026-10-30 (Eleven Realtime v1 Max, record 20261030-105638; user: 「システムのセリフとイレブンラボが勝手に考えたセリフが
+# 混在してるように感じる」): before each tool call it made up the next question or the read-back itself, then also
+# said the server's say. For a model without a way to force the server's words, these rules come first.
+SAY_ONLY_RULES = """\
+【話す言葉は結果の say だけ（上の決まりより優先）】
+- お客様が話し終えたら、まず業務処理を呼びます。呼ぶ前には何も話しません（「かしこまりました。」も言いません）。
+- 結果に say があれば、それだけを一字一句そのまま話します。次の質問・復唱・まとめを自分で作りません。
+- ご用件・ご希望の日時・店舗名・お名前は、聞いたらそのつど save_field で保存します（そろうのを待ちません）。
+- 結果に say がなく、伺うことが残っていれば、still_to_ask の最初の項目を短い質問で一つだけ伺います。
+- 業務処理のこと（「保存します」「更新します」など）は口にしません。
+- 業務処理が要らないお話（「えーっと」など）には「はい。」とだけ答えて待ちます。
+"""
+
 # GPT-Live: the voice model only decides when to hand work to its backend (delegation policy of OpenAI's guide).
 DELEGATION_POLICY = """\
 【裏方への頼み方】
