@@ -251,7 +251,7 @@ function tick() {
 // end_call; after the wait (both sides quiet), the page plays the hang-up tone and ends the session.
 const GOODBYE_WORDS = /(はい|ええ|どうも|ありがとうございました|ありがとうございます|ありがとう|失礼いたします|失礼しま[ーっ]?す|失礼しました|よろしくお願いいたします|よろしくお願いします|お願いします|以上です|以上|分かりました|わかりました|了解です|では|じゃあ|はーい|[、。,.！!？?\s　])/g;
 
-const FINAL_WORDS = /(承|うけたまわ)りました。?\s*失礼いたします。?\s*$/;
+const FINAL_WORDS = /((承|うけたまわ)りました|お受けいたしました)。?\s*失礼いたします。?\s*$/;
 
 function scheduleHangup(waitMs) {
   if (st.closing || st.hangup) return;

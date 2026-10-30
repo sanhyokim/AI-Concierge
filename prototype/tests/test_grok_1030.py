@@ -5,7 +5,8 @@
 """
 import unittest
 
-from prototype.concierge.prompts import ASK_FOR
+from prototype.concierge.prompts import (ASK_FOR, CLOSING, CLOSING_WORDS, GOODBYE, OPENING_ANNOUNCEMENT, OPENING_REQUEST,
+                                         VOICE_RULES)
 from prototype.reception.service import ReceptionService
 from prototype.reception.store import Store
 
@@ -82,6 +83,32 @@ class CountSaidBackTest(unittest.TestCase):
         res = svc.tool(cid, "request_summary", {})
         self.assertTrue(res["say"].startswith("20基でございますね。それでは、ご用件を確認いたします。"), res)
         self.assertTrue(svc.tool(cid, "request_summary", {})["say"].startswith("それでは"))   # once only
+
+
+class NoUketamawaruTest(unittest.TestCase):
+    # 「しょうりましたと聞こえます」: Grok said 「承りました」 wrong even when given 「うけたまわりました」 in kana
+    def test_the_fixed_words_do_not_use_uketamawaru(self):
+        for text in (OPENING_ANNOUNCEMENT, OPENING_REQUEST, CLOSING_WORDS, GOODBYE, CLOSING):
+            self.assertNotIn("承", text)
+            self.assertNotIn("うけたまわ", text)
+        self.assertIn("ご用件をお伺いし、担当の者から", OPENING_ANNOUNCEMENT)
+        self.assertTrue(CLOSING_WORDS.startswith("お伺いした内容は担当の者に申し伝え、"))
+        self.assertIn("AIオペレーターがお受けいたしました。失礼いたします。", GOODBYE)
+        self.assertIn("「承る」の言葉すべて", VOICE_RULES)
+        self.assertIn("「〜でございますね」", VOICE_RULES)
+
+    def test_the_summary_has_no_uketamawaru(self):
+        svc = ReceptionService(Store(":memory:"))
+        cid = svc.start_call(at="2026-10-30T11:27")["id"]
+        svc.tool(cid, "save_fields", {"request": "無煙ロースターの清掃、20基", "shop_name": "焼肉田中", "caller_name": "田中"})
+        svc.caller_utterance(cid, "08056442050")
+        say_back(svc, cid, svc.tool(cid, "save_field", {"field": "callback_number", "value": "08056442050"}))
+        svc.caller_utterance(cid, "はい。")
+        svc.tool(cid, "confirm_field", {"field": "callback_number", "value": "08056442050"})
+        svc.ai_utterance(cid, ASK_FOR["preferred_datetime"])
+        say = svc.tool(cid, "request_summary", {})["say"]
+        self.assertNotIn("うけたまわ", say)
+        self.assertIn("おうかがいした内容は", say)
 
 
 if __name__ == "__main__":

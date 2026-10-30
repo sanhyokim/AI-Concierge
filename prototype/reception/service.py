@@ -732,7 +732,7 @@ class ReceptionService:
             # 2026-10-29 (C3): the caller only asked whether the inspection is free and said 「以上です」; the AI was handed
             # 「どのようなご用件でしょうか」 again. A call with questions only ends with the goodbye.
             return {"ok": True, "nothing_to_take": True,
-                    "then": "うけたまわる用件はありません。お客様が終えようとしていれば、最後のあいさつを言って end_call を呼ぶ"}
+                    "then": "お受けする用件はありません。お客様が終えようとしていれば、最後のあいさつを言って end_call を呼ぶ"}
         left = self._still_to_ask(sess, snap, required_only=True)
         if left:
             return {"ok": False, "missing": [_label(f) for f in left], **self._ask(sess, left[0])}

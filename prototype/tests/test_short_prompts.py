@@ -35,7 +35,7 @@ class PromptTextTest(unittest.TestCase):
 
     def test_gpt_live_voice_model_gets_a_short_prompt_without_tools_faq_or_digits(self):
         voice = self.svc.voice_instructions(self.cid, LAB_PERSONA, backend=True)
-        self.assertLess(len(voice), 2200)   # 2026-10-20: a few words in kana (for_speech) made it longer; 10-26: which hood, how many; 10-30: Japanese only
+        self.assertLess(len(voice), 2250)   # 2026-10-20: a few words in kana (for_speech) made it longer; 10-26: which hood, how many; 10-30: Japanese only, no 承る, でございますね
         self.assertLess(len(voice), len(self.full) / 2)
         for words in ("0は「ゼロ」と言います", "裏方にまとめを頼み", "失礼いたします。」と言い、裏方に",
                       "【裏方への頼み方】", "「そのまま読む文：」は、一字一句変えずに読みます", "「次にすること：」は声に出さず",
@@ -137,7 +137,7 @@ class OpeningTest(unittest.TestCase):
         from prototype.concierge.prompts import OPENING_ANNOUNCEMENT, OPENING_NOTE, OPENING_REQUEST
         from prototype.concierge.prompts import for_speech
         self.assertIn(for_speech(OPENING_ANNOUNCEMENT + "それでは、ご依頼のご相談やご質問など、お気軽にお話しください。"), OPENING_REQUEST)
-        self.assertIn("ご用件をうけたまわりまして、", OPENING_REQUEST)          # 2026-10-20: 「しょうりました」
+        self.assertIn("ご用件をおうかがいし、", OPENING_REQUEST)          # 2026-10-20: 「しょうりました」; 10-30: 承る is not said
         self.assertIn("録音させていただきます", OPENING_REQUEST)     # A-01 (spec 4-2)
         self.assertIn(OPENING_NOTE, config.LAB_PERSONA)
         calls = []

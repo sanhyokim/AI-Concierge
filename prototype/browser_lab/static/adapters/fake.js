@@ -49,7 +49,7 @@ export async function connect(ctx) {
       if (ended) return;   // after end_call the AI says nothing more
       if (heard && heard.includes("以上です")) {   // the closing: last words, then end_call (the page hangs up)
         ended = true;
-        say(1500, "お電話ありがとうございました。株式会社野田、AIオペレーターが承りました。失礼いたします。（模擬）");
+        say(1500, "お電話ありがとうございました。株式会社野田、AIオペレーターがお受けいたしました。失礼いたします。（模擬）");
         setTimeout(async () => { if (!closed) ctx.log("fake_tool_result", await ctx.toolCall("end_call", { reason: "受付が終わった" })); }, 1600);
         return;
       }
