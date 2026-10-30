@@ -51,6 +51,8 @@ export async function connect(ctx) {
     ws.onclose = (e) => {
       if (ws !== mine) return;   // the first connection, closed after its config was refused
       ctx.log("vendor_closed", { code: e.code, reason: e.reason });
+      // closed before the call began (2026-10-30: 4204 "Invalid parameters", with no error message first)
+      if (!closing && !ready && e.code !== 1008 && retryMinimal(`code ${e.code}${e.reason ? "：" + e.reason : ""}`)) return;
       if (!closing) ctx.vendorClosed(`code ${e.code}${e.reason ? "：" + e.reason : ""}`);
     };
     ws.onmessage = onMessage;

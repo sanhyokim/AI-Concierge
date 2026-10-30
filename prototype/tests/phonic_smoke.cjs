@@ -118,7 +118,7 @@ async function runPage(page, credentials, waitMs, toolResults) {
       await page.close();
     }
 
-    // --- the config is refused: one more connection with the minimal config; a silent say is read by the model --
+    // --- the config is refused (closed with 4204): one more connection with the minimal config; a silent say is read by the model --
     {
       const page = await browser.newPage();
       page.on("pageerror", (e) => errors.push(String(e)));
@@ -133,7 +133,8 @@ async function runPage(page, credentials, waitMs, toolResults) {
           if (ev.type === "config") {
             configs.push(ev);
             if (configs.length === 1) {
-              out({ type: "error", error: { message: "invalid config" }, param_errors: { boosted_keywords: "unknown" } });
+              // 2026-10-30, the user's first call: Phonic closed at once with 4204, no error message first
+              ws.close({ code: 4204, reason: "Invalid parameters" });
               return;
             }
             out({ type: "ready_to_start_conversation" });

@@ -241,12 +241,15 @@ PHONIC_TOOL_TIMEOUT_MS = 20000     # the page may wait for the caller's words, a
 
 
 def phonic_tools() -> list:
-    """The reception tools as Phonic inline WebSocket tools (docs, WebSocket Tools: tool_schema in OpenAI's
-    function shape). sync: the model waits for the result before it answers."""
+    """The reception tools as Phonic inline WebSocket tools (API reference: tool_schema in OpenAI's function shape,
+    and "Inline tools require strict function calling": strict must be true, so every property is required and
+    no other is allowed, as for GPT-Live's backend). 2026-10-30, the user's first call: Phonic closed with 4204
+    "Invalid parameters" when strict was missing. sync: the model waits for the result before it answers."""
     return [{"type": "custom_websocket", "execution_mode": "sync",
              "tool_call_output_timeout_ms": PHONIC_TOOL_TIMEOUT_MS,
              "tool_schema": {"type": "function", "function": {
-                 "name": t["name"], "description": t["description"], "parameters": t["parameters"]}}}
+                 "name": t["name"], "description": t["description"], "parameters": _strict(t["parameters"]),
+                 "strict": True}}}
             for t in openai_tools()]
 
 

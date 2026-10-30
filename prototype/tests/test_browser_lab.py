@@ -143,6 +143,11 @@ class LabTest(unittest.TestCase):
         self.assertLessEqual(len(conf["welcome_message"]), 1000)        # Phonic's limit
         self.assertEqual({t["tool_schema"]["function"]["name"] for t in conf["tools"]}, {t["name"] for t in config.TOOLS})
         self.assertEqual({t["type"] for t in conf["tools"]}, {"custom_websocket"})
+        for t in conf["tools"]:   # "Inline tools require strict function calling" (2026-10-30: 4204 without it)
+            f = t["tool_schema"]["function"]
+            self.assertIs(f["strict"], True)
+            self.assertEqual(set(f["parameters"]["required"]), set(f["parameters"]["properties"]))
+            self.assertIs(f["parameters"]["additionalProperties"], False)
         self.assertTrue(all(len(k) <= 50 for k in conf["boosted_keywords"]))
         self.assertIn("lookup_faq", s["applied"]["instructions"])        # the short prompt
         self.assertTrue(creds["say"])                                    # the server's words are said as they are
