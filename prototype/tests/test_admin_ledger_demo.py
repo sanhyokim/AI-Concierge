@@ -75,7 +75,7 @@ class AdminLedgerAndDemoTest(unittest.TestCase):
         self.assertTrue(cat["gpt-live-1"]["voice_applies"])
         self.assertTrue(cat["gemini-3.8-live"]["voice_applies"])
         self.assertFalse(cat["cartesia-agents"]["voice_applies"])
-        self.assertFalse(cat["elevenagents"]["voice_applies"])   # no ELEVENLABS_OVERRIDES on this machine
+        self.assertTrue(cat["elevenagents"]["voice_applies"])    # 2026-11-03: the agent is updated before each call
         self.assertTrue(cat["gpt-realtime-2.1"]["hold"])
         self.assertIsNone(cat["gpt-live-1"]["hold"])
         _, cfg, _ = self.app.service.config()

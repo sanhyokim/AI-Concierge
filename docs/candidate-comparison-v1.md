@@ -4,7 +4,7 @@
 - **業者を使う実測は0件。** 金額は既知の単価と使用量の仮定に基づく概算で、記号の費用を含まない。品質の欄は空欄（未実測）。
 - **採用の決め方**：必要な会話条件を満たした候補の中から、コストと性能のバランスで選ぶ（利用者の決定）。配点や予算の上限は、利用者が決めない限り置かない。安くても必要な会話条件を満たさない候補は採用しない。
 - 旧費用表（案A・案B）の約37円・約50円などは、旧構成と旧仮定による概算。この表の比較には、同じ前提で計算し直した値を使う。
-- 最初の接続の試験は GPT-Live 1 と Gemini 3.8 Live の2つだけ（利用者の決定、2026-10-07）。2026-10-21 に Eleven Realtime（v1 Max・v1 Mini）を、2026-10-23 に Grok Voice 3.0 を、2026-10-29 に Phonic-1 を試験に加えた（利用者の決定）。ElevenAgents（Expressive mode）・Cartesia・GPT-Realtime-2.1 は保留で、Qwen は次の候補。表には比較のため全候補を残す。
+- 最初の接続の試験は GPT-Live 1 と Gemini 3.8 Live の2つだけ（利用者の決定、2026-10-07）。2026-10-21 に Eleven Realtime（v1 Max・v1 Mini）を、2026-10-23 に Grok Voice 3.0 を、2026-10-29 に Phonic-1 を試験に加えた（利用者の決定）。2026-11-03 に ElevenAgents（聞き取り → 考えるAI → 読み上げの3段の作り）を加え、試験を GPT-Live 1 と ElevenAgents の2つにしぼった（ほかは当面使わない。利用者の決定）。Cartesia・GPT-Realtime-2.1 は保留で、Qwen は次の候補。表には比較のため全候補を残す。
 
 ## 1. そろえた前提
 
@@ -28,7 +28,7 @@
 | ElevenLabs Eleven Realtime v1 Mini | 会話モデル（音声） | $0.249 | $0.065 | 約52円 | F | 単価は確認済み。接続1分$0.08＋文字の量（トークン）。トークンは、ElevenLabsの画面の目安（2026-10-21、利用者のアカウント）の1分約$0.003。料金表の「含まれる分の目安」（Starter $6で約71分）から逆算すると1分約$0.005になる（2026-10-30） |
 | xAI Grok Voice 3.0 | 会話モデル（音声） | $0.240 | $0.065 | 約50円 | T_grok ＋ F | 単価は確認済み。接続1分$0.08（無音も含む）。ほかに「テキストの入力1件$0.004」とあるが、何が1件かは公式に書かれていない（決まった文を話させる頼みや業務処理の結果が数に入るなら、1通話15件で約$0.06増える。2026-10-30 確認） |
 | Phonic Phonic-1 | 会話モデル（音声） | $0.210 | $0.065 | 約45円 | F | 単価は確認済み。1分$0.07（料金の表の Starter）。よくある質問の欄は$0.06で食い違う（2026-10-30 確認）。LLM・トークンの追加の料金はない（公式） |
-| ElevenLabs ElevenAgents（Expressive mode） | 会話サービス | $0.240 | $0.065 | 約50円 | L_11 ＋ F | 「から」表記（プランで変わる）。月額 P_11 は3章 |
+| ElevenLabs ElevenAgents（聞き取り → 考えるAI → 読み上げ） | 会話サービス | $0.293 | $0.065 | 約59円 | F | 単価は確認済み。1分$0.08＋考えるAI。考えるAIは既定の GPT-5.6 Terra（入力100万あたり$2・出力$12）を、ElevenLabs の計算機の前提（1分 入力約7,070・出力約307トークン）に当てて1分約$0.0178。GPT-6 Luna なら約$0.0009。月額 P_11 は3章 |
 | Cartesia Managed Agents（Ink-2＋LLM＋Sonic-3.6） | 会話サービス（部品統合） | $0.180 | $0.065 | 約40円 | L_cart ＋ F | 単価は確認済み |
 | OpenAI GPT-Realtime-2.1（比較の基準） | 会話モデル（音声） | $0.162（キャッシュ不成立 $0.755） | $0.065 | 約37円 | F | 単価は確認済み |
 | OpenAI GPT-Realtime-2.1-mini（比較の基準） | 会話モデル（音声） | $0.055（キャッシュ不成立 $0.225） | $0.065 | 約20円 | F | 単価は確認済み |
@@ -52,7 +52,7 @@
 | ElevenLabs Eleven Realtime v1 Mini | 8,286円 | 28,790円 | 66,302円 | 150件×F ＋ B_fwd ＋ B_num ＋ 2×U_ntt ＋ S_srv ＋ R×17円 |
 | xAI Grok Voice 3.0 | 8,197円 | 28,523円 | 65,589円 | 150件×F ＋ 60×T_grok ＋ B_fwd ＋ B_num ＋ 2×U_ntt ＋ S_srv ＋ R×17円 |
 | Phonic Phonic-1 | 7,900円 | 27,632円 | 63,213円 | 150件×F ＋ B_fwd ＋ B_num ＋ 2×U_ntt ＋ S_srv ＋ R×17円 |
-| ElevenLabs ElevenAgents（Expressive mode） | 8,197円 | 28,523円 | 65,589円 | 150件×F ＋ 60×L_11 ＋ B_fwd ＋ B_num ＋ 2×U_ntt ＋ S_srv ＋ P_11 ＋ R×17円 |
+| ElevenLabs ElevenAgents（聞き取り → 考えるAI → 読み上げ） | 8,726円 | 30,109円 | 69,818円 | 150件×F ＋ B_fwd ＋ B_num ＋ 2×U_ntt ＋ S_srv ＋ P_11 ＋ R×17円 |
 | Cartesia Managed Agents（Ink-2＋LLM＋Sonic-3.6） | 8,428円 | 27,566円 | 61,662円 | 150件×F ＋ 60×L_cart ＋ B_fwd ＋ B_num ＋ 2×U_ntt ＋ S_srv ＋ R×17円 |
 | OpenAI GPT-Realtime-2.1（比較の基準） | 7,425円 | 26,209円 | 59,417円 | 150件×F ＋ B_fwd ＋ B_num ＋ 2×U_ntt ＋ S_srv ＋ R×17円 |
 | OpenAI GPT-Realtime-2.1-mini（比較の基準） | 6,361円 | 23,017円 | 50,905円 | 150件×F ＋ B_fwd ＋ B_num ＋ 2×U_ntt ＋ S_srv ＋ R×17円 |
@@ -75,7 +75,7 @@
 | ElevenLabs Eleven Realtime v1 Mini | 自社の中継・業務処理が要る（Geminiと同じく、モデルが業務処理を直接呼ぶ） | D_dev（未見積もり） | M_ops（未見積もり） |
 | xAI Grok Voice 3.0 | 自社の中継・業務処理が要る（Geminiと同じく、モデルが業務処理を直接呼ぶ） | D_dev（未見積もり） | M_ops（未見積もり） |
 | Phonic Phonic-1 | 自社の中継・業務処理が要る（Grokと同じく、モデルが業務処理を直接呼ぶ） | D_dev（未見積もり） | M_ops（未見積もり） |
-| ElevenLabs ElevenAgents（Expressive mode） | 業者側でエージェントを設定。自社は業務処理（ツール）と記録 | D_dev（未見積もり） | M_ops（未見積もり） |
+| ElevenLabs ElevenAgents（聞き取り → 考えるAI → 読み上げ） | サーバーがエージェントと業務処理を API で作り、会話ごとに指示・考えるAI・声を直す。自社は業務処理（ツール）と記録 | D_dev（未見積もり） | M_ops（未見積もり） |
 | Cartesia Managed Agents（Ink-2＋LLM＋Sonic-3.6） | 業者側でエージェントを設定 | D_dev（未見積もり） | M_ops（未見積もり） |
 | OpenAI GPT-Realtime-2.1（比較の基準） | 自社の中継・業務処理が要る（既存の試作がある） | D_dev（未見積もり） | M_ops（未見積もり） |
 | OpenAI GPT-Realtime-2.1-mini（比較の基準） | 同上 | D_dev（未見積もり） | M_ops（未見積もり） |
@@ -101,7 +101,7 @@
 | ElevenLabs Eleven Realtime v1 Mini | 未実測 | 未実測 | 未実測 | 未実測 | 未実測 | 未実測 | 未実測 | 月額 ÷（件数 × 成功率） |
 | xAI Grok Voice 3.0 | 未実測 | 未実測 | 未実測 | 未実測 | 未実測 | 未実測 | 未実測 | 月額 ÷（件数 × 成功率） |
 | Phonic Phonic-1 | 未実測 | 未実測 | 未実測 | 未実測 | 未実測 | 未実測 | 未実測 | 月額 ÷（件数 × 成功率） |
-| ElevenLabs ElevenAgents（Expressive mode） | 未実測 | 未実測 | 未実測 | 未実測 | 未実測 | 未実測 | 未実測 | 月額 ÷（件数 × 成功率） |
+| ElevenLabs ElevenAgents（聞き取り → 考えるAI → 読み上げ） | 未実測 | 未実測 | 未実測 | 未実測 | 未実測 | 未実測 | 未実測 | 月額 ÷（件数 × 成功率） |
 | Cartesia Managed Agents（Ink-2＋LLM＋Sonic-3.6） | 未実測 | 未実測 | 未実測 | 未実測 | 未実測 | 未実測 | 未実測 | 月額 ÷（件数 × 成功率） |
 | OpenAI GPT-Realtime-2.1（比較の基準） | 未実測 | 未実測 | 未実測 | 未実測 | 未実測 | 未実測 | 未実測 | 月額 ÷（件数 × 成功率） |
 | OpenAI GPT-Realtime-2.1-mini（比較の基準） | 未実測 | 未実測 | 未実測 | 未実測 | 未実測 | 未実測 | 未実測 | 月額 ÷（件数 × 成功率） |
@@ -151,8 +151,8 @@
 | ElevenLabs Eleven Realtime v1 Mini | 3,889円 | 15,599円 | 31,125円 | 60件×ΔF ＋ S_srv ＋ R×17円 |
 | xAI Grok Voice 3.0 | 3,800円 | 15,332円 | 30,412円 | 60×T_grok ＋ 60件×ΔF ＋ S_srv ＋ R×17円 |
 | Phonic Phonic-1 | 3,503円 | 14,441円 | 28,036円 | 60件×ΔF ＋ S_srv ＋ R×17円 |
+| ElevenLabs ElevenAgents（聞き取り → 考えるAI → 読み上げ） | 4,328円 | 16,918円 | 34,641円 | 60件×ΔF ＋ S_srv ＋ P_11 ＋ R×17円 |
 | ［参考］OpenAI GPT-Realtime-2.1（比較の基準） | 3,028円 | 13,017円 | 24,240円 | 60件×ΔF ＋ S_srv ＋ R×17円 |
-| ［参考］ElevenLabs ElevenAgents（Expressive mode） | 3,800円 | 15,332円 | 30,412円 | 60×L_11 ＋ 60件×ΔF ＋ S_srv ＋ P_11 ＋ R×17円 |
 | ［参考］Cartesia Managed Agents（Ink-2＋LLM＋Sonic-3.6） | 4,031円 | 14,375円 | 26,485円 | 60×L_cart ＋ 60件×ΔF ＋ S_srv ＋ R×17円 |
 | ［参考］Alibaba Qwen3.8-Omni-Flash-Realtime（AIの部分を含まない） | 1,424円 | 8,204円 | 11,404円 | 60×Q_tok ＋ 60件×ΔF ＋ S_srv ＋ R×17円 |
 
@@ -185,6 +185,8 @@
 | xAI Grok Voice 3.0 | 回線案2 | 3,800円 | 15,332円 | 30,412円 | 人が受ける通話は今のまま。AIの通話の転送料の差 ΔF だけが増減する |
 | Phonic Phonic-1 | 回線案1 | 7,900円 | 27,632円 | 63,213円 | 人が受ける通話もクラウドを通る（Twilioの着信と、かけ直し）。NTTの転送料 F・追加番号 B_num・U_ntt が別に増える |
 | Phonic Phonic-1 | 回線案2 | 3,503円 | 14,441円 | 28,036円 | 人が受ける通話は今のまま。AIの通話の転送料の差 ΔF だけが増減する |
+| ElevenLabs ElevenAgents（聞き取り → 考えるAI → 読み上げ） | 回線案1 | 8,726円 | 30,109円 | 69,818円 | 人が受ける通話もクラウドを通る（Twilioの着信と、かけ直し）。NTTの転送料 F・追加番号 B_num・U_ntt が別に増える |
+| ElevenLabs ElevenAgents（聞き取り → 考えるAI → 読み上げ） | 回線案2 | 4,328円 | 16,918円 | 34,641円 | 人が受ける通話は今のまま。AIの通話の転送料の差 ΔF だけが増減する |
 
 - 回線案1の額は3章の前提（人が受ける通話は事務所の電話へかけ直すH1）。今の運用のように携帯へかけ直す場合の単価は未確認。
 - どちらの案も、記号で残した費用（転送料、サーバー、録音の保存、未確認のAIの費用）を含みません。

@@ -41,11 +41,11 @@ from ..concierge.readings import digits_only, is_valid_jp_number
 from ..concierge.prompts import for_speech
 from ..reception.service import ReceptionService
 from ..reception.store import DEFAULT_DB, Store, dumps, iso, now_jst
-from . import vendors, wsclient
-from .config import (APPLY_LABELS, CANDIDATES, DELEGATION_PRICES, LAB_LIMITS, LAB_LIMITS_BY_STAGE, LAB_PERSONA,
-                     LAB_RULES, LAB_STAGES, LOGIC_PATHS, MAX_BACKEND_RESPONSES, MAX_MINT_FAILURES, MAX_RESPONSE_CREATES,
+from . import elevenagents, vendors, wsclient
+from .config import (APPLY_LABELS, BACKEND_TYPICAL, CANDIDATES, DELEGATION_PRICES, LAB_LIMITS, LAB_LIMITS_BY_STAGE, LAB_PERSONA,
+                     LAB_PERSONA_TEXT, LAB_RULES, LAB_STAGES, LOGIC_PATHS, MAX_BACKEND_RESPONSES, MAX_MINT_FAILURES, MAX_RESPONSE_CREATES,
                      MAX_SESSION_MIN, MAX_TOOL_CALLS, SESSION_GRACE_S, SESSIONS, apply_modes, delegation_model,
-                     gemini_usage_usd, public_candidates, released, session_reserve_usd, voice_applies)
+                     backend_usd, gemini_usage_usd, public_candidates, released, session_reserve_usd, voice_applies)
 from ..reception.settings import VOICE_CATALOG, voice_type
 
 STATIC = pathlib.Path(__file__).resolve().parent / "static"
@@ -86,12 +86,17 @@ class Lab:
 
     def __init__(self, env: dict | None = None, http=vendors.http_json, ledger_path: pathlib.Path = DEFAULT_LEDGER,
                  results_dir: pathlib.Path = RESULTS, service: ReceptionService | None = None,
-                 live_close=wsclient.close_live_session, clock=time.time, recover: bool = True) -> None:
+                 live_close=wsclient.close_live_session, clock=time.time, recover: bool = True,
+                 agent_state: pathlib.Path = elevenagents.STATE_FILE) -> None:
         self.env = dict(os.environ if env is None else env)
         self.http, self.ledger_path, self.results_dir = http, pathlib.Path(ledger_path), pathlib.Path(results_dir)
         self.service = service or ReceptionService(Store(":memory:"), env=self.env)
         self.store = self.service.store
         self.live_close, self.clock = live_close, clock
+        self.agent_state = pathlib.Path(agent_state)   # ElevenAgents: the lab's agent and tools on the tester's account
+        # ElevenAgents' own record of a call comes a little after it ends: fetched in the background (tests: inline)
+        self.spawn = lambda fn: threading.Thread(target=fn, daemon=True).start()
+        self.sleep, self.usage_tries, self.usage_wait_s = time.sleep, 6, 10.0
         if self.env.get("LAB_STAGE") and self.env["LAB_STAGE"] not in LAB_LIMITS_BY_STAGE:
             raise ValueError(f"LAB_STAGE must be one of {', '.join(LAB_LIMITS_BY_STAGE)}")
         self.sessions: dict[str, dict] = {}   # runtime data of sessions started by this process
@@ -164,7 +169,7 @@ class Lab:
         if candidate not in CANDIDATES or not voice_applies(candidate, self.env):
             return {"choices": [], "default": ""}
         _, cfg, _ = self.service.config()
-        mine = [v for v in cfg["voices"] if v["candidate"] == candidate]
+        mine = [v for v in cfg["voices"] if v["candidate"] in self._voice_owners(candidate)]
         out = [{"key": v["id"], "label": v["label"] or v["voice"], "voice": v["voice"],
                 "type": voice_type(candidate, v["voice"], v["label"])} for v in mine]
         names = {v["voice"] for v in mine}
@@ -173,41 +178,39 @@ class Lab:
         active = next((v["id"] for v in mine if v["id"] == cfg["active_voice"]), None)
         return {"choices": out, "default": active or (out[0]["key"] if out else "")}
 
+    @staticmethod
+    def _voice_owners(candidate: str) -> set[str]:
+        """The candidates whose registered voices this one can use (ElevenAgents: the Eleven Realtime voices)."""
+        return {candidate, *CANDIDATES.get(candidate, {}).get("voices_from", [])}
+
     def _applied(self, cfg: dict, candidate: str, call: dict, voice_key: str | None = None
-                 ) -> tuple[dict, str | None, dict | None]:
-        """What the admin settings change in this vendor session, and the voice / overrides to send.
+                 ) -> tuple[dict, str | None]:
+        """What the admin settings change in this vendor session, and the voice to send.
         voice_key: the voice chosen on the page (a registered voice's id, "catalog:<name>", or "" for the
         vendor's default); None = the admin's active voice, else the first registered for this AI."""
         modes = apply_modes(candidate, self.env)
+        owners = self._voice_owners(candidate)
         snap = self.service.snapshot(call["id"])
         voices = snap["config"]["voices"]
         if voice_key is not None:
             if voice_key.startswith("catalog:") and voice_key[8:] in VOICE_CATALOG.get(candidate, {}).get("voices", []):
                 pick = {"voice": voice_key[8:]}
             else:
-                pick = next((v for v in voices if v["id"] == voice_key and v["candidate"] == candidate), None)
+                pick = next((v for v in voices if v["id"] == voice_key and v["candidate"] in owners), None)
                 if voice_key and pick is None:
                     raise ValueError("選んだ声が、このAIの声の中にありません。画面を読み込み直してください")
         else:
-            pick = snap["voice"] if snap["voice"]["candidate"] == candidate else \
-                next((v for v in voices if v["candidate"] == candidate), None)
-        voice = pick["voice"] if pick and modes["voice"] in ("session", "override") else None
+            pick = snap["voice"] if snap["voice"]["candidate"] in owners else \
+                next((v for v in voices if v["candidate"] in owners), None)
+        voice = pick["voice"] if pick and modes["voice"] == "session" else None
         applied = {"instructions": APPLY_LABELS[modes["instructions"]] +
-                   ("（FAQ " + ", ".join(call["faq_codes"]) + "）" if modes["instructions"] in ("session", "override")
-                    else ""),
+                   ("（FAQ " + ", ".join(call["faq_codes"]) + "）" if modes["instructions"] == "session" else ""),
                    "voice": (f"{voice}（{'この画面で選んだ声' if voice_key is not None else '管理画面の設定'}）" if voice else
                              "業者の標準の声（この画面で選んだ）" if voice_key == "" else
                              APPLY_LABELS[modes["voice"]] if modes["voice"] in ("agent_fixed", "n/a") else
                              "業者の既定の声（管理画面に、この候補の声が登録されていない）"),
                    "faq": "業務処理 lookup_faq で、会話の開始時のFAQを使う（全候補）"}
-        overrides = None
-        if cfg["adapter"] == "elevenlabs" and "override" in modes.values():
-            overrides = {}
-            if modes["instructions"] == "override":
-                overrides["agent"] = {"prompt": {"prompt": None}, "firstMessage": None, "language": "ja"}
-            if modes["voice"] == "override" and voice:
-                overrides["tts"] = {"voiceId": voice}
-        return applied, voice, overrides
+        return applied, voice
 
     def _instructions(self, cfg: dict, call: dict) -> tuple[str, str | None]:
         """(what the voice model gets, what GPT-Live's backend model gets). GPT-Live and Gemini get the short
@@ -216,19 +219,27 @@ class Lab:
         if style == "voice_and_backend":
             return (self.service.voice_instructions(call["id"], LAB_PERSONA, backend=True),
                     self.service.backend_instructions(call["id"]))
+        if style == "text_agent":   # ElevenAgents (2026-11-03): the text model's words are read aloud as written
+            return self.service.text_instructions(call["id"], LAB_PERSONA_TEXT), None
         if style in ("short", "short_say_only"):
             return self.service.voice_instructions(call["id"], LAB_PERSONA, backend=False,
                                                    say_only=style == "short_say_only"), None
         return self.service.instructions(call["id"], preamble=LAB_RULES), None
 
     def start(self, candidate: str, fake_script: str | None = None, caller_id: str | None = None,
-              voice_key: str | None = None) -> dict:
+              voice_key: str | None = None, llm: str | None = None) -> dict:
         cfg = CANDIDATES.get(candidate)
         if cfg is None:
             raise ValueError(f"unknown candidate {candidate}")
         caller = digits_only(caller_id or "") or None   # a fictitious line number typed on the page (no phone line)
         if caller and not is_valid_jp_number(caller):
             raise ValueError("回線の番号は、0から始まる10桁か11桁の番号を入れてください（架空の番号。空欄は非通知）")
+        if cfg["adapter"] == "elevenagents":   # the thinking AI chosen on the page (2026-11-03)
+            llm = llm or elevenagents.LLM_DEFAULT
+            if llm not in elevenagents.LLM_IDS:
+                raise ValueError("選んだ考えるAIが、選べるものの中にありません。画面を読み込み直してください")
+        else:
+            llm = None
         if voice_key and voice_key not in {c["key"] for c in self.voice_choices(candidate)["choices"]}:
             raise ValueError("選んだ声が、このAIの声の中にありません。画面を読み込み直してください")
         if cfg.get("hold") and candidate not in released(self.env):
@@ -267,17 +278,17 @@ class Lab:
                 raise
         call = self.service.start_call(dialed="browser-lab", source="browser_lab", force_ai=True, caller_id=caller)
         instructions, backend_instructions = self._instructions(cfg, call)
-        applied, voice, overrides = self._applied(cfg, candidate, call, voice_key)
-        if cfg.get("prompt_style"):
+        applied, voice = self._applied(cfg, candidate, call, voice_key)
+        if llm:
+            applied["instructions"] += f"／考えるAI（{llm}）への指示{len(instructions):,}字（FAQは lookup_faq で渡す）"
+        elif cfg.get("prompt_style"):
             applied["instructions"] += (f"／短い指示：声のモデルへ{len(instructions):,}字" +
                                         (f"、裏方のモデル（{delegation_model(cfg, self.env)}）へ{len(backend_instructions):,}字（FAQを含む）"
                                          if backend_instructions else "（FAQは lookup_faq で渡す）"))
-        if overrides and "agent" in overrides:
-            overrides["agent"]["prompt"]["prompt"] = instructions
-            overrides["agent"]["firstMessage"] = vendors.GREETING
         try:
             creds = vendors.mint(cfg, self.env, self.http, instructions=instructions, voice=voice,
-                                 overrides=overrides, script=FAKE_SCRIPTS.get(fake_script or "default"))
+                                 script=FAKE_SCRIPTS.get(fake_script or "default"), llm=llm,
+                                 agent_state=self.agent_state)
         except Exception:
             if rid:  # minting a token is not billed: release the reservation with a zero record
                 led = self.ledger(cfg["vendor"])
@@ -291,15 +302,16 @@ class Lab:
         if creds.get("session_fallback"):   # Eleven Realtime refused a field: the session runs on the minimal one
             voice = None
             applied["voice"] = "業者の既定の声（設定の一部が断られたため）"
-        self.service.set_call_ai(call["id"], candidate, cfg["name"], voice)
+        self.service.set_call_ai(call["id"], candidate, cfg["name"], voice,
+                                 note=f"考えるAI {llm}" if llm else "")
         with self.lock:
             self.sessions[sid] = {"candidate": candidate, "cfg": cfg, "rid": rid, "started": now,
                                   "call_id": call["id"], "instructions": instructions,
                                   "backend_instructions": backend_instructions, "voice": voice,
-                                  "sdp_done": False}
+                                  "sdp_done": False, "llm": llm}
         return {"session_id": sid, "candidate": candidate, "adapter": cfg["adapter"], "verified": cfg["verified"],
                 "logic_path": LOGIC_PATHS[cfg["logic_path"]], "call_id": call["id"], "caller_id": caller,
-                "config_version": call["config_version"], "faq_codes": call["faq_codes"], "voice": voice,
+                "config_version": call["config_version"], "faq_codes": call["faq_codes"], "voice": voice, "llm": llm,
                 "applied": applied, "stage": self.stage, "counts": self.counts(candidate),
                 "limits": {"tool_calls": MAX_TOOL_CALLS, "backend_responses": MAX_BACKEND_RESPONSES,
                            "response_creates": MAX_RESPONSE_CREATES},
@@ -387,10 +399,32 @@ class Lab:
         reported = next((u for u in usage if u.get("kind") == "voice_usage"), None)
         if reported:   # what the vendor itself reported for this call, kept in the call's record (2026-10-29)
             self.service.note_ai_usage(row["call_id"], {**reported, "minutes": round(max(0.0, duration_s) / 60, 2)})
+        if CANDIDATES[row["candidate"]]["adapter"] == "elevenagents" and row["vendor_session_id"]:
+            conv, call_id = row["vendor_session_id"], row["call_id"]
+            self.spawn(lambda: self._eleven_usage(sid, call_id, conv))
         self.service.end_call(row["call_id"], reason or "試験者が終了")
         if not row["rid"]:
             return {"estimated_usd": 0.0}
         return self._estimate(row, rt, duration_s, reason)
+
+    def _eleven_usage(self, sid: str, call_id: str, conversation_id: str) -> None:
+        """ElevenAgents' own record of the call (its length and charge), kept in the call's record and the session's
+        usage. ElevenLabs processes a conversation for a while after it ends: asked a few times."""
+        for i in range(self.usage_tries):
+            if i:
+                self.sleep(self.usage_wait_s)
+            try:
+                got = elevenagents.conversation_usage(self.env, self.http, conversation_id)
+            except Exception as exc:   # the record is a help for checking the bill; the call is over either way
+                got, err = None, str(exc)[:300]
+            else:
+                err = ""
+            if got:
+                self.service.note_ai_usage(call_id, got)
+                row = self._row(sid)
+                self._set(sid, usage=dumps(json.loads(row["usage"]) + [{"kind": "vendor_record", "data": got}]))
+                return
+        print(f"[会話試験] ElevenLabs の通話の記録（料金）が取れませんでした：{conversation_id} {err}", flush=True)
 
     def heartbeat(self, sid: str) -> dict:
         row = self._row(sid)
@@ -481,6 +515,10 @@ class Lab:
                     tot["tokens"][f"{side}_{'audio' if str(d.get('modality', '')).upper() == 'AUDIO' else 'text'}"] += n
                 tot["tokens"][f"{side}_text"] += max(0, int(data.get(f"{side}TokenCount") or 0) - listed)
             self._set(sid, usage=dumps(usage))
+        elif kind == "vendor_session":   # the vendor's id of this conversation (ElevenAgents: conversation_id)
+            vid = str(data.get("conversation_id") or data.get("id") or "")[:120]
+            if vid:
+                self._set(sid, vendor_session_id=vid)
         elif kind == "session_closed":
             usage.append({"kind": "session_closed", "data": data})
             self._set(sid, close_confirmed=1, usage=dumps(usage))
@@ -596,24 +634,48 @@ class Lab:
 
 # --- request handling shared with the admin app (/lab/...) -------------------------------------------------
 
-def call_cost_yen() -> dict:
-    """Candidate id -> the AI part of one 3-minute call in yen (prototype/cost: the same figures as the cost table)."""
+def call_cost_yen(env: dict | None = None) -> dict:
+    """Candidate id -> the AI part of one 3-minute call in yen (prototype/cost: the same figures as the cost table).
+    GPT-Live's card also counts its backend model under the typical assumption (2026-11-03: with Terra the backend
+    is a third of the call, and the card is what GPT-Live 1 and ElevenAgents are compared on)."""
     try:
         from ..cost import candidate_costs as cc
-        return {c["id"]: round(cc.ai_part(c).jpy_total()) for c in cc.candidates()}
+        from ..cost import cost_model as cm
+        out = {}
+        for c in cc.candidates():
+            yen = cc.ai_part(c).jpy_total()
+            cfg = CANDIDATES.get(c["id"]) or {}
+            if cfg.get("delegation_model_env"):
+                usd = backend_usd(delegation_model(cfg, env or {}), BACKEND_TYPICAL)
+                yen += usd * (1 + cm.TAX) * cm.FX
+            out[c["id"]] = round(yen)
+        return out
     except Exception:   # the cost table is a guide; the page works without it
         return {}
+
+
+def llm_choices() -> list[dict]:
+    """ElevenAgents' thinking AIs for the page, with the AI part of a 3-minute call in yen (with tax)."""
+    from ..cost import cost_model as cm
+    out = []
+    for c in elevenagents.LLM_CHOICES:
+        usd = (elevenagents.PLATFORM_USD_PER_MIN + elevenagents.llm_usd_per_min(c["id"])) * cm.DUR_MIN
+        out.append({"id": c["id"], "label": c["label"], "maker": c["maker"], "note": c["note"],
+                    "call_yen": round(usd * (1 + cm.TAX) * cm.FX)})
+    return out
 
 
 def api_get(lab: Lab, path: str, csrf: str = "") -> dict | None:
     path = path.split("?")[0]
     if path == "/api/candidates":
         cands = [c for c in public_candidates(lab.env) if not c["hold"]]   # held candidates are not offered
-        costs = call_cost_yen()
+        costs = call_cost_yen(lab.env)
         for c in cands:
             c["counts"] = lab.counts(c["id"])
             c["voices"] = lab.voice_choices(c["id"])
             c["call_yen"] = costs.get(c["id"])   # the AI part of one 3-minute call, with tax (cost table)
+            if c["adapter"] == "elevenagents":   # the thinking AI is chosen on the page (2026-11-03)
+                c["llms"] = {"choices": llm_choices(), "default": elevenagents.LLM_DEFAULT}
         return {"candidates": cands, "stage": lab.stage, "stage_label": LAB_STAGES[lab.stage]}
     if path == "/api/sessions":
         return {"sessions": lab.sessions_view()}
@@ -630,7 +692,7 @@ def api_post(lab: Lab, path: str, body: dict) -> tuple[int, dict]:
     try:
         if path == "/api/session/start":
             return 200, lab.start(body.get("candidate", ""), body.get("fake_script"), body.get("caller_id"),
-                                  body.get("voice_key"))
+                                  body.get("voice_key"), body.get("llm"))
         if path == "/api/session/sdp":
             return 200, lab.sdp(sid, body.get("sdp", ""))
         if path == "/api/session/end":

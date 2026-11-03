@@ -23,11 +23,13 @@ from dataclasses import asdict
 
 from ..concierge.call_flow import CallFlow, Consent
 from ..concierge.confirmation import FieldState, Status
-from ..concierge.prompts import ASK_FOR, BASE_INSTRUCTIONS, CLOSING_WORDS, SPEECH_MANNERS, for_speech, voice_rules
+from ..concierge.prompts import (ASK_FOR, BASE_INSTRUCTIONS, CLOSING_WORDS, GOODBYE, SPEECH_MANNERS, for_speech,
+                                 voice_rules)
 from ..concierge.readings import digits_only
 from ..engines.tools import READBACK_FIELDS, ToolHandler
 from . import settings as S
 from .faq import (BACKEND_RULES, DELEGATION_POLICY, DIRECT_TOOL_RULES, SAY_ONLY_ASKING, SAY_ONLY_RULES, SAY_ONLY_TONE,
+                  TEXT_AGENT_RULES,
                   TOOL_RULES, backend_line_block,
                   contains_share, date_block, faq_block, faq_lookup, line_block, today_line, voice_line_hint)
 from .speech_consent import detect as detect_spoken_consent
@@ -418,6 +420,15 @@ class ReceptionService:
                      date_block(at, brief=True)] + ([SAY_ONLY_RULES] if say_only else [])
         # the words the voice models misread are given in kana (2026-10-20: 「承りました」 said 「しょうりました」)
         return for_speech("\n".join(part.rstrip() for part in [preamble, *parts]))
+
+    def text_instructions(self, call_id: str, preamble: str) -> str:
+        """ElevenAgents (2026-11-03): the text model whose words ElevenLabs reads aloud. Fewer rules; the read-backs
+        and the fixed lines come from the tools. Kana for the words that are read two ways, as for the voices."""
+        call = self._call(call_id)
+        at = parse_at(json.loads(call["snapshot"])["decision"]["at_jst"])
+        parts = [preamble, TEXT_AGENT_RULES.format(goodbye=GOODBYE), line_block(bool(call["caller_id"])),
+                 date_block(at, brief=True)]
+        return for_speech("\n".join(part.rstrip() for part in parts))
 
     def backend_instructions(self, call_id: str) -> str:
         """GPT-Live's backend (delegation) model: the procedures, the tools, the dates and this call's FAQ."""

@@ -22,6 +22,10 @@ MAX_SESSION_MIN = 5.0        # test calls stop at this length (user, 2026-10-08)
 TOOL_DELAY_MS_C5 = 4000      # C5: business processing deliberately slowed down
 
 HOLD_BY_USER = "利用者の判断で保留（費用と性能のバランス。2026-10-07）。採用の候補からは外していない"
+# 2026-11-03 (user): 「OpenAI GPT-Live 1とElevenAgentsで検証します。他のモデルは当面使いません」. The code stays.
+PAUSED_BY_USER = ("利用者の判断で当面使わない（2026-11-03「OpenAI GPT-Live 1とElevenAgentsで検証します。"
+                  "他のモデルは当面使いません」）。仕組みは残してあり、また使うときは戻せる")
+PAUSED = ("gemini-3.8-live", "eleven-realtime-max", "eleven-realtime-mini", "grok-voice-3", "phonic-1")
 
 CANDIDATES = {
     "fake": {
@@ -62,12 +66,18 @@ CANDIDATES = {
         "prompt_style": "short_say_only",   # only the tools' says (2026-10-30: it mixed in its own lines)
         "note": "速くて安いモデル。業務処理の成功率は公式で60.3%（受付には低い）。会話の自然さの比較用。"
                 "料金は接続1分$0.08＋文字の量（入力100万あたり$0.20・出力$6.00）"},
+    # ElevenAgents (2026-11-03, user: 「「聞き取り → 考えるAI → 読み上げ」の3段の作りで一本化がもっとも安定しそうですね。
+    # あなたの提案で進めましょう」): ElevenLabs hears the caller, a text model writes the answer and ElevenLabs reads
+    # that text aloud. The server makes and updates the agent itself (elevenagents.py); no dashboard steps.
     "elevenagents": {
-        "name": "ElevenLabs ElevenAgents（Expressive mode）", "adapter": "elevenlabs",
-        "env": ["ELEVENLABS_API_KEY", "ELEVENLABS_AGENT_ID"], "vendor": "elevenlabs_lab",
-        "upper_usd_per_min": 0.12, "increment_s": 60, "verified": False, "logic_path": "client_tools",
-        "applies": {"instructions": "override", "voice": "override"}, "hold": HOLD_BY_USER,
-        "note": "エージェントと client tools（8つ）はElevenLabsの画面で作る（docs/browser-lab-setup.md）"},
+        "name": "ElevenLabs ElevenAgents（聞き取り → 考えるAI → 読み上げ）", "adapter": "elevenagents",
+        "env": ["ELEVENLABS_API_KEY"], "vendor": "elevenlabs_lab",
+        "upper_usd_per_min": 0.15, "increment_s": 60, "verified": False, "logic_path": "client_tools",
+        "applies": {"instructions": "session", "voice": "session"}, "prompt_style": "text_agent",
+        "voices_from": ["eleven-realtime-max", "eleven-realtime-mini"],   # the same ElevenLabs voice ids
+        "note": "3段の作り。考えるAIは画面で選ぶ（既定 GPT-5.6 Terra）。考えるAIの書いた文が、そのまま ElevenLabs の声で読まれる。"
+                "エージェントと業務処理は、最初の会話のときにサーバーが作る（ElevenLabs の画面での設定は要らない）。"
+                "料金は1分$0.08＋考えるAIの分"},
     "cartesia-agents": {
         "name": "Cartesia Managed Agents", "adapter": "cartesia", "env": ["CARTESIA_API_KEY", "CARTESIA_AGENT_ID"],
         "vendor": "cartesia_lab", "upper_usd_per_min": 0.10, "increment_s": 60, "verified": False,
@@ -100,11 +110,12 @@ CANDIDATES = {
         "note": "1つのAIで聞く・考える・話す・業務処理を呼ぶ。日本語は公式の対応言語に入っている（日本語の評価はまだない）。"
                 "冒頭の案内は welcome_message、復唱とまとめは決まった文をそのまま話させる say で読む。料金は1分$0.07"},
 }
+for _cid in PAUSED:
+    CANDIDATES[_cid]["hold"] = PAUSED_BY_USER
 LOGIC_PATHS = {"client_tools": "ブラウザーのclient tools → この端末のサーバー",
                "delegation_responses": "delegation（Responses）の関数呼び出し → ブラウザー → この端末のサーバー",
                "function_call": "関数呼び出し → ブラウザー → この端末のサーバー"}
 APPLY_LABELS = {"session": "接続のときに指定する（公式資料のとおり。実接続では未確認）",
-                "override": "業者の画面で上書きを許可し、ELEVENLABS_OVERRIDES に書いたときだけ反映",
                 "agent_fixed": "業者のエージェント設定で固定（この画面からは変えられない）",
                 "n/a": "対象外（模擬）"}
 
@@ -169,7 +180,7 @@ def delegation_model(cfg: dict, env: dict) -> str:
 # Sessions allowed per candidate and stage. None = no count limit: the user removed the limits for the two tested
 # candidates (2026-10-08); sessions are still counted for the record. Held candidates get none until released.
 SESSIONS = {stage: {"gpt-live-1": None, "gemini-3.8-live": None, "eleven-realtime-max": None,
-                    "eleven-realtime-mini": None, "elevenagents": 0, "cartesia-agents": 0, "gpt-realtime-2.1": 0,
+                    "eleven-realtime-mini": None, "elevenagents": None, "cartesia-agents": 0, "gpt-realtime-2.1": 0,
                     "grok-voice-3": None, "phonic-1": None}
             for stage in ("connection", "detailed")}   # Eleven Realtime: no limit, like the two others (2026-10-21)
 _NO_CAP = Limits(max_requests=None, max_audio_seconds=None, max_cost_usd=None)   # user decision 2026-10-08
@@ -185,7 +196,7 @@ LAB_LIMITS = LAB_LIMITS_BY_STAGE["detailed"]   # overall caps (kept for the budg
 ENV_SETUP = {   # shown on the lab page: how to set a variable on the tester's PC (never paste a key into chat)
     "OPENAI_API_KEY": "OpenAIの管理画面（Platform）で作るAPIキー。試験専用のプロジェクトで作る",
     "GEMINI_API_KEY": "Google AI Studio で作るAPIキー",
-    "ELEVENLABS_API_KEY": "ElevenLabs の画面（Developers → API Keys）で作るAPIキー。ElevenAgents の権限を付ける",
+    "ELEVENLABS_API_KEY": "ElevenLabs の画面（デベロッパー → APIキー）で作るAPIキー。ElevenAgents の「書き込み」の権限を付ける",
     "XAI_API_KEY": "xAI の画面（console.x.ai → API Keys）で作るAPIキー",
     "PHONIC_API_KEY": "Phonic の画面（phonic.ai にサインイン → API Keys）で作るAPIキー",
     "GPT_LIVE_DELEGATION_MODEL": "任意。GPT-Liveの裏方のモデル（既定 gpt-6.1-terra。ほかに gpt-6-luna・gpt-6.1-sol）",
@@ -218,6 +229,13 @@ LAB_PERSONA = """\
 AIの受付として、ご用件を伺い、担当の者からの折り返しにお取り次ぎします。必ず日本語で話します。
 """ + OPENING_NOTE + "\n"
 
+# ElevenAgents (2026-11-03): the opening is the agent's first message, read by ElevenLabs; the text model is told so
+# in its own rules (faq.TEXT_AGENT_RULES)
+LAB_PERSONA_TEXT = """\
+あなたは株式会社野田（飲食店の排煙ダクト・厨房換気設備の清掃と保守）の電話受付AIです。これは試験です。
+AIの受付として、ご用件を伺い、担当の者からの折り返しにお取り次ぎします。必ず日本語で話します。
+"""
+
 LAB_INSTRUCTIONS = LAB_RULES + "\n" + SPEECH_MANNERS + "\n" + TOOL_RULES + "\n" + MOCK_FAQ
 
 
@@ -234,21 +252,14 @@ def released(env: dict) -> set[str]:
 
 
 def apply_modes(candidate: str, env: dict) -> dict:
-    """How the admin settings reach this candidate on this machine: session | override | agent_fixed | n/a.
-    ElevenLabs overrides apply only for the fields listed in ELEVENLABS_OVERRIDES (prompt, voice), which must
-    also be allowed in the agent's Security tab."""
-    cfg = CANDIDATES[candidate]
-    over = {x.strip() for x in (env.get("ELEVENLABS_OVERRIDES") or "").split(",") if x.strip()}
-    out = {}
-    for kind, key in (("instructions", "prompt"), ("voice", "voice")):
-        mode = cfg["applies"][kind]
-        out[kind] = ("override" if key in over else "agent_fixed") if mode == "override" else mode
-    return out
+    """How the admin settings reach this candidate on this machine: session | agent_fixed | n/a.
+    (ElevenAgents is updated before each call since 2026-11-03: session, like the others.)"""
+    return dict(CANDIDATES[candidate]["applies"])
 
 
 def voice_applies(candidate: str, env: dict) -> bool:
     """Whether a voice chosen in the admin app is actually sent to this candidate."""
-    return candidate in CANDIDATES and apply_modes(candidate, env)["voice"] in ("session", "override", "n/a")
+    return candidate in CANDIDATES and apply_modes(candidate, env)["voice"] in ("session", "n/a")
 
 
 def public_candidates(env: dict) -> list[dict]:

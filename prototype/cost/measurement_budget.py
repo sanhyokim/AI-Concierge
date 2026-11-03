@@ -123,8 +123,9 @@ def phone_stage_estimate() -> dict:
 TESTED = ("gpt-live-1", "gemini-3.8-live",                        # user decision 2026-10-07
           "eleven-realtime-max", "eleven-realtime-mini",             # added by the user, 2026-10-21
           "grok-voice-3",                                            # added by the user, 2026-10-23
-          "phonic-1")                                                # added by the user, 2026-10-29
-HELD = ("gpt-realtime-2.1", "elevenagents", "cartesia-agents")    # kept as candidates, no sessions planned
+          "phonic-1",                                                # added by the user, 2026-10-29
+          "elevenagents")                                            # the three-stage path, user decision 2026-11-03
+HELD = ("gpt-realtime-2.1", "cartesia-agents")    # kept as candidates, no sessions planned
 BROWSER_CONFIGS = TESTED + HELD
 BROWSER_AVG_MIN = 3.0                       # expected length; the page and the server stop at MAX_SESSION_MIN
 CHECKED = "2026-10-07"
@@ -156,14 +157,15 @@ PLANS = {
                     BILLING_DELAY["google_lab"][1], "https://ai.google.dev/gemini-api/docs/live-api/best-practices"]},
     # Eleven Realtime, added by the user on 2026-10-21 (official pricing page read that day)
     "elevenlabs_lab": {
-        "vendor": "ElevenLabs（Eleven Realtime）", "plan": "無料（従量）または月額のプラン（Starter $6／Creator $22 など）",
+        "vendor": "ElevenLabs（ElevenAgents・Eleven Realtime）", "plan": "無料（従量）または月額のプラン（Starter $6／Creator $22 など）",
         "quota": "プランごとに含まれる分（料金表で v1 Max 約12・59・216分…。プランとの対応は表に書かれていない＝未確認）",
         "free_condition": "無料のプランでRealtimeが使えるかは明記がない（未確認）。架空のデータだけで話す",
         "overage": "接続1分$0.08＋トークン（v1 Max：入力$1.80・出力$9.00、v1 Mini：$0.20・$6.00／1Mトークン）。"
-                   "同時通話の上限を超えた分は1分$0.16",
+                   "同時通話の上限を超えた分は1分$0.16。ElevenAgents（2026-11-03）は1分$0.08＋考えるAIの料金（モデルの単価）",
         "expiry": "集計の遅れ・残高での停止の記載は未確認",
         "tax": "価格は税抜（消費税の扱いは未確認）",
-        "sources": ["https://elevenlabs.io/pricing/api", "https://elevenlabs.io/docs/eleven-agents/customization/realtime-models"]},
+        "sources": ["https://elevenlabs.io/pricing/api", "https://elevenlabs.io/docs/eleven-agents/customization/realtime-models",
+                    "https://elevenlabs.io/docs/help-center/product/eleven-agents/how-much-does-eleven-agents-cost"]},
     # Grok Voice 3.0, added by the user on 2026-10-23 (xAI's pages and a third-party guide read that day)
     "xai_lab": {
         "vendor": "xAI（Grok Voice 3.0）", "plan": "プランなし（従量）。前払いのクレジット（最低額は未確認）",
@@ -187,7 +189,6 @@ PLANS = {
 }
 HELD_NOTE = {   # reference only: no sessions are planned until the user releases them
     "gpt-realtime-2.1": "保留（再開すると同じOpenAIの前払いから引かれる。$0.30/分を上限に留保）",
-    "elevenagents": "保留。Free 15分／Starter $6/月（75分）。超過$0.08/分、LLMは別料金（L_11）",
     "cartesia-agents": "保留。Free $1／Pro $5/月。$0.06/分、LLMの単価は未確認（L_cart）",
 }
 
@@ -240,6 +241,9 @@ def browser_stage_estimate() -> dict:
          "（2026-10-21、利用者のアカウント）の1分あたり v1 Max ~$0.0135・v1 Mini ~$0.0030 を見込みに入れた。"
          "料金表の含まれる分から逆算すると v1 Max ~$0.022・v1 Mini ~$0.005（2026-10-30）"),
         ("—", "Eleven Realtime の日本語", "評価の数字（Big Bench Audio など）は英語。実際に話して確かめる"),
+        ("—", "ElevenAgents の考えるAIの量", "1通話のトークンの量は、指示の長さと返事の回数で変わる。見込みは ElevenLabs の計算機の前提"
+         "（1分 入力約7,070・出力約307トークン）に GPT-5.6 Terra の単価を当てた1分約$0.0178。実績は会話の後に ElevenLabs から取り、"
+         "受付記録の「AIの料金」に出す"),
         ("T_grok", "Grok Voice 3.0 のテキスト入力の料金", "1件$0.004。業務処理の結果が数に入るかが公式に書かれていない"),
         ("—", "Grok Voice 3.0 の日本語", "公式に対応。評価の数字は英語。実際に話して確かめる"),
         ("—", "Phonic-1 の日本語", "公式の対応言語に入っている。出て1日目で、日本語の評価がない。実際に話して確かめる"),
@@ -259,6 +263,7 @@ def browser_stage_estimate() -> dict:
 
 def browser_budget_markdown() -> str:
     """5章 of docs/measurement-plan-v2.md: payments, the known-cost estimate, unconfirmed costs, in-app limits."""
+    from ..browser_lab import config as lc
     e = browser_stage_estimate()
     out = []
     w = out.append
@@ -287,12 +292,15 @@ def browser_budget_markdown() -> str:
     for r in e["rows"]:
         if r["held"]:
             continue
+        r = {**r, "name": r["name"] + ("（当面使わない）" if r["id"] in lc.PAUSED else "")}
         back = f"＋裏方 ${r['backend_typical_usd']:.3f}" if r["id"] == "gpt-live-1" else ""
         w(f"| {r['name']} | 約${r['expected_usd']:.3f}（声 ${r['voice_expected_usd']:.3f}{back}） | ${r['max_usd']:.3f} | "
           + " | ".join(f"約${r['examples'][n]['expected_usd']:.2f}／${r['examples'][n]['max_usd']:.2f}" for n in ex)
           + f" | {'、'.join(r['symbols']) or '—'} |")
     w("")
     w("回数の例は目安です。回数の上限はありません。")
+    w("2026-11-03 から、試験は GPT-Live 1 と ElevenAgents の2つです（利用者の決定「他のモデルは当面使いません」）。"
+      "「当面使わない」の候補は、試験の画面に出ません（仕組みは残してあり、戻せる）。")
     w("保留の候補（開始できない。参考）：" + "／".join(f"{next(r['name'] for r in e['rows'] if r['id'] == k)}：{v}"
                                        for k, v in e["held_note"].items()) + "。\n")
     w("**③ 未確認の費用（0円にしない。上限を確定できない理由）**\n")

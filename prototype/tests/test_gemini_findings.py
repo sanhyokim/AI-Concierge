@@ -5,6 +5,7 @@ import pathlib
 import tempfile
 import unittest
 
+from prototype.browser_lab import config
 from prototype.browser_lab.server import Lab, api_post
 from prototype.engines.tools import ToolHandler
 from prototype.reception.service import ReceptionService
@@ -75,7 +76,7 @@ class LabTest(unittest.TestCase):
         self.tmp.cleanup()
 
     def lab(self, env=None):
-        env = env or {"GEMINI_API_KEY": "g"}
+        env = {"LAB_RELEASE_HOLD": ",".join(config.PAUSED), **(env or {"GEMINI_API_KEY": "g"})}
         return Lab(env=env, http=FakeHttp({"auth_tokens": {"name": "auth_tokens/abc"}}),
                    ledger_path=self.dir / "ledger.jsonl", results_dir=self.dir / "results",
                    service=ReceptionService(Store(self.dir / "lab.db"), env=env), clock=Clock())

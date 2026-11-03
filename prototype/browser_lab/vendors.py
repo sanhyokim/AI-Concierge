@@ -18,13 +18,11 @@ from typing import Callable
 
 from ..concierge.prompts import OPENING_ANNOUNCEMENT, OPENING_QUESTION, for_speech
 from ..engines.budget import MAX_OUTPUT_TOKENS
+from . import elevenagents
 from .config import (GREETING, LAB_INSTRUCTIONS, MAX_SESSION_MIN, OPENING_REQUEST, delegation_model, gemini_function_declarations,
                      openai_tools)
 
 Http = Callable[[str, str, dict, dict | None], tuple[int, dict | str]]
-
-ELEVENLABS_CLIENT_ESM = "https://cdn.jsdelivr.net/npm/@elevenlabs/client@1.26.0/+esm"
-
 
 FALLBACK_VOICE = "marin"   # GPT-Live's default voice, used when the chosen voice is refused
 
@@ -93,11 +91,13 @@ GEMINI_ACTIVITY_DETECTION = {"startOfSpeechSensitivity": "START_SENSITIVITY_LOW"
 
 
 def mint(cfg: dict, env: dict, http: Http = http_json, instructions: str = LAB_INSTRUCTIONS,
-         voice: str | None = None, overrides: dict | None = None, script: list | None = None) -> dict:
+         voice: str | None = None, script: list | None = None, llm: str | None = None,
+         agent_state=None) -> dict:
     """Credentials and session settings for the page. Never returns a key from env.
 
     instructions and voice come from the call's settings snapshot when the reception service is attached.
-    Short-lived credentials are kept as short as each vendor allows, for starting this one session only."""
+    Short-lived credentials are kept as short as each vendor allows, for starting this one session only.
+    ElevenAgents: llm is the thinking AI, agent_state the file with the lab's agent and tool ids."""
     adapter = cfg["adapter"]
     if adapter == "fake":
         return {"greeting": GREETING, "script": list(script or [])}
@@ -143,16 +143,9 @@ def mint(cfg: dict, env: dict, http: Http = http_json, instructions: str = LAB_I
         return mint_openai_realtime_ws(cfg, env, http, instructions, voice)
     if adapter == "phonic":
         return mint_phonic(cfg, env, http, instructions, voice)
-    if adapter == "elevenlabs":
-        url = ("https://api.elevenlabs.io/v1/convai/conversation/get-signed-url?agent_id="
-               + urllib.request.quote(env["ELEVENLABS_AGENT_ID"]))
-        _, data = http("GET", url, {"xi-api-key": env["ELEVENLABS_API_KEY"]}, None)
-        if not isinstance(data, dict) or "signed_url" not in data:
-            raise VendorError("get-signed-url: no 'signed_url' in the response")
-        out = {"signed_url": data["signed_url"], "client_esm": ELEVENLABS_CLIENT_ESM}
-        if overrides:   # only fields the agent allows in its Security tab (ELEVENLABS_OVERRIDES on this PC)
-            out["overrides"] = overrides
-        return out
+    if adapter == "elevenagents":   # the three-stage path (2026-11-03): the agent is updated for this call
+        return elevenagents.prepare(env, http, VendorError, agent_state or elevenagents.STATE_FILE, instructions,
+                                    voice, llm or elevenagents.LLM_DEFAULT)
     if adapter == "cartesia":
         _, data = http("POST", "https://api.cartesia.ai/access-token",
                        {"Authorization": f"Bearer {env['CARTESIA_API_KEY']}",

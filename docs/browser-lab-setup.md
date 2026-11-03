@@ -3,19 +3,21 @@
 - 日付：2026年10月5日（改訂：2026年10月7日。2026年10月8日：最初の会話の手順、開始の回数、終わり方、設定の反映、発話での拒否。Windowsはダブルクリックで起動）
 - 位置づけ：[仕様書](./spec-draft-v1.md) 5章の**段階2a（ブラウザーでの会話試験）**の道具と手順です。試験の件数と予算案は[実測計画 v2.2](./measurement-plan-v2.md)にあります。
 - 状態：画面・計測・業務処理・費用の留保・停止は、オフラインの模擬と自動試験で動作を確かめました。**業者への接続は、公式資料に沿って書いたもので、実際のアカウントではまだ確かめていません。**
-- 試験の対象：**GPT-Live 1 と Gemini 3.8 Live**（利用者の決定、2026-10-07）と、**Eleven Realtime v1 Max・v1 Mini**（利用者の決定、2026-10-21）です。GPT-Realtime-2.1・ElevenAgents（Expressive mode）・Cartesia は保留で、画面では選べません。
+- 試験の対象：**GPT-Live 1 と ElevenAgents（聞き取り → 考えるAI → 読み上げ の3段の作り）**の2つです（利用者の決定、2026-11-03「OpenAI GPT-Live 1とElevenAgentsで検証します。他のモデルは当面使いません」）。
+  - これまで試した Gemini 3.8 Live・Eleven Realtime v1 Max／v1 Mini・Grok Voice 3.0・Phonic-1 は、当面使いません。仕組みは残してあり、画面では選べません。
+  - GPT-Realtime-2.1・Cartesia は、前からの保留のままです。
 - 範囲外：新しい有料契約、有料APIの実行、本番番号の変更。下の手順の実行（鍵の作成・前払いを含む）は、利用者が判断してから行います。
 
 ---
 
-## 1. 最初の会話を始める手順（GPT-Live 1・Gemini 3.8 Live）
+## 1. 最初の会話を始める手順（GPT-Live 1・ElevenAgents）
 
 **始める前に決めること（利用者）**
 
 | 事項 | 内容 |
 | --- | --- |
-| アカウント | OpenAI と Google AI Studio。2026-10-21 から ElevenLabs（Eleven Realtime）も。Cartesiaは後回し |
-| 支払い | OpenAIの前払い$5（残高がなければ。税抜）。Geminiは無料枠（架空のデータだけ。入出力がGoogleの改善に使われる条件）か、有料枠の前払い$5 |
+| アカウント | OpenAI と ElevenLabs（2026-10-21 に作成済み。ElevenAgents も同じアカウントとキーで使う）。新しいアカウントは作らない |
+| 支払い | OpenAIの前払い$5（残高がなければ。税抜）。ElevenLabs は、いまの Starter のクレジット（請求の期間の終わりまで）。それ以上の支払いは、利用者が決める |
 | 回数 | 上限なし（利用者の決定、2026-10-08）。1回の会話は5分で自動的に止まる。回数と費用は記録する |
 | 費用の見方 | 前払いの残高は、費用の上限ではありません（集計の遅れで超えることがある）。業者側でも予算と通知を設定する |
 
@@ -29,7 +31,8 @@
 3. APIキーを聞かれたら、コピーしたキーを貼り付けて Enter を押します（画面には表示されません）。Mac では、キーはそのPCのメモリーにだけ置きます。Windows では、そのPCのそのユーザーだけが読める形に暗号化して保存し、次からは聞きません（利用者の決定、2026-10-20。変えるときはデスクトップの「APIキーを入れ直す」）。チャット・メール・ファイルには貼らないでください。
    - ブラウザーが開いたら、ユーザー名 `admin` と決めたパスワードでログインし、マイクの使用を許可します。
 4. 画面で次を確かめます。
-   - 候補に GPT-Live 1・Gemini 3.8 Live・Eleven Realtime v1 Max／v1 Mini が選べる（キーを入れたものだけ）。ほかは「（保留）」で選べない。
+   - 候補に GPT-Live 1 と ElevenAgents が選べる（キーを入れたものだけ）。ほかは出ない。
+   - ElevenAgents を選ぶと「考えるAI」の欄が出る（既定は GPT-5.6 Terra。3分の目安の円も出る）。
    - 「これまでの開始：0回（回数の上限なし）」と表示される。
    - 「管理画面の設定の反映」が、指示・声とも「接続のときに指定する」になっている。
 
@@ -62,7 +65,7 @@
 
 1. 会話を終えると、結果は自動で保存されます（2026-10-19〜）。判定とメモを記入して「結果を保存」を押すと、同じファイルに書き足します。
 2. 画面の「管理画面で開く」から受付記録を開き、受付の項目（本人確認済みかどうか）、出来事の記録、通知のプレビューを確かめます。試験の会話では通知は作りません。開発の担当に送るときは、受付記録の上の「記録をテキストで保存」で、受付項目・要約・出来事の記録を1つのテキストファイル（`call-（受付の番号）.txt`）にします（2026-10-20〜）。
-   - 冒頭の案内（A-01）は、AIが自分の声で話します（利用者の決定、2026-10-20）。GPT-Live 1 は接続の作成時の指示、Gemini 3.8 Live は接続の直後に渡す文で頼みます。必ず話すとは限らないので、記録で確かめます。
+   - 冒頭の案内（A-01）は、AIが自分の声で話します（利用者の決定、2026-10-20）。GPT-Live 1 は接続の作成時の指示で頼みます（必ず話すとは限らないので、記録で確かめます）。ElevenAgents は、決まった文をエージェントの最初の言葉（first_message）として、そのまま読みます。
 3. 管理画面の「試験」の「費用」で、その会話の留保が「照合待ち」になっていることを確かめます。後日、業者の利用画面の額を入力して照合します。
 
 各台本のカードには、話すセリフが順番に書いてあります。そのとおりに読み上げてください。
@@ -94,13 +97,13 @@
 | 環境変数 | 内容 |
 | --- | --- |
 | `OPENAI_API_KEY` | GPT-Live 1。OpenAIの試験専用のプロジェクトで作る |
-| `GEMINI_API_KEY` | Gemini 3.8 Live。Google AI Studio で作る |
-| `ELEVENLABS_API_KEY` | Eleven Realtime（v1 Max・v1 Mini）。ElevenLabs の「API Keys」で作る（`sk_` で始まる。ElevenAgents の権限） |
+| `GEMINI_API_KEY` | Gemini 3.8 Live（2026-11-03から当面使わない）。Google AI Studio で作る |
+| `ELEVENLABS_API_KEY` | ElevenAgents（と、当面使わない Eleven Realtime）。ElevenLabs の画面の「デベロッパー」→「APIキー」で作る（`sk_` で始まる）。**ElevenAgents の「書き込み」の権限**が要る（エージェントと業務処理を、サーバーが自動で作って直すため） |
+| `ELEVENLABS_AGENT_ID` | 任意。ElevenLabs の画面で作ったエージェントを使うときだけ。ふつうは空のまま（サーバーが「株式会社野田 受付AI（会話試験）」を1つ作り、そのIDを `prototype/data/elevenagents.json` に残して、次からは直して使う） |
 | `XAI_API_KEY` | Grok Voice 3.0（2026-10-23〜）。xAI の console.x.ai の「API Keys」で作る（`xai-` で始まる） |
 | `PHONIC_API_KEY` | Phonic-1（2026-10-29〜）。phonic.ai の「API Keys」で作る（何の文字で始まるかは資料にない） |
 | `GPT_LIVE_DELEGATION_MODEL` | 任意。GPT-Liveの裏方のモデル（既定 `gpt-6.1-terra`。ほかに `gpt-6-luna`・`gpt-6.1-sol`）。単価が登録されたモデルだけ使える。高いモデルにすると、台帳の上限で開始できない |
-| `LAB_RELEASE_HOLD` | 保留の候補を解く（例：`elevenagents`）。利用者の承認の後だけ。回数と台帳の上限も決め直すまでは0回のまま |
-| `ELEVENLABS_OVERRIDES` | 保留中の ElevenAgents だけ。ElevenLabsの画面で上書きを許可した項目（`prompt`、`voice`） |
+| `LAB_RELEASE_HOLD` | 保留の候補を解く（例：`grok-voice-3`）。利用者の決定の後だけ。回数と台帳の上限も決め直すまでは0回のまま |
 
 **安全のための作り**
 
@@ -149,14 +152,16 @@
 
 | Eleven Realtime v1 Max・v1 Mini（2026-10-21〜） | ElevenLabs の鍵だけ。エージェントは作らない。会話の設定（指示・業務処理・声・発話の区切り）は、サーバーが一時の鍵（`POST /v1/convai/realtime/client_secrets`、60秒）を作るときに送る | OpenAI互換の関数呼び出し（`response.function_call_arguments.done` → `function_call_output`＋`response.create`）。ブラウザーが共通の処理へ送る | WebSocket だけ（`wss://api.elevenlabs.io/v1/convai/realtime`）。音声は24kHzの生の音声を画面で送受信する。冒頭の案内は、つながった直後に `response.create` で渡す。お客様が話し始めたら、まだ聞こえていないAIの声を捨て、聞こえた所までをAIに伝える（`conversation.item.truncate`）。日本語の文字起こし（`transcription.language`）と声のIDの指定は、公式の資料に項目の説明がないため、断られたら最小の設定でつなぎ直して記録に残す。声は管理画面の「音声」で、ElevenLabs の声のIDを登録する |
 
-保留の候補（ElevenAgents・Cartesia・GPT-Realtime-2.1）の準備は、保留を解くときに改めて確かめます。ElevenLabs はエージェントと client tools を業者の画面で作り、Cartesia は新しいエージェントのWebSocket（`/v1/agents/websocket`）と Client function を使う構成で書いてあります。
+| ElevenAgents（2026-11-03〜） | ElevenLabs の鍵だけ（ElevenAgents の書き込みの権限）。エージェントは、サーバーが会話のたびに自動で作り直す：業務処理（client tools、`POST /v1/convai/tools`）を同じ内容なら使い回し、エージェント（`PATCH /v1/convai/agents/{id}`）に指示・考えるAI・声・業務処理・冒頭の案内（first_message）・日本語・聞き取りの語を入れる。ElevenLabs の画面での作業はない | client tools（`client_tool_call` → `client_tool_result`）。ブラウザーが共通の処理へ送る。業務処理の前の自動の言葉（pre_tool_speech）は止める | 署名付きURL（`get-signed-url`）の WebSocket。音声は16kHzで送り、24kHzで受ける。**考えるAIが書いた文が、そのまま読み上げられる**ので、復唱とまとめはサーバーの文どおりになる（ほかの候補の「指示と作文が混ざる」問題への対策）。項目を断られたら最小の設定で作り直して記録に残す。会話の後、ElevenLabs の記録（通話の秒数・クレジット・考えるAIの料金）を取り、受付記録の「AIの料金」に出す |
+
+当面使わない候補（Gemini 3.8 Live・Eleven Realtime・Grok Voice 3.0・Phonic-1）と保留の候補（Cartesia・GPT-Realtime-2.1）の準備は、使うときに改めて確かめます。Cartesia は新しいエージェントのWebSocket（`/v1/agents/websocket`）と Client function を使う構成で書いてあります。
 
 ## 6. 管理画面の設定が、どこまで反映されるか
 
 | 候補 | 指示（GPT-Live は裏方のモデルへの指示にFAQを含む。Gemini はFAQを含まない短い指示） | 声 | FAQの答え |
 | --- | --- | --- | --- |
 | GPT-Live 1・Gemini 3.8 Live（と、保留の GPT-Realtime-2.1） | 接続のときに指定する（公式資料のとおり。実接続では未確認） | 同左 | 業務処理 `lookup_faq` が、会話の開始時の設定から返す（全候補） |
-| ElevenAgents（保留） | `ELEVENLABS_OVERRIDES` で許可したときだけ反映。それ以外はエージェントの設定で固定 | 同左 | 同上 |
+| ElevenAgents | 会話のたびに、サーバーがエージェントに入れ直す（考えるAIへの短い指示。決まりは番号・日時の復唱と確認などに絞った） | 管理画面の「音声」の声（Eleven Realtime に登録した声を使う） | 同上 |
 | Cartesia（保留） | エージェントの設定で固定（この画面からは変えられない） | 同左 | 同上 |
 
 - 会話の開始時の設定を使うので、設定を変えると**次の会話から**反映されます。進行中の会話は変わりません。
@@ -210,7 +215,8 @@
 | --- | --- | --- |
 | GPT-Live 1 | WebRTC、データチャネル `oai-events`、サーバーでのSDPの交換（`POST /v1/live/sessions`）、`session.instructions.append`、文字起こしの `session.input_transcript.delta`／`session.output_transcript.delta`、delegation（Responses）の関数呼び出しと返し方、`session.close`／`session.closed`、サイドバンドの接続（2026-10-07に確認） | 実際のアカウントでの接続、日本語の会話、日本語に合う声、裏方のモデルに渡る量と費用、`session.closed` に使用量が入るか |
 | Gemini 3.8 Live | 一時トークン（`auth_tokens` の `name`、`uses`・`expireTime`・`newSessionExpireTime`）、Constrainedのエンドポイント、`setup`・`realtimeInput`・`serverContent`（`interrupted` を含む）・`toolCall`／`toolResponse` | 3.8での `setup` の項目名、出力の標本化周波数（24kHzと仮定）、声の名前 |
-| 保留の候補 | GPT-Realtime-2.1（一時キー、`/v1/realtime/calls`）、ElevenAgents（`@elevenlabs/client`、署名付きURL、client tools）、Cartesia（アクセストークン、エージェントのWebSocket） | 実際のアカウントでの接続。保留を解くときに確かめる |
+| ElevenAgents | エージェントと業務処理の作成・更新（`/v1/convai/agents`・`/v1/convai/tools`）、署名付きURL、WebSocket の `conversation_initiation_client_data`・`audio`・`ping`／`pong`・`interruption`・`user_transcript`・`agent_response`・`client_tool_call`／`client_tool_result`、会話の記録（`GET /v1/convai/conversations/{id}`）（2026-11-03に確認） | 実際のアカウントでの接続、日本語の聞き取りと読み上げの出来、考えるAIの返事の速さ、実際のトークンの量 |
+| 保留の候補 | GPT-Realtime-2.1（一時キー、`/v1/realtime/calls`）、Cartesia（アクセストークン、エージェントのWebSocket） | 実際のアカウントでの接続。保留を解くときに確かめる |
 
 ## 12. この試験でできないこと
 

@@ -86,8 +86,9 @@ def monthly_total(c: dict, scn: dict, cache: bool = True) -> tuple[cm.Money, flo
 # Calls answered by people never pass through the cloud, so plan 1's extra for human-answered calls does not apply.
 PLAN2_TESTED = ("gpt-live-1", "gemini-3.8-live", "eleven-realtime-max", "eleven-realtime-mini",   # Eleven: 2026-10-21
                 "grok-voice-3",                                                                   # Grok: 2026-10-23
-                "phonic-1")                                                                       # Phonic: 2026-10-29
-PLAN2_REFERENCE = ("gpt-realtime-2.1", "elevenagents", "cartesia-agents", "qwen-omni-realtime")
+                "phonic-1",                                                                       # Phonic: 2026-10-29
+                "elevenagents")                                                                   # 3段: 2026-11-03
+PLAN2_REFERENCE = ("gpt-realtime-2.1", "cartesia-agents", "qwen-omni-realtime")
 DELTA_F = "ΔF"   # per AI call: F_050 (forward to the AI number) minus F_mob (forward to the mobile); may be negative
 
 
@@ -226,7 +227,8 @@ def render_frame() -> str:
     w("- 旧費用表（案A・案B）の約37円・約50円などは、旧構成と旧仮定による概算。この表の比較には、同じ前提で計算し直した値を使う。")
     w("- 最初の接続の試験は GPT-Live 1 と Gemini 3.8 Live の2つだけ（利用者の決定、2026-10-07）。"
       "2026-10-21 に Eleven Realtime（v1 Max・v1 Mini）を、2026-10-23 に Grok Voice 3.0 を、2026-10-29 に Phonic-1 を試験に加えた（利用者の決定）。"
-      "ElevenAgents（Expressive mode）・Cartesia・GPT-Realtime-2.1 は保留で、Qwen は次の候補。表には比較のため全候補を残す。\n")
+      "2026-11-03 に ElevenAgents（聞き取り → 考えるAI → 読み上げの3段の作り）を加え、試験を GPT-Live 1 と ElevenAgents の2つにしぼった"
+      "（ほかは当面使わない。利用者の決定）。Cartesia・GPT-Realtime-2.1 は保留で、Qwen は次の候補。表には比較のため全候補を残す。\n")
 
     w("## 1. そろえた前提\n")
     w("| 項目 | 値 | 旧費用表との違い |")
@@ -369,6 +371,9 @@ def render_list() -> str:
       "日本語に公式に対応し、決まった文をそのまま話させる機能（force_message）で番号の復唱を正確にできる見込み。")
     w("- 2026-10-29、Phonic-1 を試験に加えた（利用者の依頼「すぐにテストしたい」。Phonicのアカウントを作る）。"
       "日本語は公式の対応言語にあるが、日本語の評価はまだない。決まった文をそのまま話させる say で番号の復唱を読ませる。")
+    w("- 2026-11-03、ElevenAgents（聞き取り → 考えるAI → 読み上げの3段の作り）を試験に加えた（利用者の決定「あなたの提案で進めましょう」）。"
+      "考えるAIの書いた文がそのまま読まれるので、決まった文とAIの言葉が混ざらない。同じ日に、試験を GPT-Live 1 と ElevenAgents の2つに"
+      "しぼった（「他のモデルは当面使いません」）。")
     w("- GPT-Liveは、日本語の受付を最初に確かめる。業務処理を受け持つ裏方のモデル（delegation）も確かめる。")
     w("- Inworldは、接続の調査を優先して進める（ブラウザーからは中継が要り、提供段階がResearch previewのため、会話試験は2回目）。")
     w("- Grok・Deepgram・Retell・Vapiは、初回の結果と未確認の点の確認の後に比べる。")

@@ -463,9 +463,11 @@ async function start() {
     const fakeScript = new URLSearchParams(location.search).get("fake_script") || undefined;
     st.session = await post("api/session/start", { candidate: cand.id, fake_script: fakeScript,
       caller_id: $("callerId").value.trim() || undefined,
-      voice_key: $("voice").disabled ? undefined : $("voice").value });
+      voice_key: $("voice").disabled ? undefined : $("voice").value,
+      llm: $("llmBox").hidden ? undefined : $("llm").value });
     st.t0 = performance.now();
     log("session_start", { candidate: cand.id, verified: st.session.verified, call_id: st.session.call_id, voice: st.session.voice,
+      llm: st.session.llm || undefined,
       line_number: st.session.caller_id || "非通知",
       applied: st.session.applied, counts: st.session.counts });
     if (!st.session.verified) log("注意", "この構成は公式資料に沿って書いたが、接続はまだ確かめていない");
@@ -672,9 +674,31 @@ async function loadCandidates() {
     $("voice").value = b.dataset.voice;
     showVoices();
   };
+  // ElevenAgents: the thinking AI is chosen too (2026-11-03); the others have it built in
+  const showLlms = () => {
+    const c = st.candidates.find((x) => x.id === $("candidate").value);
+    const l = c && c.llms;
+    $("llmBox").hidden = !l;
+    if (!l) return;
+    const sel = $("llm"), before = sel.dataset.for === c.id ? sel.value : null;
+    sel.innerHTML = l.choices.map((x) => `<option value="${esc(x.id)}">${esc(x.label)}</option>`).join("");
+    sel.value = before !== null && l.choices.some((x) => x.id === before) ? before : l.default;
+    sel.dataset.for = c.id;
+    $("llmChips").innerHTML = l.choices.map((x) =>
+      `<button type="button" class="pick ${x.id === sel.value ? "on" : ""}" data-llm="${esc(x.id)}" role="radio" ` +
+      `aria-checked="${x.id === sel.value}"><span class="name">${esc(x.label)}${x.id === l.default ? "<span class=\"g g-rec\">おすすめ</span>" : ""}</span>` +
+      `<span class="sub2">${esc(x.maker)}・3分 約${esc(String(x.call_yen))}円</span><span class="sub2">${esc(x.note)}</span></button>`).join("");
+  };
+  $("llmChips").onclick = (e) => {
+    const b = e.target.closest("[data-llm]");
+    if (!b || $("startBtn").disabled) return;   // not while a call is on
+    $("llm").value = b.dataset.llm;
+    showLlms();
+  };
   const showNote = () => {
     drawCards();
     showVoices();
+    showLlms();
     const c = st.candidates.find((x) => x.id === $("candidate").value);
     if (!c) { $("candNote").innerHTML = ""; $("limit").textContent = ""; return; }
     const n = c.counts || {};

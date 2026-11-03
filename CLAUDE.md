@@ -74,6 +74,8 @@
 | 2026-10-30 | **日時の伺い方と、数の復唱**：日時は「作業にお伺いするご希望の日時はございますか。」と伺う（利用者の文から「希望」の重なりを除いた）。清掃の数などの答えは「20基でございますね。」と受けてから次へ進む（「お客が20基と言ってるなら20基でございますねと復唱すること」） |
 | 2026-10-30 | **「承る」を言わない**（「しょうりましたと聞こえます」。ひらがなにしても直らなかった）：冒頭は「ご用件をお伺いし、担当の者から…」、まとめは「お伺いした内容は担当の者に申し伝え、…」、最後は「…AIオペレーターがお受けいたしました。失礼いたします。」（言い換えは提案し、利用者が「言い換えのまま」を選んだ） |
 | 2026-11-03 | **GPT-Live の裏方を gpt-6.1-terra に変える**（「Terraに変えてみましょう」。社長の自由な話し方の試験で GPT だけがうまくいったため、裏方を上位に）。3分 約37円（luna 約26円）。速さは試験で測る（`prototype/browser_lab/config.py`） |
+| 2026-11-03 | **「聞き取り → 考えるAI → 読み上げ」の3段の作り（ElevenAgents）で試す**（「3段の作りで一本化がもっとも安定しそうですね。あなたの提案で進めましょう」。10/21 の「ElevenAgents は保留」を改めた）。考えるAIの書いた文がそのまま声になり、サーバーの決まった文どおりに読む。エージェントと業務処理はサーバーが API で自動で作り、会話のたびに入れ直す（`prototype/browser_lab/elevenagents.py`、IDは `prototype/data/elevenagents.json`）。考えるAIはページで選ぶ（既定 GPT-5.6 Terra）。指示は決まりを減らした短い指示（`TEXT_AGENT_RULES`） |
+| 2026-11-03 | **試験は GPT-Live 1 と ElevenAgents の2つ**（「OpenAI GPT-Live 1とElevenAgentsで検証します。他のモデルは当面使いません」）。Gemini 3.8 Live・Eleven Realtime v1 Max／v1 Mini・Grok Voice 3.0・Phonic-1 は画面に出さない（仕組みは残す。`config.PAUSED`、`LAB_RELEASE_HOLD` で戻せる） |
 
 ## 判断待ち（利用者に確認すること）
 
@@ -124,10 +126,11 @@
   - `python3 -m unittest discover -s prototype/tests -t .`
   - `node prototype/tests/admin_smoke.cjs docs/screenshots`（管理画面のブラウザー試験。画面の画像を撮り直す）
   - `node prototype/tests/browser_lab_smoke.cjs`（会話試験の画面）
-  - `node prototype/tests/eleven_realtime_smoke.cjs`（Eleven Realtime のつなぎ口を、模擬の相手で確かめる）
+  - `node prototype/tests/eleven_realtime_smoke.cjs`（Eleven Realtime のつなぎ口を、模擬の相手で確かめる。当面使わないが試験は通す）
   - `node prototype/tests/realtime_ws_smoke.cjs`（GPT-Realtime-2.1・Grok Voice 3.0 の共通のつなぎ口を、模擬の相手で確かめる）
   - `node prototype/tests/gemini_live_smoke.cjs`（Gemini Live の冒頭の案内を、模擬の相手で確かめる）
   - `node prototype/tests/phonic_smoke.cjs`（Phonic-1 のつなぎ口を、模擬の相手で確かめる）
+  - `node prototype/tests/elevenagents_smoke.cjs`（ElevenAgents のつなぎ口を、模擬の相手で確かめる）
 - **日本語の Windows**
   - 既定の文字コードが cp932 です。ファイルの読み書きには必ず `encoding="utf-8"` を付けます（`test_text_encoding.py` が検査します）。
   - Shift_JIS の環境でも試験を通します。手順：`localedef -i ja_JP -f SHIFT_JIS <フォルダー>/ja_JP.SJIS` で作り、`LOCPATH=<フォルダー> LC_ALL=ja_JP.SJIS python3 -m unittest discover -s prototype/tests -t .` で通します（`locale.getpreferredencoding()` が `SHIFT_JIS` になることを先に確かめる）。

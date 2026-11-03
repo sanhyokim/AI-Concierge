@@ -18,11 +18,12 @@ from .auth import hash_password
 from ..reception.store import Store
 
 MIN_PASSWORD = 8
-KEYS = (   # the first two candidates (2026-10-07), Eleven Realtime (2026-10-21), Grok (2026-10-23), Phonic (2026-10-29)
+KEYS = (   # the first two candidates (2026-10-07), Eleven Realtime (2026-10-21), Grok (2026-10-23), Phonic (2026-10-29),
+           # ElevenAgents (2026-11-03, the same ElevenLabs key). From 2026-11-03 only GPT-Live 1 and ElevenAgents are tested
     ("OPENAI_API_KEY", "OpenAI（GPT-Live 1）のAPIキー", ("sk-",)),
     # AI Studio has made "auth keys" (AQ.…) since 2026-05-28; keys made before that start with AIza
     ("GEMINI_API_KEY", "Google AI Studio（Gemini 3.8 Live）のAPIキー", ("AQ.", "AIza")),
-    ("ELEVENLABS_API_KEY", "ElevenLabs（Eleven Realtime）のAPIキー", ("sk_",)),
+    ("ELEVENLABS_API_KEY", "ElevenLabs（ElevenAgents・Eleven Realtime）のAPIキー", ("sk_",)),
     ("XAI_API_KEY", "xAI（Grok Voice 3.0）のAPIキー", ("xai-",)),   # added by the user, 2026-10-23
     # added by the user, 2026-10-29. Phonic does not document the shape of its keys: any long string is taken
     ("PHONIC_API_KEY", "Phonic（Phonic-1）のAPIキー", ()),

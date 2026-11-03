@@ -27,6 +27,11 @@ class FakeHttp:
         raise AssertionError(f"unexpected url {url}")
 
 
+# 2026-11-03 (user): 「OpenAI GPT-Live 1とElevenAgentsで検証します。他のモデルは当面使いません」. Their code is kept and
+# still tested: the tests release them as a person would with LAB_RELEASE_HOLD.
+RELEASE = {"LAB_RELEASE_HOLD": ",".join(config.PAUSED)}
+
+
 def limit(n=2, candidates=("gpt-live-1", "gemini-3.8-live")):
     """Put a count limit back for a test: the mechanism stays (held candidates use 0) though the user removed the
     limits for the tested candidates (2026-10-08)."""
@@ -43,7 +48,8 @@ class LabTest(unittest.TestCase):
         self.tmp.cleanup()
 
     def lab(self, env, responses=None):
-        return Lab(env=env, http=FakeHttp(responses or {}), ledger_path=self.ledger, results_dir=self.results)
+        return Lab(env={**RELEASE, **env}, http=FakeHttp(responses or {}), ledger_path=self.ledger,
+                   results_dir=self.results, agent_state=pathlib.Path(self.tmp.name) / "agents.json")
 
     def test_candidates_never_expose_keys_and_missing_keys_send_nothing(self):
         lab = self.lab({"GEMINI_API_KEY": "secret-key"})
@@ -99,7 +105,7 @@ class LabTest(unittest.TestCase):
         self.assertIsNotNone(lab.ledger("elevenlabs_lab").totals()["held_usd"])
         listed = {c["id"]: c for c in config.public_candidates(lab.env)}
         self.assertTrue(listed["eleven-realtime-mini"]["ready"])
-        self.assertFalse(listed["elevenagents"]["ready"])          # the older ElevenAgents path stays held
+        self.assertTrue(listed["elevenagents"]["ready"])           # the same key (2026-11-03: the three-stage path)
 
     def test_grok_voice_gets_a_token_and_the_page_sends_the_session(self):
         # 2026-10-23 (user: 「Grok Voice 3.0を使ってみたい」). xAI's client secret takes no session settings
@@ -226,8 +232,8 @@ class LabTest(unittest.TestCase):
                                config.session_reserve_usd(config.CANDIDATES["gpt-live-1"], {}))
 
     def test_held_candidates_cannot_start(self):
-        lab = self.lab({"OPENAI_API_KEY": "k", "ELEVENLABS_API_KEY": "x", "ELEVENLABS_AGENT_ID": "a"})
-        for cid in ("gpt-realtime-2.1", "elevenagents"):
+        lab = self.lab({"OPENAI_API_KEY": "k", "CARTESIA_API_KEY": "x", "CARTESIA_AGENT_ID": "a"})
+        for cid in ("gpt-realtime-2.1", "cartesia-agents"):
             with self.assertRaises(ValueError) as cm:
                 lab.start(cid)
             self.assertIn("保留", str(cm.exception))
@@ -249,12 +255,8 @@ class LabTest(unittest.TestCase):
 
     def test_elevenlabs_and_realtime_credentials(self):
         # held candidates: the minting code is checked directly, without starting a lab session
-        http = FakeHttp({"get-signed-url": {"signed_url": "wss://signed"}, "client_secrets": {"value": "ek_1"}})
-        env = {"ELEVENLABS_API_KEY": "xi", "ELEVENLABS_AGENT_ID": "ag", "OPENAI_API_KEY": "sk"}
-        e = vendors.mint(config.CANDIDATES["elevenagents"], env, http)
-        self.assertEqual(e["signed_url"], "wss://signed")
-        self.assertNotIn("overrides", e)                     # no overrides unless allowed
-        self.assertEqual(http.calls[-1]["headers"]["xi-api-key"], "xi")
+        http = FakeHttp({"client_secrets": {"value": "ek_1"}})
+        env = {"OPENAI_API_KEY": "sk"}
         r = vendors.mint(config.CANDIDATES["gpt-realtime-2.1"], env, http)
         # 2026-10-23: WebSocket with the secret as a subprotocol (the page's back-channel gate needs the mic audio)
         self.assertEqual(r["protocols"], ["realtime", "openai-insecure-api-key.ek_1"])
@@ -301,8 +303,8 @@ class LabBusinessLogicTest(unittest.TestCase):
         self.tmp.cleanup()
 
     def lab(self, env, responses=None, **kw):
-        return Lab(env=env, http=FakeHttp(responses or {}), ledger_path=self.dir / "ledger.jsonl",
-                   results_dir=self.dir / "results", **kw)
+        return Lab(env={**RELEASE, **env}, http=FakeHttp(responses or {}), ledger_path=self.dir / "ledger.jsonl",
+                   results_dir=self.dir / "results", agent_state=self.dir / "agents.json", **kw)
 
     def test_gpt_live_uses_responses_delegation_with_the_reception_tools(self):
         lab = self.lab({"OPENAI_API_KEY": "secret-key"},
@@ -415,9 +417,10 @@ class LabSessionControlTest(unittest.TestCase):
         return {"closed": True, "event": {"type": "session.closed"}, "error": None}
 
     def lab(self, env, responses=None, service=None, clock=None, live_close=None):
+        env = {**RELEASE, **env}
         return Lab(env=env, http=FakeHttp(responses or {}), ledger_path=self.dir / "ledger.jsonl",
                    results_dir=self.dir / "results", service=service or self.service(env),
-                   live_close=live_close or self.close_ok, clock=clock or Clock())
+                   live_close=live_close or self.close_ok, clock=clock or Clock(), agent_state=self.dir / "agents.json")
 
     LIVE = {"live/sessions": {"transport": {"sdp": "answer"}, "session": {"id": "ls_1"}}}
 
@@ -616,36 +619,25 @@ class LabSessionControlTest(unittest.TestCase):
         lab.sdp(live["session_id"], "offer")
         self.assertEqual(lab.http.calls[-1]["body"]["session"]["audio"]["output"]["voice"], "harema")   # Japanese voice
 
-    def test_agent_fixed_settings_are_labelled_and_overrides_need_permission(self):
+    def test_agent_fixed_settings_are_labelled(self):
         from prototype.browser_lab.server import SessionLimit
-        env = {"LAB_RELEASE_HOLD": "elevenagents,cartesia-agents", "ELEVENLABS_API_KEY": "xi",
-               "ELEVENLABS_AGENT_ID": "ag", "CARTESIA_API_KEY": "c", "CARTESIA_AGENT_ID": "a1"}
-        resp = {"get-signed-url": {"signed_url": "wss://signed"}, "access-token": {"token": "tok"}}
+        env = {"LAB_RELEASE_HOLD": "cartesia-agents", "CARTESIA_API_KEY": "c", "CARTESIA_AGENT_ID": "a1"}
+        resp = {"access-token": {"token": "tok"}}
         lab = self.lab(env, resp)
         with self.assertRaises(SessionLimit) as cm:                  # releasing the hold alone starts nothing
             lab.start("cartesia-agents")
         self.assertIn("0回", str(cm.exception))
-        # after the user approves counts and caps for them (patched here)
+        # after the user approves counts and caps for it (patched here)
         from prototype.engines.budget import Limits
         approved = Limits(max_requests=4, max_audio_seconds=16 * 60, max_cost_usd=2.0)
-        patch_counts = mock.patch.dict(config.SESSIONS["connection"], {"cartesia-agents": 2, "elevenagents": 2})
-        patch_caps = mock.patch.dict(config.LAB_LIMITS_BY_STAGE["connection"],
-                                     {"cartesia_lab": approved, "elevenlabs_lab": approved})
+        patch_counts = mock.patch.dict(config.SESSIONS["connection"], {"cartesia-agents": 2})
+        patch_caps = mock.patch.dict(config.LAB_LIMITS_BY_STAGE["connection"], {"cartesia_lab": approved})
         patch_counts.start(), patch_caps.start()
         self.addCleanup(patch_counts.stop)
         self.addCleanup(patch_caps.stop)
         c = lab.start("cartesia-agents")
         self.assertEqual(c["applied"]["voice"], config.APPLY_LABELS["agent_fixed"])
         self.assertEqual(c["applied"]["instructions"], config.APPLY_LABELS["agent_fixed"])
-        e = lab.start("elevenagents")
-        self.assertNotIn("overrides", e["credentials"])
-        self.assertEqual(e["applied"]["instructions"], config.APPLY_LABELS["agent_fixed"])
-        lab2 = self.lab({**env, "ELEVENLABS_OVERRIDES": "prompt"}, resp, service=lab.service)
-        e2 = lab2.start("elevenagents")
-        ov = e2["credentials"]["overrides"]
-        self.assertIn("点検は無料です。", ov["agent"]["prompt"]["prompt"])
-        self.assertNotIn("tts", ov)                                  # the voice was not allowed
-        self.assertEqual(e2["applied"]["voice"], config.APPLY_LABELS["agent_fixed"])
         listed = {x["id"]: x for x in config.public_candidates(env)}
         self.assertEqual(listed["cartesia-agents"]["applies"]["voice"], config.APPLY_LABELS["agent_fixed"])
 
@@ -662,7 +654,7 @@ class LabSessionControlTest(unittest.TestCase):
 class HttpLayerTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
-        lab = Lab(env={}, ledger_path=pathlib.Path(self.tmp.name) / "l.jsonl",
+        lab = Lab(env=dict(RELEASE), ledger_path=pathlib.Path(self.tmp.name) / "l.jsonl",
                   results_dir=pathlib.Path(self.tmp.name) / "r")
         self.httpd = serve(0, lab)
         self.port = self.httpd.server_address[1]

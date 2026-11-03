@@ -14,7 +14,7 @@ from prototype.browser_lab.server import Lab
 from prototype.concierge.prompts import VOICE_RULES
 from prototype.reception.service import ReceptionService
 from prototype.reception.store import Store
-from prototype.tests.test_browser_lab import FakeHttp
+from prototype.tests.test_browser_lab import RELEASE, FakeHttp
 from prototype.tests.test_manners import FORBIDDEN
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -90,7 +90,7 @@ class LabPromptTest(unittest.TestCase):
         self.tmp.cleanup()
 
     def lab(self, env, responses):
-        return Lab(env=env, http=FakeHttp(responses), ledger_path=self.dir / "ledger.jsonl",
+        return Lab(env={**RELEASE, **env}, http=FakeHttp(responses), ledger_path=self.dir / "ledger.jsonl",
                    results_dir=self.dir / "results")
 
     def test_gpt_live_sends_the_short_prompt_to_the_voice_and_the_steps_to_the_backend(self):
@@ -112,8 +112,8 @@ class LabPromptTest(unittest.TestCase):
         self.assertNotIn("secret-gemini-key", json.dumps(s))
 
     def test_held_candidates_keep_the_full_prompt(self):
-        self.assertNotIn("prompt_style", config.CANDIDATES["elevenagents"])
         self.assertNotIn("prompt_style", config.CANDIDATES["cartesia-agents"])
+        self.assertEqual(config.CANDIDATES["elevenagents"]["prompt_style"], "text_agent")   # 2026-11-03
 
     def test_single_model_candidates_get_the_short_prompt(self):
         # 2026-10-23: GPT-Realtime-2.1 and Grok Voice 3.0 call the tools themselves, like Gemini

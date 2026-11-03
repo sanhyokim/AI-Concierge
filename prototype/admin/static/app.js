@@ -230,7 +230,7 @@ routes.voice = async () => {
     <div class="form-actions"><button id="addVoice">＋ 声を追加</button><button class="primary" id="saveVoices">保存</button></div></section>
     <section class="card"><details><summary>接続候補と声の状態</summary><table class="stack"><thead><tr><th>候補</th><th>状態</th><th>声の候補</th><th>声の指定の方法</th><th>この画面の声の反映</th></tr></thead><tbody>
     ${offered.map((x) => `<tr><td data-label="候補">${esc(x.name)}</td><td data-label="状態">${statusBadge(x.status, x.status_label)}</td><td data-label="声の候補">${esc(x.voices.join("、") || "（業者の画面で選ぶ）")}</td><td data-label="指定の方法">${esc(x.how)}</td><td data-label="反映">${esc(x.apply_label)}</td></tr>`).join("")}
-    </tbody></table><p class="sub">「利用可能」はオフラインの模擬だけです（音声の評価には使えません）。鍵の値は表示しません（設定の有無だけ）。保留中の候補（ElevenAgents・Cartesia・GPT-Realtime-2.1）は表示していません。</p></details></section>`;
+    </tbody></table><p class="sub">「利用可能」はオフラインの模擬だけです（音声の評価には使えません）。鍵の値は表示しません（設定の有無だけ）。保留中の候補（Cartesia・GPT-Realtime-2.1、2026-11-03から当面使わない Gemini・Grok・Phonic・Eleven Realtime）は表示していません。</p></details></section>`;
   draw();
   view.addEventListener("input", (e) => { const t = e.target; if (t.dataset.i !== undefined && t.dataset.k) voices[Number(t.dataset.i)][t.dataset.k] = t.value; });
   view.addEventListener("change", (e) => {
@@ -292,7 +292,10 @@ function eventText(e) {
     case "recording_deleted": return d.why || "拒否より前の録音を削除";
     case "vendor_interrupted": return `業者の割り込みの通知（${d.source}${d.unplayed_ms != null ? `・残りの音 ${(d.unplayed_ms / 1000).toFixed(1)}秒` : ""}）：${(d.invalidated || []).length ? `返事の前に遮られた復唱 ${d.invalidated.join("・")} を確認済みにしない` : "無効にした復唱はない"}`;
     case "read_back_mismatch": return `復唱の言い間違い（${d.field === "callback_number" ? "折り返し先" : d.field === "preferred_datetime" ? "希望日時" : d.field}）：AIは「${d.said}」と言った。保存した値と違うので、「はい」でも確認済みにしない`;
-    case "ai_usage": { const t = d.tokens || {}; return `AIの料金（AIの会社の報告${d.reports}回の合計）：入力 音声${t.prompt_audio}・文字${t.prompt_text}、出力 音声${t.response_audio}・文字${t.response_text}トークン → $${Number(d.usd).toFixed(4)}（税抜、約${Math.round(d.usd * 150)}円）・通話${d.minutes}分`; }
+    case "ai_usage": {
+      // 2026-11-03: ElevenAgents reports its own record (credits) after the call, not tokens
+      if (d.source === "elevenlabs") return `ElevenLabs の記録：通話${d.call_seconds ?? "?"}秒・${d.credits ?? "?"}クレジット（通話${d.call_credits ?? "?"}・考えるAI${d.llm_credits ?? "?"}）${d.llm_usd != null ? `・考えるAIの料金 $${Number(d.llm_usd).toFixed(4)}` : ""}${d.tier ? `・プラン ${d.tier}` : ""}（会話ID ${d.conversation_id}）`;
+      const t = d.tokens || {}; return `AIの料金（AIの会社の報告${d.reports}回の合計）：入力 音声${t.prompt_audio}・文字${t.prompt_text}、出力 音声${t.response_audio}・文字${t.response_text}トークン → $${Number(d.usd).toFixed(4)}（税抜、約${Math.round(d.usd * 150)}円）・通話${d.minutes}分`; }
     case "forward_to_staff": return d.text || "担当者の携帯へ転送";
     default: return `${e.kind} ${d && Object.keys(d).length ? JSON.stringify(d) : ""}`;
   }

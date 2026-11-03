@@ -81,7 +81,8 @@ class CandidateFrameTest(unittest.TestCase):
                 lc.CANDIDATES[r["id"]], {}), 2))
         limits = {r["id"]: r["sessions_limit"] for r in est["rows"]}
         self.assertEqual(limits, {"gpt-live-1": None, "gemini-3.8-live": None, "gpt-realtime-2.1": 0,
-                                  "elevenagents": 0, "cartesia-agents": 0,      # user decision 2026-10-08
+                                  "elevenagents": None,                         # the three-stage path, 2026-11-03
+                                  "cartesia-agents": 0,                         # user decision 2026-10-08
                                   "eleven-realtime-max": None, "eleven-realtime-mini": None,   # added 2026-10-21
                                   "grok-voice-3": None,                                        # added 2026-10-23
                                   "phonic-1": None})                                           # added 2026-10-29

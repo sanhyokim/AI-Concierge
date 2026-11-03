@@ -196,7 +196,8 @@ class InteractiveStartTest(unittest.TestCase):
         c.request("GET", "/lab/api/candidates", headers={"Cookie": cookie})
         cands = {x["id"]: x for x in json.loads(c.getresponse().read())["candidates"]}
         self.assertTrue(cands["gpt-live-1"]["ready"])            # the typed key reached the server process
-        self.assertFalse(cands["gemini-3.8-live"]["ready"])      # skipped
+        self.assertFalse(cands["elevenagents"]["ready"])         # skipped
+        self.assertNotIn("gemini-3.8-live", cands)               # not used for now (user, 2026-11-03)
         db = (d / "app.db").read_bytes()
         self.assertNotIn(OPENAI.encode(), db)                     # never written to disk
 
