@@ -101,7 +101,7 @@ class LabPromptTest(unittest.TestCase):
         self.assertEqual(body["instructions"], lab.service.voice_instructions(s["call_id"], LAB_PERSONA, backend=True))
         self.assertEqual(body["delegation"]["responses"]["instructions"], lab.service.backend_instructions(s["call_id"]))
         self.assertIn("短い指示：声のモデルへ", s["applied"]["instructions"])
-        self.assertIn("裏方のモデルへ", s["applied"]["instructions"])
+        self.assertIn("裏方のモデル（gpt-6.1-terra）へ", s["applied"]["instructions"])   # 2026-11-03: the model is named
 
     def test_gemini_setup_carries_the_short_prompt(self):
         lab = self.lab({"GEMINI_API_KEY": "secret-gemini-key"}, {"auth_tokens": {"name": "auth_tokens/abc"}})

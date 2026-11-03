@@ -270,7 +270,7 @@ class Lab:
         applied, voice, overrides = self._applied(cfg, candidate, call, voice_key)
         if cfg.get("prompt_style"):
             applied["instructions"] += (f"／短い指示：声のモデルへ{len(instructions):,}字" +
-                                        (f"、裏方のモデルへ{len(backend_instructions):,}字（FAQを含む）"
+                                        (f"、裏方のモデル（{delegation_model(cfg, self.env)}）へ{len(backend_instructions):,}字（FAQを含む）"
                                          if backend_instructions else "（FAQは lookup_faq で渡す）"))
         if overrides and "agent" in overrides:
             overrides["agent"]["prompt"]["prompt"] = instructions
