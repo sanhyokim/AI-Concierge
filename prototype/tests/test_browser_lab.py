@@ -318,7 +318,7 @@ class LabBusinessLogicTest(unittest.TestCase):
                                  "flag_emergency", "offer_line_number", "request_summary", "end_call"])
         many = next(t for t in body["delegation"]["responses"]["tools"] if t["name"] == "save_fields")
         self.assertEqual(sorted(many["parameters"]["required"]), sorted(many["parameters"]["properties"]))   # strict
-        self.assertEqual(body["delegation"]["responses"]["model"], "gpt-6-luna")
+        self.assertEqual(body["delegation"]["responses"]["model"], "gpt-6.1-terra")   # 2026-11-03 (user)
         self.assertEqual(body["delegation"]["responses"]["reasoning"], {"effort": "low"})   # 2026-10-19: 30 s waits
         backend = body["delegation"]["responses"]["instructions"]
         self.assertIn("点検は無料です。", backend)                          # FAQ from the admin settings
@@ -541,7 +541,7 @@ class LabSessionControlTest(unittest.TestCase):
         rows = [r for r in led._lines() if r.get("operation") == "gpt_live_backend"]
         self.assertEqual(len(rows), 1)
         self.assertTrue(rows[0]["units"]["reported_by_vendor"])
-        self.assertAlmostEqual(rows[0]["est_cost_usd"], (8_000 * 0.10 + 2_000 * 0.01 + 400 * 0.50) / 1e6)
+        self.assertAlmostEqual(rows[0]["est_cost_usd"], (8_000 * 1.00 + 2_000 * 0.05 + 400 * 5.00) / 1e6)   # gpt-6.1-terra (2026-11-03)
         self.assertEqual(led.totals()["requests"], 1)               # still one session, not two requests
         lab.end(sid, 60)
         self.assertIn("session_id", lab.start("gpt-live-1"))        # the second planned session can start

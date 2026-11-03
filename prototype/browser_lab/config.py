@@ -33,12 +33,13 @@ CANDIDATES = {
         "model": "gpt-live-1", "upper_usd_per_min": 0.06, "increment_s": 1, "verified": False,
         "logic_path": "delegation_responses", "applies": {"instructions": "session", "voice": "session"},
         "prompt_style": "voice_and_backend",   # short prompt for the voice model, the steps for the backend (2026-10-14)
-        "delegation_model_env": "GPT_LIVE_DELEGATION_MODEL", "delegation_model_default": "gpt-6-luna",
+        # 2026-11-03 (user): 「Terraに変えてみましょう」 (gpt-6-luna is the smallest; the president's free-form calls)
+        "delegation_model_env": "GPT_LIVE_DELEGATION_MODEL", "delegation_model_default": "gpt-6.1-terra",
         # 2026-10-19 C1: the caller waited up to 30 s while the backend worked. OpenAI's delegation guide: "Use lower
         # reasoning effort when it completes the task reliably". The backend only saves values and looks things up.
         "delegation_reasoning_effort": "low",
         "note": "日本語の対応は公式に明記がない（最初に確かめる）。業務処理は delegation（Responses）の裏方のモデルへ。"
-                "裏方のモデルは別料金で、GPT_LIVE_DELEGATION_MODEL で指定（既定 gpt-6-luna）"},
+                "裏方のモデルは別料金で、GPT_LIVE_DELEGATION_MODEL で指定（既定 gpt-6.1-terra。2026-11-02 までは gpt-6-luna）"},
     "gemini-3.8-live": {
         "name": "Google Gemini 3.8 Live", "adapter": "gemini-live", "env": ["GEMINI_API_KEY"], "vendor": "google_lab",
         # upper 0.20: every answer re-reads the whole call so far (Google, 2026-05-11), about $0.13/min at 5 minutes
@@ -108,8 +109,10 @@ APPLY_LABELS = {"session": "接続のときに指定する（公式資料のと�
                 "n/a": "対象外（模擬）"}
 
 # GPT-Live: the backend (delegation) model is billed separately. Only models with a confirmed price can run.
-# USD per 1M tokens (input, cached input, output), official pricing page read 2026-10-07.
-DELEGATION_PRICES = {"gpt-6-luna": (0.10, 0.01, 0.50), "gpt-6-sol": (2.00, 0.20, 10.00),
+# USD per 1M tokens (input, cached input, output), official pricing page read 2026-10-07; GPT-6.1 read 2026-11-03
+# (gpt-6-sol is no longer listed: gpt-6.1-sol).
+DELEGATION_PRICES = {"gpt-6-luna": (0.10, 0.01, 0.50), "gpt-6.1-terra": (1.00, 0.05, 5.00),
+                     "gpt-6.1-sol": (2.00, 0.10, 10.00),
                      "gpt-5.6-luna": (0.20, 0.02, 1.20), "gpt-5.6-terra": (2.00, 0.20, 12.00)}
 # Gemini Live, USD per 1M tokens by modality (official pricing page, read 2026-10-29). Each usageMetadata Gemini
 # sends is one answer's bill: its prompt is the whole context read again (Google, 2026-05-11).
@@ -185,7 +188,7 @@ ENV_SETUP = {   # shown on the lab page: how to set a variable on the tester's P
     "ELEVENLABS_API_KEY": "ElevenLabs の画面（Developers → API Keys）で作るAPIキー。ElevenAgents の権限を付ける",
     "XAI_API_KEY": "xAI の画面（console.x.ai → API Keys）で作るAPIキー",
     "PHONIC_API_KEY": "Phonic の画面（phonic.ai にサインイン → API Keys）で作るAPIキー",
-    "GPT_LIVE_DELEGATION_MODEL": "任意。GPT-Liveの裏方のモデル（既定 gpt-6-luna）",
+    "GPT_LIVE_DELEGATION_MODEL": "任意。GPT-Liveの裏方のモデル（既定 gpt-6.1-terra。ほかに gpt-6-luna・gpt-6.1-sol）",
 }
 
 MOCK_FAQ = """\
