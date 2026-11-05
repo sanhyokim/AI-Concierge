@@ -41,6 +41,7 @@ from ..concierge.readings import digits_only, is_valid_jp_number
 from ..concierge.prompts import for_speech
 from ..reception.service import ReceptionService
 from ..reception.store import DEFAULT_DB, Store, dumps, iso, now_jst
+from ..tenants import current as current_tenant
 from . import elevenagents, vendors, wsclient
 from .config import (APPLY_LABELS, BACKEND_TYPICAL, CANDIDATES, DELEGATION_PRICES, LAB_LIMITS, LAB_LIMITS_BY_STAGE, LAB_PERSONA,
                      LAB_PERSONA_TEXT, LAB_RULES, LAB_STAGES, LOGIC_PATHS, MAX_BACKEND_RESPONSES, MAX_MINT_FAILURES, MAX_RESPONSE_CREATES,
@@ -60,12 +61,9 @@ FAILED = ("mint_failed", "vendor_rejected")
 NOT_SENT, RELEASED = "not_sent", "released_by_staff"
 CERT_HINT = ("。このPCのPythonが、HTTPSの証明書を確かめられません。Macでは「アプリケーション」→「Python 3.x」フォルダーの"
              "「Install Certificates.command」をダブルクリックし、起動し直してください（docs/start-mac.md）")
-FAKE_SCRIPTS = {   # what the offline candidate "hears" at each end of caller speech (no speech recognition)
-    "default": ["（模擬）焼肉ほのか博多店の田中です", "（模擬）点検は無料ですか"],
-    "refusal": ["（模擬）点検は無料ですか", "人と話したいので、AIは使わないでください"],
-    "recording": ["録音はしないでください", "（模擬）点検は無料ですか", "（模擬）ダクトの清掃をお願いします"],
-    "closing": ["（模擬）以上です。ありがとうございました。", "はい、失礼します。"],
-}
+# what the offline candidate "hears" at each end of caller speech (no speech recognition); the company settings
+FAKE_SCRIPTS = {k: list(v) for k, v in current_tenant().demo.get("lab_scripts", {}).items()}
+FAKE_SCRIPTS.setdefault("default", [])
 
 
 STATUS_LABELS = {

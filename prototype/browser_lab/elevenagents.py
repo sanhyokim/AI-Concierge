@@ -25,11 +25,12 @@ import urllib.request
 
 from ..concierge.prompts import OPENING_ANNOUNCEMENT, OPENING_QUESTION, for_speech
 from ..reception.tooldefs import RECEPTION_TOOLS
+from ..tenants import current as current_tenant
 from .config import MAX_SESSION_MIN
 
 API = "https://api.elevenlabs.io/v1/convai"
 STATE_FILE = pathlib.Path(__file__).resolve().parents[1] / "data" / "elevenagents.json"
-AGENT_NAME = "株式会社野田 受付AI（会話試験）"
+AGENT_NAME = f"{current_tenant().company_name} 受付AI（会話試験）"   # the company settings
 
 # The text models offered on the test page (the agent's prompt.llm; ElevenLabs' list, read 2026-11-03).
 # USD per 1M tokens (input, output) at the makers' list prices; ElevenLabs bills the model on top of $0.08/min.
@@ -56,8 +57,7 @@ PLATFORM_USD_PER_MIN = 0.08
 
 TTS_MODEL = "eleven_v4_turbo"      # ElevenLabs: about 100 ms, over 90 languages, Japanese much improved (2026-09-28)
 OUTPUT_FORMAT, INPUT_FORMAT = "pcm_24000", "pcm_16000"
-KEYWORDS = ["株式会社野田", "排煙ダクト", "ダクト清掃", "厨房換気", "無煙ロースター", "グリスフィルター",
-            "レンジフード", "焼肉", "折り返し"]
+KEYWORDS = list(current_tenant().keywords)   # the company settings (speech.keywords)
 CLIENT_EVENTS = ["conversation_initiation_metadata", "ping", "audio", "interruption", "user_transcript",
                  "agent_response", "agent_response_correction", "client_tool_call", "client_error"]
 TOOL_TIMEOUT_S = 20   # the page may wait for the caller's words, and C5 slows the tools down on purpose

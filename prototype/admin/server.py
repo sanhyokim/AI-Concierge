@@ -36,16 +36,14 @@ from ..reception.notify import CHANNELS, SIMULATE, STATUS_LABELS
 from ..reception.service import HandledConflict, ReceptionService
 from ..reception.store import DEFAULT_DB, Store, now_jst
 from ..reception.summary import build_summary, notification_body
+from ..tenants import current as current_tenant
 from . import keystore, setup
 from .auth import COOKIE, SESSION_S, Auth
 
 STATIC = pathlib.Path(__file__).resolve().parent / "static"
 CSP = ("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; "
        "connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
-DEMO_SCRIPT = ["焼肉ほのか博多店の田中です。無煙ロースター8台の清掃をお願いしたいです。", "点検は無料ですか？",
-               "折り返しは090-1234-5678です。", "はい、違います。090-1234-5679です。", "はい、合っています。",
-               "ダクトの点検もお願いします。", "10月8日の午後3時でお願いします。",
-               "すみません、9日の金曜日に変更してください。", "はい、それでお願いします。"]
+DEMO_SCRIPT = list(current_tenant().demo.get("admin_script", []))   # the company settings
 
 
 class AdminApp:

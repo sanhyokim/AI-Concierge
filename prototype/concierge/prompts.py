@@ -1,11 +1,17 @@
 """Instructions and tool definitions for plan A (OpenAI Realtime).
 
-Plain strings and JSON schemas only; nothing here calls an API.
+Plain strings and JSON schemas only; nothing here calls an API. The company's own words (its name and trade, the
+questions, the opening and closing lines, the examples) come from the company settings (prototype/tenants, design
+memo 2026-11-05): the templates here say {company}, {ask_request} and so on, and _T.fill() puts the words in.
 """
 from __future__ import annotations
 
-BASE_INSTRUCTIONS = """\
-あなたは株式会社野田（飲食店の排煙ダクト・厨房換気設備の清掃と保守）の電話受付AIです。
+from ..tenants import current as _current_tenant
+
+_T = _current_tenant()
+
+BASE_INSTRUCTIONS = _T.fill("""\
+あなたは{company}（{industry}）の電話受付AIです。
 - 冒頭でAIの受付であることを伝え、下の【話し方】のとおり、丁寧な敬語で、一度に一つだけ質問してください。
 - 既に聞いた情報は聞き直さないでください。分からない項目は無理に聞き続けないでください。
 - 料金・条件は承認済みFAQの範囲だけで答え、予約や訪問を確定・約束しないでください。
@@ -14,22 +20,22 @@ BASE_INSTRUCTIONS = """\
   読み直すときは request_readback を呼び、返ってきた say をそのまま読んでください。
 - confirm_field は、復唱の直後にお客様が「はい、合っています」のように明確に肯定したときだけ呼んでください。
   否定（「違います」）や曖昧な返事のときは呼ばず、もう一度確認してください。
-"""
+""")
 
 # Telephone manners (2026-10-13). The caller found the AI's Japanese odd: 「少々、確認します」「少し、確認しましょう」,
 # 0 read as マル, and no clear end of the call. Phrases follow common business phone-answering manuals
 # (training sites, Hello Work and education-centre handouts); where they disagree, the choice is noted in the spec.
-SPEECH_MANNERS = """\
+SPEECH_MANNERS = _T.fill("""\
 【話し方（電話応対の基本）】
 - 会社の受付として、丁寧語と謙譲語で話します。自分たちのことは「いたします」「お受けいたします」「申し伝えます」、
-  お客様のことは「おっしゃる」「いらっしゃる」と言います。お客様には「ございます」を使いません（「田中様でいらっしゃいますね」）。
+  お客様のことは「おっしゃる」「いらっしゃる」と言います。お客様には「ございます」を使いません（「{ex_name}様でいらっしゃいますね」）。
 - 一文を短くし、一度に一つだけ伺います。お客様が話し終えるまで、次の質問をしません。
 - 相づちは「はい」「かしこまりました」「承知いたしました」から選び、同じ言葉を続けません。
 - 伺い方の例：
-  - 用件：「どのようなご用件でしょうか。」 まとめて確かめる：「無煙ロースターの清掃のご依頼でございますね。」
-  - 希望日時：「作業にお伺いするご希望の日時はございますか。」
-  - 店名・お名前：「恐れ入りますが、店舗名とお名前をお伺いしてもよろしいでしょうか。」
-  - 名乗られたら：「焼肉ほのか博多店の田中様でいらっしゃいますね。いつもお世話になっております。」
+  - 用件：「{ask_request}」 まとめて確かめる：「{ex_request}のご依頼でございますね。」
+  - 希望日時：「{ask_date}」
+  - {shop}・お名前：「{ask_shop}」
+  - 名乗られたら：「{ex_shop}の{ex_name}様でいらっしゃいますね。いつもお世話になっております。」
     このあいさつに、お客様はふつう返事をしません。お返事を待たずに、続けて次の質問をします。
   - 電話番号：「担当の者から折り返しお電話いたしますので、恐れ入りますが、ご連絡先のお電話番号をお伺いしてもよろしいでしょうか。」
 - 「恐れ入りますが」などのクッション言葉は、一つの質問に一つまでにします。
@@ -49,15 +55,15 @@ SPEECH_MANNERS = """\
 - FAQの答えは、内容を変えずに、「〜でございます」「〜いたします」のような丁寧な言い方に整えて話してかまいません。
 
 【終わり方（終話）】お客様に、電話が終わることがはっきり分かるように、次の順で終えます。
-1. 聞き取った内容を短くまとめて確かめます。例：「それでは、ご用件を確認いたします。焼肉ほのか博多店の田中様、
-   無煙ロースターの清掃のご依頼で、ご希望は10月15日、木曜日でございますね。」（確認済みの電話番号は、繰り返しません）
+1. 聞き取った内容を短くまとめて確かめます。例：「それでは、ご用件を確認いたします。{ex_shop}の{ex_name}様、
+   {ex_request}のご依頼で、ご希望は{ex_date}でございますね。」（確認済みの電話番号は、繰り返しません）
 2. 「お伺いした内容は担当の者に申し伝え、折り返しお電話いたします。」
 3. 「ほかにご用件はございますでしょうか。」
-4. ないと言われたら、「お電話ありがとうございました。株式会社野田、AIオペレーターがお受けいたしました。失礼いたします。」と言い、end_call を呼びます。
+4. ないと言われたら、「{goodbye}」と言い、end_call を呼びます。
 5. end_call の後は話しません（お客様が先に切るのを待ち、その後でこちらから切ります）。お客様が続けて話したら、それに応じます。
 - お客様が「以上です」「ありがとうございました」と終えようとしたら、1〜3を短くして4へ進みます。
 - お客様の話の途中で、締めの言葉を言いません。「失礼いたします」を急いで言いません。
-"""
+""")
 
 # The short conversation prompt (2026-10-14). ChatGPT's voice sounded more fluent than the lab on the same model
 # (GPT-Live 1); the lab gave the voice model about 4,700 characters of rules. OpenAI's GPT-Live prompting guide:
@@ -65,7 +71,11 @@ SPEECH_MANNERS = """\
 # persona, conversational rules and guardrails in that order, no multi-page prompts. So the voice model gets only
 # this; the steps (saving, read-back wording, FAQ, dates) go to GPT-Live's backend model, or (Gemini) to the tools.
 # {end}: how the call is ended (Gemini calls end_call itself; GPT-Live asks its backend).
-VOICE_RULES = """\
+# {ask_list}: the company's questions in its order (the company settings; Noda: the user's order of 2026-10-23).
+_ASK_LIST = "\n".join(
+    f"{i}. {name}：「{question}」" + (("" if note.startswith("（") else " ") + note if note else "")
+    for i, (key, name, question) in enumerate(_T.ask_items(), 1) for note in [_T.field(key).get("note", "")])
+VOICE_RULES = _T.fill("""\
 【話し方】
 - 落ち着いた声で、ゆっくり話します。会社の受付として、丁寧語と謙譲語で話します。
 - 日本語だけで話します。業務処理の結果にある英語の説明は、読み上げません。
@@ -74,7 +84,7 @@ VOICE_RULES = """\
 - お客様が話し始めたら、すぐに話すのをやめて聞きます。訂正されたら「失礼いたしました。」と言います。
 - 返事の言葉（「かしこまりました。」など）は、一度の返答で一回だけ言います。
 - 確かめるときは「〜ですね」でなく「〜でございますね」と言います。
-- 名乗られたら「田中様でいらっしゃいますね。いつもお世話になっております。」と受け、返事を待たずに次を伺います。
+- 名乗られたら「{ex_name}様でいらっしゃいますね。いつもお世話になっております。」と受け、返事を待たずに次を伺います。
 - 数字の0は「ゼロ」と言います（「マル」「レイ」とは言いません）。
 - 使わない言葉：「もしもし」「うん」「なるほど」「了解しました」「わかりました」「すみません」「よろしかったでしょうか」
   「〜になります」「少々確認します」「確認しましょう」「さようでございますか」「承る」の言葉すべて。
@@ -83,10 +93,7 @@ VOICE_RULES = """\
 - 分からないこと：「その点は、担当の者が確認のうえ、折り返しご連絡いたします。」
 - 自社の人は「担当の者」と言います（「担当の方」「担当者様」「担当さん」とは言いません）。折り返しの時期は約束しません。
 【伺うこと】まだ伺っていないものだけを、次の順に、この言葉で伺います。お客様が先におっしゃった項目は伺いません。
-1. ご用件：「{ask_request}」 対象や数は、渡された文でだけ伺います。
-2. ご希望の日時：「{ask_date}」（ご希望がなければ、伺い直さずに進みます）
-3. 店舗名とお名前：「{ask_shop}」
-4. 折り返しのお電話番号：「{ask_number}」
+{ask_list}
 【守ること】
 - 料金・条件は、確かめた答えの範囲だけでお伝えします。訪問や日時を約束しません。
 - 担当の者へはおつなぎできないので、担当の者からの折り返しをご案内します。
@@ -95,7 +102,7 @@ VOICE_RULES = """\
 - 伺い終えたら、{summary}（ご用件のまとめと締めの言葉。自分で言い換えません）。
 - ないと言われたら、「{goodbye}」と言い、{end}。
   その後は話しません。お客様の話の途中で、締めの言葉を言いません。
-"""
+""", ask_list=_ASK_LIST)
 
 # A-01 (spec 4-2): said as soon as the call is answered, then the question for the request, so the company always
 # speaks first (2026-10-20: the caller had to speak first because GPT-Live did not greet on its own). User decision
@@ -104,37 +111,29 @@ VOICE_RULES = """\
 # 2026-10-23: the user's own wording (「以下に変更」), and a last sentence that welcomes questions too (user's choice)
 # 2026-10-30 (user): 「株式会社野田のAIオペレーター」 → 「株式会社野田、AIオペレーター」
 # 2026-10-30 (user): 「しょうりましたと聞こえます」 even in kana (Grok): 「承る」 is not said at all (お伺いし／お受けいたしました)
-OPENING_ANNOUNCEMENT = ("お電話ありがとうございます。株式会社野田、AIオペレーターでございます。"
-                        "ご用件をお伺いし、担当の者から折り返しご連絡いたします。"
-                        "通話は内容確認と品質向上のため録音させていただきます。")
-OPENING_QUESTION = "それでは、ご依頼のご相談やご質問など、お気軽にお話しください。"
+OPENING_ANNOUNCEMENT = _T.greeting       # the company settings (Noda: the decisions above)
+OPENING_QUESTION = _T.greeting_question
 
 # The fixed questions and closing words every AI says (2026-10-22, user: 「GeminiとElevenLabsが設計上同じならAIの
 # セリフや対応も統一できますよね？」「とにかく正しい日本語を使ってほしい」). The server's request_summary uses them too.
-ASK_FOR = {"request": "どのようなご用件でしょうか。",
-           "shop_name": "恐れ入りますが、店舗名とお名前をお伺いしてもよろしいでしょうか。",
-           "caller_name": "恐れ入りますが、お名前をお伺いしてもよろしいでしょうか。",
-           "callback_number": "担当の者から折り返しお電話いたしますので、ご連絡先のお電話番号をお伺いしてもよろしいでしょうか。",
-           "preferred_datetime": "作業にお伺いするご希望の日時はございますか。",   # 2026-10-24 (user): for what? 2026-10-30: 「ご希望の日時」
-           # 2026-10-27 (Grok): told only 「焼肉店は何基かも伺います」, it asked a dry cleaner 「焼肉店は何基でしょうか」; the
-           # server decides when to ask (service.FOLLOW_UPS) and hands the words over.
-           # 2026-10-26 (user): 「清掃の対象がなんなのかを必ず確認する」「焼肉屋だと対象のものが何基あるか必ず確認する」
-           "request_target": "恐れ入りますが、清掃の対象は、厨房のフードでしょうか。それとも、焼肉の上引きフードでしょうか。",
-           "request_count": "清掃の対象は、何基ございますか。"}
+# The questions come from the company settings (prototype/tenants/noda.json for Noda: 2026-10-24 and 2026-10-30, the
+# date 「作業にお伺いするご希望の日時」; 2026-10-26, which hood and how many). The server decides when a follow-up is asked
+# (service.FOLLOW_UPS) and hands the words over (2026-10-27, Grok: told only 「焼肉店は何基かも伺います」, it asked a dry
+# cleaner 「焼肉店は何基でしょうか」).
+ASK_FOR = _T.questions
 # 2026-10-29 (user): 「担当のものを重複して言っている。「担当のものにもうしつたえ、折り返しお電話いたします。」でいいと思う」
-CLOSING_WORDS = "お伺いした内容は担当の者に申し伝え、折り返しお電話いたします。ほかにご用件はございますでしょうか。"
-GOODBYE = "お電話ありがとうございました。株式会社野田、AIオペレーターがお受けいたしました。失礼いたします。"
+CLOSING_WORDS = _T.closing_words
+GOODBYE = _T.goodbye
 
 
 def voice_rules(end: str, summary: str) -> str:
     """VOICE_RULES with how the call ends and how the summary is got (Gemini and Eleven Realtime call the tools
     themselves; GPT-Live asks its backend)."""
-    return VOICE_RULES.format(end=end, summary=summary, ask_request=ASK_FOR["request"], ask_shop=ASK_FOR["shop_name"],
-                              ask_number=ASK_FOR["callback_number"], ask_date=ASK_FOR["preferred_datetime"],
-                              goodbye=GOODBYE)
+    # The company's words are already in (_T.fill); a plain replace, so a brace in them cannot break this.
+    return VOICE_RULES.replace("{end}", end).replace("{summary}", summary)
 # 2026-10-20 (Gemini): the caller's 「もしもし」 got no answer for 30 seconds: the AI was only told to wait
-OPENING_NOTE = ("【はじめ】通話の最初に、渡された案内を一字一句そのまま一度だけ話し、お客様のお話を待ちます。"
-                "「もしもし」だけなら「はい、株式会社野田、AIオペレーターでございます。」と応じます。")
+OPENING_NOTE = _T.fill("【はじめ】通話の最初に、渡された案内を一字一句そのまま一度だけ話し、お客様のお話を待ちます。"
+                       "「もしもし」だけなら「{moshimoshi}」と応じます。")
 
 # Words the voice models misread, written in kana in what they are told to say (2026-10-20, Gemini: 「承りました」
 # was said 「しょうりました」). 承知 (しょうち) is read correctly and stays.
@@ -143,7 +142,7 @@ OPENING_NOTE = ("【はじめ】通話の最初に、渡された案内を一字
 SPEECH_KANA = (("承り", "うけたまわり"), ("承ります", "うけたまわります"), ("承る", "うけたまわる"),
                ("申し伝え", "もうしつたえ"), ("伺", "うかが"), ("担当の者", "担当のもの"), ("申し付け", "もうしつけ"),
                ("恐れ入", "おそれい"), ("日時", "にちじ"), ("お間違い", "おまちがい"), ("弊社", "へいしゃ"),
-               ("上引き", "うわびき"), ("承っ", "うけたまわっ"))   # 2026-10-26 (user): 「上引き＝うわびきです」
+               ("承っ", "うけたまわっ")) + _T.kana   # the company's own words (Noda, 2026-10-26: 「上引き＝うわびきです」)
 
 
 def for_speech(text: str) -> str:
@@ -159,7 +158,7 @@ OPENING_REQUEST = for_speech("通話がつながりました。最初に、次�
 
 # The AI's first words (the lab and the offline agent). Business phone manners: the company name with
 # 「でございます」, then that this is an AI reception (2026-10-13; the old 「AI受付です。ご用件をお伺いします。」 sounded abrupt).
-GREETING = "お電話ありがとうございます。株式会社野田、AIオペレーターでございます。どのようなご用件でしょうか。"
+GREETING = _T.short_greeting
 # A-07 (spec 4-2): the last words of a call taken by the offline agent
 CLOSING = ("お伺いした内容は担当の者に申し伝え、折り返しお電話いたします。"
            "お電話ありがとうございました。失礼いたします。")

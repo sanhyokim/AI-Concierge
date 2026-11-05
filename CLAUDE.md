@@ -76,6 +76,7 @@
 | 2026-11-03 | **GPT-Live の裏方を gpt-6.1-terra に変える**（「Terraに変えてみましょう」。社長の自由な話し方の試験で GPT だけがうまくいったため、裏方を上位に）。3分 約37円（luna 約26円）。速さは試験で測る（`prototype/browser_lab/config.py`） |
 | 2026-11-03 | **「聞き取り → 考えるAI → 読み上げ」の3段の作り（ElevenAgents）で試す**（「3段の作りで一本化がもっとも安定しそうですね。あなたの提案で進めましょう」。10/21 の「ElevenAgents は保留」を改めた）。考えるAIの書いた文がそのまま声になり、サーバーの決まった文どおりに読む。エージェントと業務処理はサーバーが API で自動で作り、会話のたびに入れ直す（`prototype/browser_lab/elevenagents.py`、IDは `prototype/data/elevenagents.json`）。考えるAIはページで選ぶ（既定 GPT-5.6 Terra）。指示は決まりを減らした短い指示（`TEXT_AGENT_RULES`） |
 | 2026-11-03 | **試験は GPT-Live 1 と ElevenAgents の2つ**（「OpenAI GPT-Live 1とElevenAgentsで検証します。他のモデルは当面使いません」）。Gemini 3.8 Live・Eleven Realtime v1 Max／v1 Mini・Grok Voice 3.0・Phonic-1 は画面に出さない（仕組みは残す。`config.PAUSED`、`LAB_RELEASE_HOLD` で戻せる） |
+| 2026-11-05 | **設計メモ（業種特化）は、会社別の設定だけ今入れる**（「これらの項目は野田ではない外部へ販売するときに設計したらいいですかね？」）。会社ごとの言葉と項目は `prototype/tenants/noda.json` から読み、AIへの指示はそこから作る。緊急度の判定（S/A/B/C）・当番への転送・通知・指標の集計は、他社へ販売するときに設計する。野田は今の決定のまま（`docs/design-memo-2026-11-05.md`・`docs/tenant-config.md`） |
 
 ## 判断待ち（利用者に確認すること）
 
@@ -121,6 +122,7 @@
 
 - **作り**
   - Python 3.11 の標準ライブラリだけを使います（追加の部品を入れない）。データは SQLite、画面は素の JavaScript です。
+  - 会社ごとの言葉（社名・伺う項目と順・質問・指示の中の例・FAQの初期値）は `prototype/tenants/noda.json` にあり、AIへの指示はそこから作ります。プログラムに会社の言葉を書きません（`test_tenants.py` が検査します。説明は `docs/tenant-config.md`）。
   - 管理画面と会話試験は `python -m prototype.admin` で一緒に動きます。利用者は `start_windows.bat` か `start_mac.command` から起動します。
 - **試験**（変更のたびに全部を通します）
   - `python3 -m unittest discover -s prototype/tests -t .`

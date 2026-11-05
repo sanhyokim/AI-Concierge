@@ -16,14 +16,15 @@ import unicodedata
 from ..concierge.confirmation import Reply, classify_reply
 from ..concierge.prompts import CLOSING, GREETING
 from ..concierge.readings import digits_only, is_valid_jp_number, resolve_relative_day
+from ..tenants import current as _current_tenant
 
-ORDER = ("request", "preferred_datetime", "shop_name", "caller_name", "callback_number")   # user decision 2026-10-23
-LABEL = {"request": "ご用件", "shop_name": "店舗名", "caller_name": "お名前", "callback_number": "折り返し先のお電話番号",
-         "preferred_datetime": "ご希望の日時"}
-ASK = {"request": "どのようなご用件でしょうか。", "shop_name": "恐れ入りますが、店舗名をお伺いしてもよろしいでしょうか。",
-       "caller_name": "恐れ入りますが、お名前をお伺いしてもよろしいでしょうか。",
-       "callback_number": "担当の者から折り返しお電話いたしますので、ご連絡先のお電話番号をお伺いしてもよろしいでしょうか。",
-       "preferred_datetime": "作業にお伺いするご希望の日時はございますか。"}
+# The order, the names and the questions come from the company settings (Noda: the user's order of 2026-10-23). The
+# rule agent asks one item at a time, so it uses an item's question of its own where there is one (Noda: the shop
+# alone). The read-back of the number keeps the engine's own words.
+_T = _current_tenant()
+ORDER = _T.order
+LABEL = {**{k: _T.field(k)["polite"] for k in ORDER}, "callback_number": "折り返し先のお電話番号"}
+ASK = {k: _T.ask_alone(k) for k in ORDER}
 CONFIRM = ("callback_number", "preferred_datetime")
 _RELATIVE = re.compile(r"明明後日|しあさって|明後日|あさって|明日|あした|(?:来週|今週)の?[月火水木金土日]")
 _NO_WISH = ("特に", "とくに", "いつでも", "おまかせ", "お任せ", "希望はない", "希望はありません", "ないです", "ありません")

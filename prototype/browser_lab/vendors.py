@@ -18,8 +18,9 @@ from typing import Callable
 
 from ..concierge.prompts import OPENING_ANNOUNCEMENT, OPENING_QUESTION, for_speech
 from ..engines.budget import MAX_OUTPUT_TOKENS
+from ..tenants import current as current_tenant
 from . import elevenagents
-from .config import (GREETING, LAB_INSTRUCTIONS, MAX_SESSION_MIN, OPENING_REQUEST, delegation_model, gemini_function_declarations,
+from .config import (LAB_INSTRUCTIONS, MAX_SESSION_MIN, OPENING_REQUEST, delegation_model, gemini_function_declarations,
                      openai_tools)
 
 Http = Callable[[str, str, dict, dict | None], tuple[int, dict | str]]
@@ -100,7 +101,9 @@ def mint(cfg: dict, env: dict, http: Http = http_json, instructions: str = LAB_I
     ElevenAgents: llm is the thinking AI, agent_state the file with the lab's agent and tool ids."""
     adapter = cfg["adapter"]
     if adapter == "fake":
-        return {"greeting": GREETING, "script": list(script or [])}
+        t = current_tenant()   # the offline stand-in names the company from its settings
+        return {"greeting": f"お電話ありがとうございます。{t.company_name}でございます。", "goodbye": t.goodbye,
+                "script": list(script or [])}
     if adapter == "gpt-live":
         # the offer is exchanged server-side; the page asks again for the opening if the model stays silent
         return {"sdp_exchange": "api/session/sdp", "opening_request": OPENING_REQUEST}
@@ -193,8 +196,7 @@ def mint_openai_realtime_ws(cfg: dict, env: dict, http: Http, instructions: str,
 
 
 # Words of the business the transcription should expect (xAI: audio.input.transcription.keyterms, up to 100)
-GROK_KEYTERMS = ["株式会社野田", "排煙ダクト", "ダクト清掃", "厨房換気", "無煙ロースター", "グリスフィルター",
-                 "レンジフード", "焼肉", "折り返し"]
+GROK_KEYTERMS = list(current_tenant().keywords)   # the company settings (speech.keywords)
 
 
 def grok_session(instructions: str, voice: str | None) -> dict:

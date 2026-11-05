@@ -23,10 +23,11 @@ from dataclasses import asdict
 
 from ..concierge.call_flow import CallFlow, Consent
 from ..concierge.confirmation import FieldState, Status
-from ..concierge.prompts import (ASK_FOR, BASE_INSTRUCTIONS, CLOSING_WORDS, GOODBYE, SPEECH_MANNERS, for_speech,
+from ..concierge.prompts import (ASK_FOR, BASE_INSTRUCTIONS, CLOSING_WORDS, SPEECH_MANNERS, for_speech,
                                  voice_rules)
 from ..concierge.readings import digits_only
 from ..engines.tools import READBACK_FIELDS, ToolHandler
+from ..tenants import current as current_tenant
 from . import settings as S
 from .faq import (BACKEND_RULES, DELEGATION_POLICY, DIRECT_TOOL_RULES, SAY_ONLY_ASKING, SAY_ONLY_RULES, SAY_ONLY_TONE,
                   TEXT_AGENT_RULES,
@@ -51,25 +52,25 @@ SOURCES = {"demo": "架空の着信テスト", "browser_lab": "ブラウザー�
 
 
 
-# Follow-up questions on the request, user 2026-10-26: 「清掃の対象がなんなのかを必ず確認する（…「フードの清掃」というと
-# 厨房フードか焼肉屋の上引きフードかわからない）。また焼肉屋だと対象のものが何基あるか必ず確認する。」
-_CLEAR_HOOD = ("厨房", "キッチン", "調理", "焼肉", "上引き", "うわびき", "上びき", "ロースター", "レンジ")
-_YAKINIKU = ("ロースター", "上引き", "うわびき", "上びき", "焼肉", "無煙")
-# 2026-10-29 (Grok, 「点検」 at 「焼肉ほのか」): 「清掃の対象は、何基ございますか」 for an inspection. The count is asked
-# for a cleaning or a named object only.
-_COUNT_JOB = ("清掃", "掃除", "洗浄", "ロースター", "フード", "ダクト", "上引き", "うわびき", "上びき")
-_COUNT_SAID = re.compile(r"(\d+|[一二三四五六七八九十何数]+)\s*(基|台|卓|つ|個)")
-FOLLOW_UPS = {
-    "request_target": lambda req, shop: bool(req) and "フード" in req and not any(w in req for w in _CLEAR_HOOD),
-    "request_count": lambda req, shop: (bool(req) and any(w in req + shop for w in _YAKINIKU)
-                                        and any(w in req for w in _COUNT_JOB)
-                                        and not _COUNT_SAID.search(unicodedata.normalize("NFKC", req))),
-}
+# Follow-up questions on the request (Noda, user 2026-10-26: 「清掃の対象がなんなのかを必ず確認する（…「フードの清掃」というと
+# 厨房フードか焼肉屋の上引きフードかわからない）。また焼肉屋だと対象のものが何基あるか必ず確認する。」). Which follow-ups
+# there are, when they are asked, and their words come from the company settings (prototype/tenants, 2026-11-05).
+# 2026-10-29 (Grok, 「点検」 at 「焼肉ほのか」): the count is asked for a cleaning or a named object only (Noda's settings).
+_T = current_tenant()
+FOLLOW_UPS = {u.key: u for u in _T.follow_ups}
+_COUNT_UNITS = sorted({unit for u in _T.follow_ups for unit in u.count_units}, key=len, reverse=True)
+_COUNT_SAID = re.compile(r"(\d+|[一二三四五六七八九十何数]+)\s*(" + "|".join(map(re.escape, _COUNT_UNITS or ["基"])) + ")")
+
+
+def _count_said(text: str) -> bool:
+    return bool(_COUNT_SAID.search(unicodedata.normalize("NFKC", text)))
+
+
 # 2026-10-30 (Grok, record 20261030-112731): the AI took 「無煙ロースターの清掃お願いしたいんですが」 without saving it, and
-# the server then handed it 「どのようなご用件でしょうか」 three times (user: 「なんで？」). Words that make an utterance a request.
-_REQUEST_WORDS = ("清掃", "掃除", "洗浄", "点検", "見積", "修理", "交換", "工事", "依頼", "お願い", "相談", "ダクト", "フード",
-                  "ロースター", "排煙", "換気", "料金")
-FOLLOW_UP_LABELS = {"request_target": "清掃の対象（厨房のフードか、焼肉の上引きフードか）", "request_count": "対象の数（何基か）"}
+# the server then handed it 「どのようなご用件でしょうか」 three times (user: 「なんで？」). Words that make an utterance a
+# request (the company settings).
+_REQUEST_WORDS = _T.request_words
+FOLLOW_UP_LABELS = {u.key: u.label for u in _T.follow_ups}
 
 
 def _flat(text: str) -> str:
@@ -426,7 +427,7 @@ class ReceptionService:
         and the fixed lines come from the tools. Kana for the words that are read two ways, as for the voices."""
         call = self._call(call_id)
         at = parse_at(json.loads(call["snapshot"])["decision"]["at_jst"])
-        parts = [preamble, TEXT_AGENT_RULES.format(goodbye=GOODBYE), line_block(bool(call["caller_id"])),
+        parts = [preamble, TEXT_AGENT_RULES, line_block(bool(call["caller_id"])),
                  date_block(at, brief=True)]
         return for_speech("\n".join(part.rstrip() for part in parts))
 
@@ -527,10 +528,9 @@ class ReceptionService:
             self._event(call_id, "ai", {"text": text if store else "（文字起こしを保存しない設定）"})
             if "日時" in text or "にちじ" in text:
                 sess.date_asked = True
-            if "何基" in text or "なんき" in text:
-                sess.asked.add("request_count")
-            if "厨房" in text and ("上引き" in text or "うわびき" in text):
-                sess.asked.add("request_target")
+            for up in _T.follow_ups:   # the AI asked a follow-up itself
+                if up.asked_in(text):
+                    sess.asked.add(up.key)
             if sess.faq_choice:
                 self._faq_answered(call, sess, text)
             wrong = sess.tools.ai_said(text)
@@ -682,14 +682,15 @@ class ReceptionService:
         """The part the caller added to the request when asked how many or which hood: 「20基でございますね。」."""
         if after == before:
             return ""
-        if "request_count" in sess.asked:
-            had = _COUNT_SAID.search(unicodedata.normalize("NFKC", before))
-            got = _COUNT_SAID.search(unicodedata.normalize("NFKC", after))
-            if got and not had:
-                return f"{got.group(0)}でございますね。"
-        if "request_target" in sess.asked:
-            for words, name in ((("上引き", "うわびき", "上びき", "焼肉"), "焼肉の上引きフード"),
-                                (("厨房", "キッチン", "調理"), "厨房のフード")):
+        for up in sorted(_T.follow_ups, key=lambda u: not u.count_units):   # a count first, as before
+            if up.key not in sess.asked:
+                continue
+            if up.count_units:
+                had = _COUNT_SAID.search(unicodedata.normalize("NFKC", before))
+                got = _COUNT_SAID.search(unicodedata.normalize("NFKC", after))
+                if got and not had:
+                    return f"{got.group(0)}でございますね。"
+            for words, name in up.answers:
                 if any(w in after for w in words) and not any(w in before for w in words):
                     return f"{name}でございますね。"
         return ""
@@ -731,11 +732,11 @@ class ReceptionService:
             if left[0] == "callback_number" and line_number:
                 return {"say": for_speech(echo), "then": "offer_line_number を呼ぶ"} if echo else {"then": "offer_line_number を呼ぶ"}
             if left[0] == "shop_name" and self._has(sess, "caller_name"):
-                return {"say": for_speech(echo + "恐れ入りますが、店舗名をお伺いしてもよろしいでしょうか。")}
+                return {"say": for_speech(echo + _T.ask_alone("shop_name"))}
             return self._ask(sess, left[0], echo)
         return {"say": for_speech(echo + ASK_FOR[left[0]]),
                 "how": ("お答えをご用件に足し、save_field で request を保存し直します"
-                        "（例：「焼肉の上引きフードの清掃、3基」）。分からないと言われたら、そのまま次へ進みます")}
+                        f"（例：「{_T.follow_up_example}」）。分からないと言われたら、そのまま次へ進みます")}
 
     @staticmethod
     def _greet_and_go_on(sess: CallSession, left: list[str], line_number: str | None) -> dict:
@@ -750,7 +751,7 @@ class ReceptionService:
         if left[0] == "callback_number" and line_number:
             return {"say": for_speech(greeting), "then": "お返事を待たずに、offer_line_number を呼ぶ"}
         if left[0] == "shop_name":   # the name came first: ask only for the shop
-            return {"say": for_speech(greeting + "恐れ入りますが、店舗名をお伺いしてもよろしいでしょうか。"), "how": how}
+            return {"say": for_speech(greeting + _T.ask_alone("shop_name")), "how": how}
         return {**ReceptionService._ask(sess, left[0], greeting), "how": how}
 
     @staticmethod
@@ -758,14 +759,15 @@ class ReceptionService:
         """The items not heard yet, in the order the AI asks them (VOICE_RULES 【伺うこと】). User decision
         2026-10-23: the request and the date first, the name and the number after (「日時の要件より先に電話番号を
         聞くのは失礼な気がする」). The date is asked once but not required: a caller may have no wish."""
-        order = ("request", "preferred_datetime", "shop_name", "caller_name", "callback_number")
+        order = _T.order   # the company settings (Noda: the user's order of 2026-10-23)
         fields = sess.tools.store.fields
         left = [f for f in order if snap["config"]["fields"][f]["store"]
                 and not (f == "preferred_datetime" and (required_only or sess.date_asked))
                 and not (fields.get(f) and fields[f].value)]
         # the follow-ups on the request come right after it, each asked once (the caller may not know)
         val = lambda f: (fields[f].value or "") if fields.get(f) else ""
-        extra = [k for k, needed in FOLLOW_UPS.items() if k not in sess.asked and needed(val("request"), val("shop_name"))]
+        extra = [k for k, up in FOLLOW_UPS.items()
+                 if k not in sess.asked and up.needed(val("request"), val("shop_name"), _count_said)]
         return [f for f in left if f == "request"] + extra + [f for f in left if f != "request"]
 
     def _summary(self, sess: CallSession, snap: dict) -> dict:

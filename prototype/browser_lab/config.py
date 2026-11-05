@@ -16,6 +16,7 @@ from ..concierge.prompts import (GREETING, OPENING_NOTE, OPENING_REQUEST,  # noq
                                   SPEECH_MANNERS)   # GREETING and the opening request are used by vendors
 from ..reception.faq import TOOL_RULES
 from ..reception.tooldefs import RECEPTION_TOOLS as TOOLS
+from ..tenants import current as _current_tenant
 from ..engines.budget import Limits
 
 MAX_SESSION_MIN = 5.0        # test calls stop at this length (user, 2026-10-08); for real calls it is undecided
@@ -202,39 +203,33 @@ ENV_SETUP = {   # shown on the lab page: how to set a variable on the tester's P
     "GPT_LIVE_DELEGATION_MODEL": "任意。GPT-Liveの裏方のモデル（既定 gpt-6.1-terra。ほかに gpt-6-luna・gpt-6.1-sol）",
 }
 
-MOCK_FAQ = """\
-【模擬FAQ（未承認の推奨案。試験専用）】
-- 点検は無料です。追加の費用は担当者が確認します。
-- 無煙ロースターの清掃は、1台あたり2万5千円から3万5千円（税別）が目安です。台数や汚れ具合で変わり、正式な金額は無料の現地調査のあとにお見積もりします。
-- フードやダクトの清掃は、現地を調査したうえでお見積もりします。
-- 担当者がお電話をお受けする時間は、9時から17時です。
-- 清掃の作業は、深夜や早朝にも対応しています。日時は担当者から折り返してご相談します。
-- 福岡を中心に、九州・中国・四国で対応しています。
-- FAQにないことは「担当の者が確認のうえ、折り返しご連絡いたします」と答え、確認事項として記録します。
-"""
+# The company's words (its name, trade, the mock FAQ) come from the company settings (prototype/tenants, 2026-11-05).
+_T = _current_tenant()
+MOCK_FAQ = ("【模擬FAQ（未承認の推奨案。試験専用）】\n"
+            + "".join(f"- {line}\n" for line in _T.demo.get("mock_faq", [])))
 
-LAB_RULES = """\
-あなたは株式会社野田（飲食店の排煙ダクト・厨房換気設備の清掃と保守）の電話受付AIです。これは試験です。
+LAB_RULES = _T.fill("""\
+あなたは{company}（{industry}）の電話受付AIです。これは試験です。
 - 最初のあいさつで、AIによる受付であることを伝えます。下の【話し方】のとおり、丁寧な敬語で、一度に一つだけ伺います。
 - お客様が話し始めたら、すぐに話すのをやめて聞きます。「はい」などの短い相づちだけなら、話を続けます。
   「違います」「ちょっと待って」「訂正します」には、すぐに応じます。言い終えていない内容を、伝えたことにしません。
 - 既に伺った情報は聞き直しません。分からない項目は無理に聞き続けません。
 - 料金・条件はFAQの範囲だけで答え、予約や訪問を確定・約束しません。担当の者へおつなぎすることはできないので、折り返しをご案内します。
 - 電話番号・日時は、区切りごとにはっきり復唱し、合っているかを確かめます。「はい、違います」は肯定ではありません。
-"""
+""")
 # used only when no reception service is attached; the service builds the same blocks from the call's settings
 # The opening of the short prompts (GPT-Live 1, Gemini 3.8 Live; 2026-10-14). The AI says the opening (A-01).
-LAB_PERSONA = """\
-あなたは株式会社野田（飲食店の排煙ダクト・厨房換気設備の清掃と保守）の電話受付AIです。これは試験です。
+LAB_PERSONA = _T.fill("""\
+あなたは{company}（{industry}）の電話受付AIです。これは試験です。
 AIの受付として、ご用件を伺い、担当の者からの折り返しにお取り次ぎします。必ず日本語で話します。
-""" + OPENING_NOTE + "\n"
+""") + OPENING_NOTE + "\n"
 
 # ElevenAgents (2026-11-03): the opening is the agent's first message, read by ElevenLabs; the text model is told so
 # in its own rules (faq.TEXT_AGENT_RULES)
-LAB_PERSONA_TEXT = """\
-あなたは株式会社野田（飲食店の排煙ダクト・厨房換気設備の清掃と保守）の電話受付AIです。これは試験です。
+LAB_PERSONA_TEXT = _T.fill("""\
+あなたは{company}（{industry}）の電話受付AIです。これは試験です。
 AIの受付として、ご用件を伺い、担当の者からの折り返しにお取り次ぎします。必ず日本語で話します。
-"""
+""")
 
 LAB_INSTRUCTIONS = LAB_RULES + "\n" + SPEECH_MANNERS + "\n" + TOOL_RULES + "\n" + MOCK_FAQ
 

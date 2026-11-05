@@ -11,14 +11,19 @@ from __future__ import annotations
 
 import copy
 
+from ..tenants import ENGINE_FIELDS
+from ..tenants import current as _current_tenant
+
+_T = _current_tenant()
+
 ROUTE_LABELS = {"ai": "AI受付", "forward": "担当者の携帯へ転送（AIが止まったとき）",
                 "dtmf": "録音の案内とプッシュボタン（AIなし）"}
 FAILURE_ACTIONS = ("forward", "dtmf")
 FAILURE_LABELS = {"forward": "担当者の携帯へ転送する（転送先へ1回分の通話料がかかる）",
                   "dtmf": "録音の案内を流し、プッシュボタンで折り返し先を受け付ける"}
 FIELD_KEYS = ("shop_name", "caller_name", "callback_number", "request", "preferred_datetime")
-FIELD_LABELS = {"shop_name": "店舗名", "caller_name": "お名前", "callback_number": "折り返し先",
-                "request": "用件", "preferred_datetime": "希望日時"}
+assert set(FIELD_KEYS) == set(ENGINE_FIELDS)
+FIELD_LABELS = {k: _T.labels[k] for k in FIELD_KEYS}   # the company settings (Noda: 店舗名・お名前・折り返し先・用件・希望日時)
 
 DEFAULT_CONFIG = {
     "provisional": True,
@@ -38,29 +43,12 @@ DEFAULT_CONFIG = {
     "retention_days": None,
 }
 
-# Seeds: the FAQ recommendations of spec 4-1 (NOT approved).
-HOURS_ANSWER = ("担当者がお電話をお受けする時間は、9時から17時です。担当者が出られないときは、AIがご用件を伺い、"
-                "担当者から折り返しご連絡します。")   # provisional; it used to be generated from the schedule
-FAQ_SEEDS = [
-    ("FAQ-01", "点検は無料ですか", "点検は無料です。", "点検|調査|下見,無料|タダ|お金|費用|料金|有料|かかり"),
-    ("FAQ-02", "無煙ロースターの清掃はいくらですか",
-     "無煙ロースターの清掃は、1台あたり2万5千円から3万5千円（税別）が目安です。台数や汚れ具合、ダクトの長さなどで変わります。"
-     "正式な金額は、無料の現地調査のあとにお見積もりします。", "ロースター|無煙,いくら|料金|値段|費用|金額|価格|相場|見積"),
-    ("FAQ-03", "フードやダクトの清掃はいくらですか",
-     "クリアフード、焼き場のフード、ダクトの清掃は、現地を調査したうえでお見積もりします。", "フード|ダクト,いくら|料金|値段|費用|金額|価格|相場|見積"),
-    ("FAQ-04", "電話は何時まで受け付けていますか", HOURS_ANSWER, "何時,受付時間,営業時間,電話の受付"),
-    ("FAQ-05", "夜中や早朝に作業してもらえますか",
-     "清掃の作業は、深夜や早朝にも対応しています。ご希望の日時を伺って、担当者から折り返しご相談します。", "夜中,深夜,早朝,夜間"),
-    ("FAQ-06", "どの地域に来てもらえますか", "福岡を中心に、九州・中国・四国で対応しています。", "地域,エリア,どこまで,対応地域"),
-    ("FAQ-07", "どんな流れで進みますか",
-     "お問い合わせのあと、現場の調査、打ち合わせ、清掃作業の順に進めます。作業のあとは、写真付きの報告書をお渡しします。", "流れ,手順,進め方"),
-    ("FAQ-08", "どんなことを頼めますか",
-     "飲食店の排煙ダクトや厨房の換気設備の設計・施工・保守と、ダクト・クリアフード・無煙ロースターの清掃、"
-     "関連する機器の販売・取り付け・交換を行っています。", "頼め,どんなこと,業務内容,サービス"),
-    ("FAQ-09", "うちの店でも頼めますか",
-     "焼肉店、焼き鳥店、焼きとん店など、厨房や焼き場に排気設備があるお店を対象にしています。"
-     "そのほかのお店も、ご相談の内容を伺って、担当者からご連絡します。", "うちの店|焼肉|焼き鳥|焼きとん|お店|店でも,頼め|対象|対応|やって|でき"),
-]
+# Seeds: the FAQ of a new company (the company settings; Noda: the recommendations of spec 4-1, NOT approved). They
+# go in only while the FAQ list is empty; after that the admin page is where the FAQ is changed.
+FAQ_SEEDS = list(_T.faq_seeds)
+# The hours answer is kept up to date in the stored FAQ (service: generated = 'hours'). Noda: provisional; it used to be
+# generated from the schedule.
+HOURS_ANSWER = next((a for c, q, a, k in FAQ_SEEDS if c == _T.hours_faq), "")
 FALLBACK_ANSWER = "その点は、担当の者が確認のうえ、折り返しご連絡いたします。"   # FAQ-10: recorded as an open question
 # 終話の待ち時間: after the AI's last words, how long to wait for the caller to hang up first (the caller hangs up
 # first by custom). Undecided (spec 3-6); 2-3 s recommended. The browser lab uses this value.

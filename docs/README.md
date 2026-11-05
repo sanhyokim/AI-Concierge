@@ -14,6 +14,8 @@
 | --- | --- |
 | [start-mac.md](./start-mac.md) | **はじめての起動（Mac）**：Pythonの入れ方から、`AI受付を起動_mac.command` での起動と入れ替え、うまくいかないときまで |
 | [start-windows.md](./start-windows.md) | **はじめての起動（Windows）**：Pythonの入れ方から、ダブルクリックでの起動、APIキーの入れ方、うまくいかないときまで |
+| [tenant-config.md](./tenant-config.md) | 会社別の設定（会社ごとに変わる言葉と項目のファイル、別の会社の設定の作り方、まだできないこと） |
+| [design-memo-2026-11-05.md](./design-memo-2026-11-05.md) | 設計メモ（業種特化：緊急度の判定・当番への転送・会社別の設定）。会社別の設定だけ実装し、ほかは他社へ販売するときに設計する |
 | [admin-app-v1.md](./admin-app-v1.md) | 管理画面と受付の共通処理（動かし方・画面・判定の規則・データの扱い・試験の結果。画面の画像は `screenshots/`） |
 | [candidates-v1.md](./candidates-v1.md) | 候補一覧（公式資料で確認したこと・未確認・除外の理由・初回の構成〔GPT-Live 1・Gemini 3.8 Live。ほかは保留〕） |
 | [candidate-comparison-v1.md](./candidate-comparison-v1.md) | 候補の比較枠（同じ前提での月額・初期費用・品質の欄・受付1件あたりの費用。8章は採用した回線案2の月額を、今の携帯への転送を基準に計算。1〜7章の回線案1は採用しない参考） |

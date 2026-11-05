@@ -1,0 +1,48 @@
+{
+  "_説明": "試験用の架空の会社（野田の言葉が、ほかの会社の指示文に漏れないことを確かめる）。実在の会社ではありません。",
+  "tenant": {
+    "id": "midori",
+    "company_name": "みどり設備株式会社",
+    "industry": "マンションの給排水設備の点検と修理",
+    "operator_name": "AI受付",
+    "business_hours": {"value": null, "TODO": "試験用"},
+    "greeting": "お電話ありがとうございます。みどり設備株式会社、AI受付でございます。ご用件をお伺いし、担当の者から折り返しご連絡いたします。",
+    "greeting_question": "それでは、ご用件をお話しください。",
+    "closing_words": "お伺いした内容は担当の者に申し伝え、折り返しお電話いたします。ほかにご用件はございますでしょうか。",
+    "goodbye": "お電話ありがとうございました。みどり設備株式会社、AI受付がお受けいたしました。失礼いたします。"
+  },
+  "intake_fields": [
+    {"key": "request", "label": "用件", "polite": "ご用件", "question": "どのようなご用件でしょうか。"},
+    {"key": "shop_name", "label": "建物名", "polite": "建物名", "question": "恐れ入りますが、建物名とお名前をお伺いしてもよろしいでしょうか。",
+     "question_alone": "恐れ入りますが、建物名をお伺いしてもよろしいでしょうか。"},
+    {"key": "caller_name", "label": "お名前", "polite": "お名前", "question": "恐れ入りますが、お名前をお伺いしてもよろしいでしょうか。",
+     "asked_with": "shop_name"},
+    {"key": "callback_number", "label": "折り返し先", "polite": "折り返しのお電話番号",
+     "question": "担当の者から折り返しお電話いたしますので、ご連絡先のお電話番号をお伺いしてもよろしいでしょうか。"},
+    {"key": "preferred_datetime", "label": "希望日時", "polite": "ご希望の日時", "question": "点検にお伺いするご希望の日時はございますか。"}
+  ],
+  "request_words": ["点検", "修理", "水漏れ", "詰まり", "交換", "見積", "お願い", "相談"],
+  "follow_ups": [
+    {"key": "request_count", "label": "対象の数（何戸か）", "question": "対象のお部屋は、何戸ございますか。",
+     "ask_when": {"request_has_any": ["点検"], "count_not_said": true}, "count_units": ["戸", "室"],
+     "asked_when_ai_says": [["何戸"]]}
+  ],
+  "follow_up_example": "排水管の点検、12戸",
+  "examples": {"shop": "みどりハイツ", "name": "佐藤", "request": "排水管の点検", "date": "11月20日、金曜日"},
+  "speech": {"kana": [["給排水", "きゅうはいすい"]], "keywords": ["みどり設備", "給排水", "排水管", "水漏れ"]},
+  "faq_seeds": [
+    {"code": "FAQ-01", "question": "見積もりは無料ですか", "answer": "お見積もりは無料です。", "keywords": "見積|無料"},
+    {"code": "FAQ-02", "question": "受付の時間は", "answer": "担当者がお電話をお受けする時間は、9時から18時です。", "keywords": "時間|何時"}
+  ],
+  "hours_faq": "FAQ-02",
+  "demo": {
+    "admin_script": ["みどりハイツの佐藤です。排水管の点検をお願いしたいです。", "折り返しは090-1111-2222です。", "はい、合っています。"],
+    "lab_scripts": {"default": ["（模擬）みどりハイツの佐藤です", "（模擬）見積もりは無料ですか"]},
+    "mock_faq": ["お見積もりは無料です。", "担当者がお電話をお受けする時間は、9時から18時です。"]
+  },
+  "triage_rules": {},
+  "on_call_roster": [],
+  "notification": {"channels": [], "recipients": []},
+  "prohibitions": [],
+  "fallback": {"transfer_timeout_sec": 20}
+}
