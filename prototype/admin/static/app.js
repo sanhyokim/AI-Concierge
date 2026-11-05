@@ -57,10 +57,9 @@ const head = (title, lead = "", actions = "") => `<div class="page-head"><div><h
 // --- router -----------------------------------------------------------------------------------------------
 const routes = {};
 // The tests in one place (user, 2026-10-26: 「テストはテストページ一か所でまとめてほしい」): one menu item, three tabs
-// The caller-role test (2026-11-05) is the fourth tab: the AI plays the caller and talks with the reception AI in text
-const TEST_PAGES = ["test", "autotest", "demo", "ledger"];
+const TEST_PAGES = ["test", "demo", "ledger"];
 const testTabs = (on) => `<nav class="page-tabs" aria-label="試験の種類">${[["test", "声で話す", "AIと実際に話す"],
-  ["autotest", "客役で試す", "AIがお客様になって自動で試す"], ["demo", "文字で試す", "受付・要約・通知の流れ"], ["ledger", "費用", "試験の費用の記録"]].map(([k, l, d]) =>
+  ["demo", "文字で試す", "受付・要約・通知の流れ"], ["ledger", "費用", "試験の費用の記録"]].map(([k, l, d]) =>
   `<a href="#/${k}" class="${k === on ? "on" : ""}" ${k === on ? 'aria-current="page"' : ""}><b>${l}</b><span>${d}</span></a>`).join("")}</nav>`;
 async function render() {
   const [, name = "", arg] = location.hash.split("/");
@@ -635,99 +634,6 @@ routes.ledger = async () => {
         actual_usd: view.querySelector(`[data-amount="${rid}"]`).value, note: view.querySelector(`[data-note="${rid}"]`).value });
       toast(r.result === "adjusted" ? "照合しました（留保を閉じました）" : "同じ額で照合済みでした"); render();
     });
-  });
-};
-
-// --- test: the caller-role test (user, 2026-11-05: 「これらの検証をあなたが客のスタンスで多様なパターンを検証して
-// くれることはできないのですか？」). A caller AI talks with the ElevenAgents reception AI in text; the server checks each
-// conversation and the page shows the progress and the results.
-const atStatusLine = (run) => {
-  if (!run || run.status === "idle") return `<p class="muted">まだ試していません。上でパターンを選んで「始める」を押してください。</p>`;
-  const done = run.results.length, ok = run.results.filter((r) => r.ok).length;
-  if (run.status === "running") {
-    const cur = run.current ? `${esc(run.current.id)}「${esc(run.current.title)}」を会話中（${done + 1}/${run.total}件目）` : "準備中";
-    return `<p><span class="badge info">実行中</span> ${cur}。1件に1〜3分かかります。このページを開いたままでも、ほかの画面に移ってもかまいません。</p>
-      <div class="form-actions" style="justify-content:flex-start"><button class="danger" id="atStop">止める</button><span class="sub">今の会話が終わってから止まります</span></div>`;
-  }
-  const tag = run.status === "stopped" ? `<span class="badge warn">止めました</span>` : `<span class="badge good">終わりました</span>`;
-  return `<p>${tag} ${done}件中 <b>${ok}件 合格</b>・${done - ok}件 要確認（${esc(fmt(run.started_at))}〜${esc(fmt(run.ended_at || ""))}・考えるAI ${esc(run.llm || "既定")}）</p>`;
-};
-const atResults = (run) => {
-  if (!run || !run.results || !run.results.length) return "";
-  return `<table class="stack"><thead><tr><th>パターン</th><th>結果</th><th>うまくいかなかった点</th><th>受付記録</th></tr></thead><tbody>
-  ${run.results.map((r, i) => {
-    const bad = r.checks.filter((c) => !c.ok);
-    return `<tr><td data-label="パターン"><b>${esc(r.id)}</b> ${esc(r.title)}<br><span class="sub">${esc(r.reason || "")}${r.seconds ? `・${r.seconds}秒` : ""}</span></td>
-      <td data-label="結果">${r.ok ? `<span class="badge good">合格</span>` : `<span class="badge bad">要確認</span>`}</td>
-      <td data-label="うまくいかなかった点">${bad.length ? `<ul class="at-bad">${bad.map((c) => `<li>${esc(c.name)}${c.detail ? `<br><span class="sub">${esc(c.detail)}</span>` : ""}</li>`).join("")}</ul>` : `<span class="muted">なし</span>`}
-        <details class="fold"><summary>会話と確かめたこと（${r.checks.length}項目）</summary>
-          <ul class="at-checks">${r.checks.map((c) => `<li>${c.ok ? "○" : "×"} ${esc(c.name)}</li>`).join("")}</ul>
-          <div class="chat at-chat">${r.transcript.map(([role, text]) => `<div class="msg ${role === "ai" ? "ai" : "caller"}">${esc(text)}</div>`).join("")}</div>
-          ${r.tools && r.tools.length ? `<p class="sub">業務処理：${r.tools.map((t) => esc(t.name)).join("、")}</p>` : ""}</details></td>
-      <td data-label="受付記録">${r.call_id ? `<a href="#/call/${encodeURIComponent(r.call_id)}">開く</a>` : "—"}</td></tr>`;
-  }).join("")}</tbody></table>
-  <div class="form-actions" style="justify-content:flex-start"><a class="button" href="/export/autotest.txt">結果をテキストで保存</a><span class="sub">会話と合否が1つのファイルになります</span></div>`;
-};
-routes.autotest = async () => {
-  const a = await api("/api/autotest");
-  const keysOk = a.keys.ELEVENLABS_API_KEY && a.keys.OPENAI_API_KEY;
-  const missing = [["ELEVENLABS_API_KEY", "ElevenLabs"], ["OPENAI_API_KEY", "OpenAI"]].filter(([k]) => !a.keys[k]).map(([, l]) => l);
-  const running = a.run && a.run.status === "running";
-  view.innerHTML = `${head("試験")}${testTabs("autotest")}
-  <p class="sub">AIがお客様の役になり、受付のAI（ElevenAgents）と<b>文字で</b>自動で会話します。パターンごとに、番号や日時の確認、使わない言葉などを自動で確かめて、合格か要確認かを出します。</p>
-  <section class="card"><h2>この試験で分かること</h2>
-    <ul class="sub"><li><b>分かること</b>：伺う順、番号と日時の復唱と「はい」での確認、清掃の対象と数の質問、FAQ、緊急、AIを止める求め、最後のあいさつ、使わない言葉。</li>
-      <li><b>分からないこと</b>：声のこと（聞き間違い・発音・間の長さ）。声は「声で話す」で確かめます。</li>
-      <li>受付のAIは「声で話す」の ElevenAgents と同じ指示・業務処理・考えるAIです。お客様の役は OpenAI の ${esc(a.caller_model)} が演じます。</li></ul>
-    <p class="sub">${esc(a.cost_note)}</p>
-    ${keysOk ? `<p class="sub"><span class="badge good">準備OK</span> ElevenLabs と OpenAI のAPIキーが入っています。</p>`
-      : `<p><span class="badge bad">キーが足りません</span> ${esc(missing.join("・"))} のAPIキーがありません。起動の画面でキーを入れてから、もう一度開いてください。</p>`}</section>
-  <section class="card"><h2>1. 試すパターンを選ぶ</h2>
-    <label>考えるAI（受付のAIの頭）<select id="atLlm" ${running ? "disabled" : ""}>${a.llms.map((l) => `<option value="${esc(l.id)}">${esc(l.label)}（${esc(l.maker)}）</option>`).join("")}</select></label>
-    <div class="row" style="margin:4px 0 8px"><button class="small" id="atAll">すべて選ぶ</button><button class="small" id="atNone">すべて外す</button><span class="sub" id="atCount"></span></div>
-    <div class="at-list" id="atList">${a.patterns.map((p) => `<label class="check"><input type="checkbox" data-pid="${esc(p.id)}" checked ${running ? "disabled" : ""}> <b>${esc(p.id)}</b> ${esc(p.title)}</label>`).join("")}</div>
-    <div class="form-actions" style="justify-content:flex-start"><button class="primary" id="atStart" ${running || !keysOk ? "disabled" : ""}>始める（有料）</button></div>
-    <div class="alert warn hidden" id="atConfirm"><p id="atConfirmText"></p>
-      <div class="row"><button class="primary" id="atGo">はい、始める</button><button id="atCancel">やめる</button></div></div></section>
-  <section class="card"><h2>2. 進み具合と結果</h2><div id="atStatus">${atStatusLine(a.run)}</div><div id="atResults">${atResults(a.run)}</div></section>`;
-  const mine = view;
-  const boxes = () => [...view.querySelectorAll("#atList input[data-pid]")];
-  const chosen = () => boxes().filter((b) => b.checked).map((b) => b.dataset.pid);
-  const count = () => { document.getElementById("atCount").textContent = `${chosen().length}件を選んでいます`; };
-  count();
-  let last = JSON.stringify(a.run);
-  const draw = (run) => {
-    const now = JSON.stringify(run);
-    if (now === last) return;
-    last = now;
-    document.getElementById("atStatus").innerHTML = atStatusLine(run);
-    document.getElementById("atResults").innerHTML = atResults(run);
-    if (run.status !== "running") render();   // the choices become usable again
-  };
-  const poll = setInterval(() => {
-    if (view !== mine) { clearInterval(poll); return; }   // another screen is shown
-    if (!last.includes('"status":"running"')) return;
-    api("/api/autotest").then((x) => { if (view === mine) draw(x.run); }).catch(() => {});
-  }, 3000);
-  view.addEventListener("change", (e) => { if (e.target.dataset.pid) count(); });
-  view.addEventListener("click", (e) => {
-    const id = e.target.id;
-    if (id === "atAll" || id === "atNone") { boxes().forEach((b) => { b.checked = id === "atAll"; }); count(); }
-    if (id === "atStart") {
-      const n = chosen().length;
-      if (!n) { toast("パターンを1つ以上選んでください"); return; }
-      const [lo, hi] = a.cost_yen;
-      document.getElementById("atConfirmText").textContent = `${n}件の会話を行います。ElevenLabs と OpenAI の料金がかかります（見込み 約${lo * n}〜${hi * n}円）。1件に1〜3分かかります。始めますか？`;
-      document.getElementById("atConfirm").classList.remove("hidden");
-    }
-    if (id === "atCancel") document.getElementById("atConfirm").classList.add("hidden");
-    if (id === "atGo") guarded(async () => {
-      const r = await api("/api/autotest/start", { ids: chosen(), llm: document.getElementById("atLlm").value });
-      toast("客役の自動試験を始めました");
-      last = JSON.stringify(r.run);
-      render();
-    });
-    if (id === "atStop") guarded(async () => { await api("/api/autotest/stop", {}); toast("今の会話が終わったら止めます"); });
   });
 };
 

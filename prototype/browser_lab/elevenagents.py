@@ -31,9 +31,6 @@ from .config import MAX_SESSION_MIN
 API = "https://api.elevenlabs.io/v1/convai"
 STATE_FILE = pathlib.Path(__file__).resolve().parents[1] / "data" / "elevenagents.json"
 AGENT_NAME = f"{current_tenant().company_name} 受付AI（会話試験）"   # the company settings
-# 2026-11-05: the caller-role test talks to its own agent in text only (chat mode), so it never changes the
-# voice agent; same prompt, tools and thinking AI
-TEXT_AGENT_NAME = f"{current_tenant().company_name} 受付AI（客役の自動試験・文字だけ）"
 
 # The text models offered on the test page (the agent's prompt.llm; ElevenLabs' list, read 2026-11-03).
 # USD per 1M tokens (input, output) at the makers' list prices; ElevenLabs bills the model on top of $0.08/min.
@@ -105,13 +102,12 @@ def _digest(obj) -> str:
 
 
 def conversation_config(instructions: str, llm: str, voice: str | None, tool_ids: list[str],
-                        minimal: bool = False, text_only: bool = False) -> dict:
+                        minimal: bool = False) -> dict:
     """The agent's settings for one call. minimal=True keeps only what the reception needs, for when ElevenLabs
-    refuses one of the other fields. text_only: chat mode (no speech; each message is billed)."""
+    refuses one of the other fields."""
     prompt = {"prompt": instructions, "llm": llm, "tool_ids": tool_ids, "built_in_tools": dict(BUILT_IN_OFF)}
     agent = {"first_message": greeting(), "language": "ja", "prompt": prompt}
-    conf = {"agent": agent, "conversation": {"max_duration_seconds": int(MAX_SESSION_MIN * 60 + 30),
-                                             "text_only": bool(text_only)}}
+    conf = {"agent": agent, "conversation": {"max_duration_seconds": int(MAX_SESSION_MIN * 60 + 30)}}
     tts = {"voice_id": voice} if voice else {}
     if minimal:
         if tts:
@@ -152,10 +148,9 @@ def save_state(path: pathlib.Path, state: dict) -> None:
 
 
 def prepare(env: dict, http, error_cls, state_path: pathlib.Path, instructions: str, voice: str | None,
-            llm: str, text_only: bool = False) -> dict:
+            llm: str) -> dict:
     """Make or update the lab's tools and agent for this call and mint the signed URL. error_cls is
-    vendors.VendorError (passed in to keep this module free of an import cycle). text_only: the caller-role
-    test's own agent, in chat mode."""
+    vendors.VendorError (passed in to keep this module free of an import cycle)."""
     def call(method: str, url: str, body: dict | None = None):
         try:
             return http(method, url, _headers(env), body)[1]
@@ -193,14 +188,12 @@ def prepare(env: dict, http, error_cls, state_path: pathlib.Path, instructions: 
     tool_ids = [tools[t["name"]]["id"] for t in RECEPTION_TOOLS]
 
     def body(minimal: bool) -> dict:
-        b = {"conversation_config": conversation_config(instructions, llm, voice, tool_ids, minimal, text_only)}
+        b = {"conversation_config": conversation_config(instructions, llm, voice, tool_ids, minimal)}
         if not minimal:   # a signed URL is then the only way in
             b["platform_settings"] = {"auth": {"enable_auth": True}}
         return b
 
-    state_key = "text_agent_id" if text_only else "agent_id"
-    fixed_id = None if text_only else env.get("ELEVENLABS_AGENT_ID")   # an agent named by the tester: voice only
-    agent_id = fixed_id or state.get(state_key)
+    agent_id = env.get("ELEVENLABS_AGENT_ID") or state.get("agent_id")
     fallback = None
 
     def write(minimal: bool) -> str:
@@ -210,15 +203,15 @@ def prepare(env: dict, http, error_cls, state_path: pathlib.Path, instructions: 
                 call("PATCH", f"{API}/agents/{urllib.request.quote(agent_id)}", body(minimal))
                 return agent_id
             except error_cls as exc:
-                if exc.status != 404 or fixed_id:
+                if exc.status != 404 or env.get("ELEVENLABS_AGENT_ID"):
                     raise
                 agent_id = None   # the lab's agent was deleted on ElevenLabs' screen: make a new one
-        data = call("POST", f"{API}/agents/create", {**body(minimal), "name": TEXT_AGENT_NAME if text_only else AGENT_NAME})
+        data = call("POST", f"{API}/agents/create", {**body(minimal), "name": AGENT_NAME})
         if not isinstance(data, dict) or not data.get("agent_id"):
             raise error_cls("agents/create: no 'agent_id' in the response")
         agent_id = data["agent_id"]
-        if not fixed_id:
-            state[state_key] = agent_id
+        if not env.get("ELEVENLABS_AGENT_ID"):
+            state["agent_id"] = agent_id
             save_state(state_path, state)
         return agent_id
 
@@ -238,7 +231,7 @@ def prepare(env: dict, http, error_cls, state_path: pathlib.Path, instructions: 
     data = call("GET", f"{API}/conversation/get-signed-url?agent_id={urllib.request.quote(agent_id)}")
     if not isinstance(data, dict) or "signed_url" not in data:
         raise error_cls("get-signed-url: no 'signed_url' in the response")
-    out = {"signed_url": data["signed_url"], "agent_id": agent_id, "llm": llm, "text_only": bool(text_only),
+    out = {"signed_url": data["signed_url"], "agent_id": agent_id, "llm": llm,
            "output_rate": int(OUTPUT_FORMAT.split("_")[1]), "input_rate": int(INPUT_FORMAT.split("_")[1])}
     if fallback:
         out["agent_fallback"] = fallback

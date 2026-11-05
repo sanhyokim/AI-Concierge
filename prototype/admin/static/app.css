@@ -193,8 +193,4 @@ details[open] > summary { margin-bottom: 8px; }
 .page-tabs a span { font-size: 12.5px; color: var(--muted); }
 .page-tabs a:hover { border-color: var(--accent); }
 .page-tabs a.on { border: 2px solid var(--accent); padding: 9px 15px; background: var(--accent-soft); }
-.at-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 6px 16px; margin: 0 0 12px; }
-.at-bad { margin: 0; padding-left: 18px; } .at-bad li { margin: 2px 0; }
-.at-checks { margin: 6px 0; padding-left: 0; list-style: none; font-size: 13px; }
-.at-chat { height: auto; max-height: 420px; }
 .lab-frame { display: block; width: 100%; min-height: 900px; border: 0; background: transparent; }

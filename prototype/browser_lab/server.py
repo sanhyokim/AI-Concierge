@@ -225,8 +225,7 @@ class Lab:
         return self.service.instructions(call["id"], preamble=LAB_RULES), None
 
     def start(self, candidate: str, fake_script: str | None = None, caller_id: str | None = None,
-              voice_key: str | None = None, llm: str | None = None, text_only: bool = False, note: str = "") -> dict:
-        """text_only and note: the caller-role test (prototype/autotest, 2026-11-05) talks to ElevenAgents in text."""
+              voice_key: str | None = None, llm: str | None = None) -> dict:
         cfg = CANDIDATES.get(candidate)
         if cfg is None:
             raise ValueError(f"unknown candidate {candidate}")
@@ -239,8 +238,6 @@ class Lab:
                 raise ValueError("選んだ考えるAIが、選べるものの中にありません。画面を読み込み直してください")
         else:
             llm = None
-            if text_only:
-                raise ValueError("文字だけの会話は ElevenAgents だけでできます")
         if voice_key and voice_key not in {c["key"] for c in self.voice_choices(candidate)["choices"]}:
             raise ValueError("選んだ声が、このAIの声の中にありません。画面を読み込み直してください")
         if cfg.get("hold") and candidate not in released(self.env):
@@ -289,7 +286,7 @@ class Lab:
         try:
             creds = vendors.mint(cfg, self.env, self.http, instructions=instructions, voice=voice,
                                  script=FAKE_SCRIPTS.get(fake_script or "default"), llm=llm,
-                                 agent_state=self.agent_state, text_only=text_only)
+                                 agent_state=self.agent_state)
         except Exception:
             if rid:  # minting a token is not billed: release the reservation with a zero record
                 led = self.ledger(cfg["vendor"])
@@ -304,7 +301,7 @@ class Lab:
             voice = None
             applied["voice"] = "業者の既定の声（設定の一部が断られたため）"
         self.service.set_call_ai(call["id"], candidate, cfg["name"], voice,
-                                 note="・".join(x for x in (f"考えるAI {llm}" if llm else "", note) if x))
+                                 note=f"考えるAI {llm}" if llm else "")
         with self.lock:
             self.sessions[sid] = {"candidate": candidate, "cfg": cfg, "rid": rid, "started": now,
                                   "call_id": call["id"], "instructions": instructions,

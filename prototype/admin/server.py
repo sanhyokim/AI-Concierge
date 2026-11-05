@@ -28,7 +28,6 @@ from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
 
-from ..autotest import runner as autotest
 from ..browser_lab import server as labsrv
 from ..engines.budget import DEFAULT_LEDGER, reconcile
 from ..reception import settings as S
@@ -55,7 +54,6 @@ class AdminApp:
         self.service = ReceptionService(store, env=self.env, clock=clock)
         self.auth = Auth(store)
         self.lab = labsrv.Lab(env=self.env, ledger_path=ledger_path, results_dir=results_dir, service=self.service)
-        self.autotest = autotest.Runner(self.lab)   # the caller-role test (2026-11-05)
         self.agents: dict[str, RuleAgent] = {}
         self.lock = threading.Lock()
 
@@ -104,10 +102,6 @@ class AdminApp:
             return {"audit": self.store.q("SELECT * FROM audit_log ORDER BY id DESC LIMIT 200")}
         if path == "/api/demo/script":
             return {"script": DEMO_SCRIPT}
-        if path == "/api/autotest":   # the caller-role test (2026-11-05)
-            keys = {k: bool(self.env.get(k)) for k in ("ELEVENLABS_API_KEY", "OPENAI_API_KEY")}
-            return {**autotest.pattern_list(), "llms": labsrv.llm_choices(), "keys": keys,
-                    "run": self.autotest.status()}
         if path == "/api/ledger":
             from ..browser_lab.config import SESSIONS
             counts = {c: self.lab.counts(c) for c, n in SESSIONS[self.lab.stage].items() if n != 0}
@@ -207,18 +201,6 @@ class AdminApp:
             cid = body.get("call_id", "")
             res = svc.ai_interrupted(cid, "demo（業者の割り込みの通知の模擬）")
             return {"invalidated": res["invalidated"], "call": svc.call_view(cid)}
-        if path == "/api/autotest/start":
-            ids = [str(i) for i in body.get("ids") or []]
-            llm = str(body.get("llm") or "") or None
-            from ..browser_lab import elevenagents
-            if llm and llm not in elevenagents.LLM_IDS:
-                raise ValueError("選んだ考えるAIが、選べるものの中にありません。画面を読み込み直してください")
-            run = self.autotest.start(ids, llm)
-            self.store.audit(who, "autotest_start", run["id"], {"ids": ids, "llm": llm or ""})
-            return {"run": run}
-        if path == "/api/autotest/stop":
-            self.store.audit(who, "autotest_stop", (self.autotest.status() or {}).get("id", ""), {})
-            return {"run": self.autotest.stop()}
         if path == "/api/lab/release":
             return {"ledgers": app_ledgers(self),
                     **self.lab.release_session(str(body.get("session_id", "")), str(body.get("note", "")), who)}
@@ -384,12 +366,6 @@ def make_handler(app: AdminApp, allowed_hosts: set[str], log_requests: bool = Tr
                 name = "calls-" + app.service.clock().strftime("%Y%m%d-%H%M") + ".csv"
                 return self._send(200, app.service.export_calls_csv().encode("utf-8"), "text/csv; charset=utf-8",
                                   {"Content-Disposition": f'attachment; filename="{name}"'})
-            if path == "/export/autotest.txt":   # the caller-role test's results, to send (2026-11-05)
-                if not user:
-                    return self._redirect("/login")
-                name = "autotest-" + app.service.clock().strftime("%Y%m%d-%H%M") + ".txt"
-                return self._send(200, autotest.report_text(app.autotest.status()).encode("utf-8"),
-                                  "text/plain; charset=utf-8", {"Content-Disposition": f'attachment; filename="{name}"'})
             if path.startswith("/api/"):
                 if not user:
                     return self._json(HTTPStatus.UNAUTHORIZED, {"error": "ログインが必要です"})
