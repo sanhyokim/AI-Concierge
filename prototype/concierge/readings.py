@@ -306,7 +306,9 @@ def split_wish(value: str) -> tuple[dt.date, dt.datetime | None, str | None] | N
         return None
     try:
         day = dt.date.fromisoformat(m.group(1))
-        rest = (m.group(2) or "").strip()
+        # 2026-11-05 (GPT-Live): 「午後3時ぐらい」 was saved as '2026-11-10T15:00頃' and read back as it was. A wish
+        # is a wish: the 「頃」 is dropped.
+        rest = re.sub(r"\s*(頃|ごろ|ころ|くらい|ぐらい|位|前後|程度|あたり|辺り|~|〜)$", "", (m.group(2) or "").strip())
         if not rest:
             return day, None, None
         if re.fullmatch(r"\d{1,2}:\d{2}(:\d{2})?", rest):

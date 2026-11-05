@@ -24,7 +24,7 @@ import unicodedata
 from dataclasses import dataclass, field
 from enum import Enum
 
-from .readings import spoken_datetime_mismatch, spoken_digit_runs, spoken_number_mismatch
+from .readings import digits_only, spoken_datetime_mismatch, spoken_digit_runs
 
 
 class Status(str, Enum):
@@ -133,6 +133,7 @@ class FieldState:
     readback_mismatch: str | None = None    # what the AI said instead of the value (from its own transcript)
     readback_spoken_ok: bool = False        # the AI's transcript said the value (and nothing different)
     asks_time: bool = False                 # a date read back without a time, then 「お時間のご希望は…」
+    spoken_digits: str = ""                 # the first part of a number read back in two pieces (2026-11-05)
 
     @property
     def asks_mistake(self) -> bool:
@@ -151,7 +152,7 @@ class FieldState:
         self.value, self.source, self.read_back_value = value, source, None
         self.revision += 1
         self.read_back_revision, self.read_back_after_seq, self.readback_interrupted = None, None, False
-        self.readback_mismatch, self.readback_spoken_ok = None, False
+        self.readback_mismatch, self.readback_spoken_ok, self.spoken_digits = None, False, ""
         self.status = Status.CORRECTED if had_value and changed else Status.HEARD
         self._log("hear", t_ms)
         return self.status
@@ -162,7 +163,7 @@ class FieldState:
             raise ValueError(f"read back {value!r} but the stored value is {self.value!r}")
         self.read_back_value = value
         self.read_back_revision, self.read_back_after_seq, self.readback_interrupted = self.revision, after_seq, False
-        self.readback_mismatch, self.readback_spoken_ok = None, False
+        self.readback_mismatch, self.readback_spoken_ok, self.spoken_digits = None, False, ""
         self.status = Status.AWAITING
         self._log("read_back", t_ms, after_seq=after_seq)
         return self.status
@@ -184,8 +185,23 @@ class FieldState:
         if self.status != Status.AWAITING or not self.value:
             return None
         if self.name == "callback_number":
-            wrong = spoken_number_mismatch(ai_text, self.value)
-            said_any = bool(spoken_digit_runs(ai_text))
+            want, said = digits_only(self.value), "".join(spoken_digit_runs(ai_text))
+            if said:
+                # 2026-11-05 (GPT-Live, record 20261105-123410): one read-back reached the server as two
+                # utterances (「…ゴーロクヨンヨンの、」「ニーゼロゴーゼロ。こちらで…」), and each half was taken as a
+                # wrong number. The first part of the number waits for the rest; the halves are checked together.
+                # a piece that is not itself the start of the number continues the first part (a piece that is
+                # the start of the number is the read-back started again)
+                if self.spoken_digits and not want.startswith(said):
+                    said = self.spoken_digits + said
+                if said != want and want.startswith(said):
+                    self.spoken_digits = said
+                    self._log("read_back_spoken_part", t_ms, said=said)
+                    return None
+                self.spoken_digits = ""
+            # saying the same number twice is not a mismatch
+            wrong = None if not said or (len(said) % len(want) == 0 and said == want * (len(said) // len(want))) else said
+            said_any = bool(said)
         elif self.name == "preferred_datetime":
             wrong = spoken_datetime_mismatch(ai_text, self.value)
             # the date itself (month and day, or the weekday): 「あさっての十二時ですね」 is not a read-back (2026-10-19)
