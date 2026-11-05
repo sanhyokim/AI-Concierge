@@ -93,7 +93,7 @@ GEMINI_ACTIVITY_DETECTION = {"startOfSpeechSensitivity": "START_SENSITIVITY_LOW"
 
 def mint(cfg: dict, env: dict, http: Http = http_json, instructions: str = LAB_INSTRUCTIONS,
          voice: str | None = None, script: list | None = None, llm: str | None = None,
-         agent_state=None) -> dict:
+         agent_state=None, text_only: bool = False) -> dict:
     """Credentials and session settings for the page. Never returns a key from env.
 
     instructions and voice come from the call's settings snapshot when the reception service is attached.
@@ -148,7 +148,7 @@ def mint(cfg: dict, env: dict, http: Http = http_json, instructions: str = LAB_I
         return mint_phonic(cfg, env, http, instructions, voice)
     if adapter == "elevenagents":   # the three-stage path (2026-11-03): the agent is updated for this call
         return elevenagents.prepare(env, http, VendorError, agent_state or elevenagents.STATE_FILE, instructions,
-                                    voice, llm or elevenagents.LLM_DEFAULT)
+                                    voice, llm or elevenagents.LLM_DEFAULT, text_only=text_only)
     if adapter == "cartesia":
         _, data = http("POST", "https://api.cartesia.ai/access-token",
                        {"Authorization": f"Bearer {env['CARTESIA_API_KEY']}",

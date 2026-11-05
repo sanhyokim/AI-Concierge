@@ -293,7 +293,8 @@ const lastAi = (page) => page.$$eval("#chat .msg.ai", (els) => (els.at(-1) || {}
     await page.waitForSelector("#labFrame");
     check("one test item in the menu", (await page.$$eval("#nav a", (as) => as.filter((a) => a.textContent.includes("試験")).length)) === 1
       && !(await page.textContent("#nav")).includes("着信テスト"));
-    check("the test page has the three tabs", (await page.textContent(".page-tabs")).includes("声で話す")
+    check("the test page has the four tabs", (await page.textContent(".page-tabs")).includes("声で話す")
+      && (await page.textContent(".page-tabs")).includes("客役で試す")
       && (await page.textContent(".page-tabs")).includes("文字で試す") && (await page.textContent(".page-tabs")).includes("費用"));
     const frame = await (await page.$("#labFrame")).contentFrame();
     await frame.waitForFunction(() => document.querySelectorAll("#candCards .pick").length > 1);
@@ -326,6 +327,37 @@ const lastAi = (page) => page.$$eval("#chat .msg.ai", (els) => (els.at(-1) || {}
     await shot(page, "pc-lab");
     const labView = await (await page.request.get(url + "/api/calls/" + labCall)).json();
     check("lab session is a call in the common service", labView.source === "browser_lab" && labView.events.some((e) => e.kind === "tool"));
+
+    // --- the caller-role test (2026-11-05): the AI plays the caller; without the ElevenLabs key it cannot start ----
+    await page.goto(url + "/#/autotest");
+    await page.waitForSelector("#atList input[data-pid]");
+    check("the caller-role test lists the company's 20 patterns", (await page.$$("#atList input[data-pid]")).length === 20);
+    const atText = await page.textContent("main");
+    check("it says what it does not test (the voice) and what it costs", atText.includes("分からないこと") && atText.includes("円"));
+    check("it says which key is missing and cannot start without it", atText.includes("キーが足りません") && atText.includes("ElevenLabs")
+      && await page.$eval("#atStart", (b) => b.disabled));
+    await page.click("#atNone");
+    check("the choice can be cleared", (await page.textContent("#atCount")).startsWith("0件"));
+    await page.click("#atAll");
+    check("and chosen again", (await page.textContent("#atCount")).startsWith("20件"));
+    const atStart = await page.request.post(url + "/api/autotest/start", { data: { ids: ["P01"] },
+      headers: { "X-CSRF-Token": await page.evaluate(() => CSRF) } });
+    check("the server refuses to start without the ElevenLabs key", atStart.status() === 400
+      && (await atStart.json()).error.includes("ELEVENLABS_API_KEY"));
+    // how a finished run looks (drawn from a made-up run: a real one needs the paid APIs)
+    await page.evaluate(() => {
+      const run = { status: "done", llm: "gpt-5.6-terra", started_at: "2026-11-05T14:00:00+09:00", ended_at: "2026-11-05T14:06:00+09:00", total: 2,
+        results: [{ id: "P01", title: "ふつうの依頼（聞かれたことに順に答える）", ok: true, call_id: null, reason: "AIが電話を切った（end_call）", seconds: 96,
+          checks: [{ name: "折り返しの番号が正しい", ok: true }], transcript: [["ai", "お電話ありがとうございます。"], ["caller", "無煙ロースターの清掃をお願いしたいんですが。"]], tools: [{ name: "save_fields" }] },
+        { id: "P04", title: "数を言わない（AIが何基か伺う）", ok: false, call_id: null, reason: "AIが電話を切った（end_call）", seconds: 120,
+          checks: [{ name: "「対象の数（何基か）」を伺った", ok: false, detail: "" }, { name: "使わない言葉を言っていない", ok: true }], transcript: [], tools: [] }] };
+      document.getElementById("atStatus").innerHTML = atStatusLine(run);
+      document.getElementById("atResults").innerHTML = atResults(run);
+    });
+    const atRun = await page.textContent("#atResults");
+    check("a finished run shows each pattern, its result and what went wrong", (await page.textContent("#atStatus")).includes("2件中")
+      && atRun.includes("合格") && atRun.includes("要確認") && atRun.includes("「対象の数（何基か）」を伺った") && atRun.includes("結果をテキストで保存"));
+    await shot(page, "pc-autotest");
 
     // --- cost ledger: an open reservation is reconciled with the vendor console amount ---------------------------
     fs.appendFileSync(path.join(tmp, "ledger.jsonl"), JSON.stringify({ ts: "2026-10-08T00:00:00+00:00", vendor: "google_lab",

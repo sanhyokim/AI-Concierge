@@ -99,7 +99,7 @@
 | `OPENAI_API_KEY` | GPT-Live 1。OpenAIの試験専用のプロジェクトで作る |
 | `GEMINI_API_KEY` | Gemini 3.8 Live（2026-11-03から当面使わない）。Google AI Studio で作る |
 | `ELEVENLABS_API_KEY` | ElevenAgents（と、当面使わない Eleven Realtime）。ElevenLabs の画面の「デベロッパー」→「APIキー」で作る（`sk_` で始まる）。**ElevenAgents の「書き込み」の権限**が要る（エージェントと業務処理を、サーバーが自動で作って直すため） |
-| `ELEVENLABS_AGENT_ID` | 任意。ElevenLabs の画面で作ったエージェントを使うときだけ。ふつうは空のまま（サーバーが「株式会社野田 受付AI（会話試験）」を1つ作り、そのIDを `prototype/data/elevenagents.json` に残して、次からは直して使う） |
+| `ELEVENLABS_AGENT_ID` | 任意。ElevenLabs の画面で作ったエージェントを使うときだけ。ふつうは空のまま（サーバーが「株式会社野田 受付AI（会話試験）」を1つ作り、そのIDを `prototype/data/elevenagents.json` に残して、次からは直して使う）。客役の自動試験は、これとは別の文字だけのエージェント「株式会社野田 受付AI（客役の自動試験・文字だけ）」を作る（同じファイルの `text_agent_id`。[autotest.md](./autotest.md)） |
 | `XAI_API_KEY` | Grok Voice 3.0（2026-10-23〜）。xAI の console.x.ai の「API Keys」で作る（`xai-` で始まる） |
 | `PHONIC_API_KEY` | Phonic-1（2026-10-29〜）。phonic.ai の「API Keys」で作る（何の文字で始まるかは資料にない） |
 | `GPT_LIVE_DELEGATION_MODEL` | 任意。GPT-Liveの裏方のモデル（既定 `gpt-6.1-terra`。ほかに `gpt-6-luna`・`gpt-6.1-sol`）。単価が登録されたモデルだけ使える。高いモデルにすると、台帳の上限で開始できない |
