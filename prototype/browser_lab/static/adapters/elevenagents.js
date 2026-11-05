@@ -28,6 +28,10 @@ export async function connect(ctx) {
   let player = null, capture = null, ready = false, closing = false, holding = false;
   let outRate = c.output_rate || 24000, inRate = c.input_rate || 16000;
   let cutAt = -1;                       // audio of an answer the caller cut off: event ids up to this are dropped
+  // An answer's text and its voice share one event id, and the text comes before the end of its voice. After the last
+  // words (holdNewSpeech) only the voice of a LATER answer is dropped: the goodbye itself plays to the end (2026-11-05,
+  // user: 「ElevenAgentsの最後のあいさつが最後まで言い切らずに電話が切れました」).
+  let lastId = -1, holdAfter = -1;
   let posting = Promise.resolve();      // the transcripts reach the server before the tool calls that follow them
   const queue = (role, words) => { posting = posting.then(() => ctx.onTranscript(role, words)).catch(() => null); };
 
@@ -66,8 +70,10 @@ export async function connect(ctx) {
       send({ type: "pong", event_id: (ev.ping_event || {}).event_id });
     } else if (t === "audio") {
       const a = ev.audio_event || {};
-      if (holding || !player || !a.audio_base_64) return;
+      if (!player || !a.audio_base_64) return;
       if (a.event_id != null && a.event_id <= cutAt) return;
+      if (a.event_id != null) lastId = Math.max(lastId, a.event_id);
+      if (holding && a.event_id != null && a.event_id > holdAfter) return;
       player.enqueue(fromBase64(a.audio_base_64));
     } else if (t === "interruption") {
       const i = ev.interruption_event || {};
@@ -80,7 +86,9 @@ export async function connect(ctx) {
       if (words) queue("user", words);
     } else if (t === "agent_response") {
       // the text model's answer: exactly what ElevenLabs reads aloud
-      const words = ((ev.agent_response_event || {}).agent_response || "").trim();
+      const r = ev.agent_response_event || {};
+      if (r.event_id != null) lastId = Math.max(lastId, r.event_id);
+      const words = (r.agent_response || "").trim();
       if (words) queue("ai", words);
     } else if (t === "agent_response_correction") {
       const k = ev.agent_response_correction_event || {};
@@ -112,8 +120,12 @@ export async function connect(ctx) {
 
   return {
     mute() { out.gain.value = 0; if (player) player.clear(); },
-    // after end_call the closing words are queued; anything said after it is a repeat (2026-10-20, Gemini)
-    holdNewSpeech(on) { holding = !!on; ctx.log("vendor_event", { type: on ? "hold_after_goodbye" : "resume_speech" }); },
+    // after the last words, a new answer is a repeat (2026-10-20, Gemini); the last words themselves still play
+    holdNewSpeech(on) {
+      holding = !!on;
+      holdAfter = lastId;
+      ctx.log("vendor_event", { type: on ? "hold_after_goodbye" : "resume_speech", after_event_id: lastId });
+    },
     async close() { closing = true; if (capture) capture.stop(); if (player) player.clear(); ws.close(); },
   };
 }

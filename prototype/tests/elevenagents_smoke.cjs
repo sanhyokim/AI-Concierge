@@ -19,9 +19,10 @@ const METADATA = { type: "conversation_initiation_metadata",
                    conversation_initiation_metadata_event: { conversation_id: "conv_e1",
                      agent_output_audio_format: `pcm_${OUT_RATE}`, user_input_audio_format: "pcm_16000" } };
 
-async function runPage(page, credentials, waitMs, toolResults) {
-  return page.evaluate(async ({ credentials, waitMs, toolResults }) => {
+async function runPage(page, credentials, waitMs, toolResults, holdOn = "") {
+  return page.evaluate(async ({ credentials, waitMs, toolResults, holdOn }) => {
     const log = [], order = [], buffers = [];
+    let conn = null;
     const ac = new AudioContext(); await ac.resume();
     const make = ac.createBuffer.bind(ac);
     ac.createBuffer = (ch, len, rate) => { buffers.push([len, rate]); return make(ch, len, rate); };
@@ -32,18 +33,22 @@ async function runPage(page, credentials, waitMs, toolResults) {
       log: (k, d) => log.push([k, d]),
       attachOutputNode: (n) => n.connect(ac.destination),
       // the server answers a transcript after a while: the tool call that follows must wait for it
-      onTranscript: (role, text) => new Promise((r) => setTimeout(() => { order.push(`${role}:${text}`); r(null); }, 150)),
+      onTranscript: (role, text) => new Promise((r) => setTimeout(() => {
+        order.push(`${role}:${text}`);
+        if (holdOn && role === "ai" && text.includes(holdOn)) conn.holdNewSpeech(true);   // as the lab page does
+        r(null);
+      }, 150)),
       vendorInterrupted: (src, ms) => order.push(`interrupted:${src}:${ms > 0}`),
       vendorClosed: (why) => order.push(`closed:${why}`),
       vendorEvent: (kind, data) => order.push(`vendor:${kind}:${data.conversation_id}`),
       micThresholdDb: () => -42,
       toolCall: async (name) => { order.push(`tool:${name}`); return toolResults[name] || { ok: true }; },
     };
-    const conn = await mod.connect(ctx);
+    conn = await mod.connect(ctx);
     await new Promise((r) => setTimeout(r, waitMs));
     await conn.close();
     return { order, log, buffers };
-  }, { credentials, waitMs, toolResults });
+  }, { credentials, waitMs, toolResults, holdOn });
 }
 
 (async () => {
@@ -124,6 +129,39 @@ async function runPage(page, credentials, waitMs, toolResults) {
       if (!chunks) fail("no mic audio sent");
       if (order.some((o) => o.startsWith("closed:"))) fail(`closed: ${order}`);
       console.log(JSON.stringify({ call: { order, sent: sent.map((e) => e.type), chunks } }));
+      await page.close();
+    }
+
+    // --- the last words (2026-11-05, 「最後のあいさつが最後まで言い切らずに電話が切れました」): the text comes before the
+    // end of its voice; the page then holds new speech, but the rest of the goodbye still plays, a later answer does not
+    {
+      const page = await browser.newPage();
+      page.on("pageerror", (e) => errors.push(String(e)));
+      const GOODBYE = "お電話ありがとうございました。株式会社野田、AIオペレーターがお受けいたしました。失礼いたします。";
+      await page.routeWebSocket(/api\.elevenlabs\.io/, (ws) => {
+        const out = (ev) => ws.send(JSON.stringify(ev));
+        ws.onMessage((m) => {
+          const ev = JSON.parse(m);
+          if (ev.type !== "conversation_initiation_client_data") return;
+          out(METADATA);
+          out({ type: "agent_response", agent_response_event: { agent_response: GOODBYE, event_id: 5 } });
+          out({ type: "audio", audio_event: { audio_base_64: pcmB64(400), event_id: 5 } });
+          setTimeout(() => {   // after the page has held new speech
+            out({ type: "audio", audio_event: { audio_base_64: pcmB64(900), event_id: 5 } });   // the rest of the goodbye
+            out({ type: "agent_response", agent_response_event: { agent_response: "失礼いたします。", event_id: 6 } });
+            out({ type: "audio", audio_event: { audio_base_64: pcmB64(444), event_id: 6 } });   // a repeat
+          }, 600);
+        });
+      });
+      await page.goto(base + "/");
+      const { log, buffers } = await runPage(page, CREDS, 1500, {}, "お受けいたしました");
+      const lens = buffers.map(([len]) => len);
+      if (!log.some(([k, d]) => k === "vendor_event" && d && d.type === "hold_after_goodbye" && d.after_event_id === 5)) {
+        fail(`the hold after the goodbye: ${JSON.stringify(log)}`);
+      }
+      if (!lens.includes(samples(400)) || !lens.includes(samples(900))) fail(`the whole goodbye is not played: ${lens}`);
+      if (lens.includes(samples(444))) fail(`a later answer was played after the goodbye: ${lens}`);
+      console.log(JSON.stringify({ goodbye: { played: lens } }));
       await page.close();
     }
 
