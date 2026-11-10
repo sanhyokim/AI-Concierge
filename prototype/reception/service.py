@@ -457,6 +457,11 @@ class ReceptionService:
             self._event(call_id, "ai_used", {"candidate": candidate, "name": name, "voice": snap["voice"]["label"],
                                         **({"note": note} if note else {})})
 
+    def vendor_note(self, call_id: str, text: str) -> None:
+        """What the AI vendor did that the page saw: a hand-over to the backend, a backend that failed or did not
+        answer, an error (2026-11-10: a GPT-Live call with no business call at all, and no way to tell why)."""
+        self._event(call_id, "vendor_note", {"text": text})
+
     def note_ai_usage(self, call_id: str, data: dict) -> None:
         """The AI vendor's own usage report for the call, priced (the browser lab, Gemini)."""
         self._event(call_id, "ai_usage", data)

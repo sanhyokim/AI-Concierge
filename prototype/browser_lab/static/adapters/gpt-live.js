@@ -14,6 +14,16 @@ const ICE_WAIT_MS = 10000;
 // GPT-Live sends the AI's words only as deltas, with no end mark (2026-10-23: 324 deltas, no .done). The words were
 // passed on only when the caller spoke next, so the closing words came too late to hang up. Now after a pause.
 const AI_PAUSE_MS = 2000;
+// 2026-11-10 (user: 「お客様は名乗ってるのに情報が記録されてない」「会話でやり取りが止まるシーンがあった」): a whole
+// call went by with no business call at all, and nothing in the call record said whether the voice model never
+// handed the work to the backend or the backend failed. Now the record says it: each hand-over
+// (session.delegation.created), a backend that fails or does not answer, and OpenAI's errors. When the caller has
+// spoken twice with no hand-over, the voice model is reminded once (session.instructions.append, at most 500 tokens).
+const BACKEND_SILENT_MS = 10000;
+const NUDGE_AFTER_TURNS = 2;
+const NUDGE_WAIT_MS = 6000;
+const NUDGE_TEXT = "お客様のお話に、ご用件・ご希望の日時・店舗名・お名前・お電話番号が出たら、返事をする前に必ず裏方（delegation）に頼んでください。" +
+  "保存と、番号・日時の復唱の文は、裏方が作ります。番号・日時の復唱や、最後のまとめを自分で作らないでください。";
 const OPENING_WAIT_MS = 2500;   // the model has this long to start the opening by itself   // the official WebRTC guide waits for ICE gathering (10 s timeout) before sending the offer
 
 function iceGathered(pc) {
@@ -38,7 +48,23 @@ export async function connect(ctx) {
   const dc = pc.createDataChannel("oai-events");   // register before creating the offer
   const send = (ev) => dc.readyState === "open" && dc.send(JSON.stringify(ev));
   let userBuf = "", aiBuf = "", closeWaiter = null, aiSpoke = false, callerSpoke = false;
-  const flushUser = () => { const t = userBuf; userBuf = ""; return t ? ctx.onTranscript("user", t) : Promise.resolve(null); };
+  let handovers = 0, turnsSinceHandover = 0, nudged = false, silentTimer = null;
+  const note = (text) => { ctx.log("裏方", text); ctx.vendorEvent("note", { text }); };
+  const handedOver = () => { turnsSinceHandover = 0; };
+  const backendAnswered = () => { clearTimeout(silentTimer); silentTimer = null; };
+  const flushUser = () => {
+    const t = userBuf; userBuf = "";
+    if (!t) return Promise.resolve(null);
+    turnsSinceHandover += 1;
+    setTimeout(() => {   // the hand-over usually comes a moment after the caller's words
+      if (turnsSinceHandover < NUDGE_AFTER_TURNS || nudged) return;
+      nudged = true;
+      send({ type: "session.instructions.append", delegation_id: null, content: NUDGE_TEXT });
+      note(`お客様が${turnsSinceHandover}回話しても、AIが裏方に頼まなかった（${handovers ? `これまでに${handovers}回` : "まだ一度も"}頼んでいない）。` +
+           "裏方に頼むよう、指示を足した");
+    }, NUDGE_WAIT_MS);
+    return ctx.onTranscript("user", t);
+  };
   let aiTimer = null;
   const flushAi = () => { clearTimeout(aiTimer); if (aiBuf) { ctx.onTranscript("ai", aiBuf); aiBuf = ""; } };
   const usageOf = (u) => u && {
@@ -67,14 +93,29 @@ export async function connect(ctx) {
     } else if (ev.type === "session.output_transcript.delta") {
       flushUser(); aiSpoke = true; aiBuf += ev.delta || "";
       clearTimeout(aiTimer); aiTimer = setTimeout(flushAi, AI_PAUSE_MS);
+    } else if (ev.type === "session.delegation.created") {
+      handovers += 1; handedOver();
+      note(`AIが裏方に頼んだ（${handovers}回目）`);
+      clearTimeout(silentTimer);
+      silentTimer = setTimeout(() => { silentTimer = null;
+        note(`裏方から${BACKEND_SILENT_MS / 1000}秒たっても返事がない（業務処理も届かない）`); }, BACKEND_SILENT_MS);
     } else if (inner && inner.type === "response.created") {
+      handedOver();
       ctx.vendorEvent("backend_response");
     } else if (inner && ["response.completed", "response.done", "response.incomplete", "response.failed"].includes(inner.type)) {
-      const u = usageOf(inner.response && inner.response.usage);
+      backendAnswered();
+      const resp = inner.response || {};
+      if (inner.type === "response.failed" || inner.type === "response.incomplete") {
+        const why = (resp.error && (resp.error.message || resp.error.code)) ||
+          (resp.incomplete_details && resp.incomplete_details.reason) || resp.status || "";
+        note(`裏方の返事が${inner.type === "response.failed" ? "失敗" : "途中で終わった"}（${String(why).slice(0, 200)}）`);
+      }
+      const u = usageOf(resp.usage);
       if (u) ctx.vendorEvent("backend_usage", u);
     } else if (inner && inner.type === "response.output_item.done") {
       const item = inner.item || {};
       if (item.type !== "function_call") return;
+      backendAnswered(); handedOver();
       const heard = await flushUser();   // the caller's reply reaches the server before the tool call
       if (heard && heard.stop_ai) return;
       let args = {};
@@ -88,6 +129,8 @@ export async function connect(ctx) {
       send({ type: "response.create" });
     } else if (ev.type === "error") {
       ctx.log("vendor_error", ev.error || ev);
+      const e = ev.error || {};
+      note(`OpenAI のエラー：${[e.code, e.message, e.param].filter(Boolean).join("・").slice(0, 300) || JSON.stringify(ev).slice(0, 300)}`);
     }
   };
   await pc.setLocalDescription(await pc.createOffer());
@@ -102,6 +145,7 @@ export async function connect(ctx) {
   return {
     mute() { audio.muted = true; },
     async close() {
+      clearTimeout(silentTimer); nudged = true;   // no reminder or note for the last words
       flushUser(); flushAi();
       let closed = false, usage = null;
       if (dc.readyState === "open") {

@@ -137,8 +137,8 @@ class FieldState:
 
     @property
     def asks_mistake(self) -> bool:
-        """The read-back ends with 「こちらでお間違いないでしょうか。」 (not the date's, not the line number's
-        「…で、よろしいでしょうか。」)."""
+        """A number read back: 「ないです」「大丈夫です」 answer it (it ended 「こちらでお間違いないでしょうか。」 until
+        2026-11-10, now 「…でございますね？」; not the date's, not the line number's 「…で、よろしいでしょうか。」)."""
         return self.name != "preferred_datetime" and self.source != "line"
 
     def _log(self, event: str, t_ms: int | None, **extra) -> None:

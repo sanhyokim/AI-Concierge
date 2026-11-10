@@ -171,7 +171,7 @@ class NextQuestionTest(unittest.TestCase):
     def test_a_vague_wish_is_kept_as_said(self):
         svc, cid = call()
         res = svc.tool(cid, "save_field", {"field": "preferred_datetime", "value": "来週ぐらい"})
-        self.assertEqual(res["read_back_now"]["say"], "来週ぐらいでございますね。")
+        self.assertEqual(res["read_back_now"]["say"], "来週ぐらいでございますね？")
         rules = svc.voice_instructions(cid, "", backend=False)
         self.assertIn("「来週ぐらい」も", rules)
 

@@ -23,11 +23,11 @@ class DateReadBackTest(unittest.TestCase):
         _, _, now = date_read_back("2026-10-26T15:00")
         self.assertNotIn("復唱いたします", now["say"])
         self.assertTrue(now["say"].startswith("10月26日、月曜日の、午後3時"), now["say"])
-        self.assertTrue(now["say"].endswith("でございますね。"), now["say"])
+        self.assertTrue(now["say"].endswith("でございますね？"), now["say"])
 
     def test_a_date_without_a_time_asks_for_the_time(self):
         _, _, now = date_read_back("2026-10-26")
-        self.assertEqual(now["say"], "10月26日、月曜日でございますね。お時間のご希望はございますか。")
+        self.assertEqual(now["say"], "10月26日、月曜日でございますね？お時間のご希望はございますか。")
 
     def test_no_time_wish_accepts_the_date(self):
         for reply in ("特にありません。", "いいえ、特にないです。", "何時でも大丈夫です。", "はい、大丈夫。"):

@@ -26,14 +26,14 @@ class PartOfDayTest(unittest.TestCase):
     def test_words_after_the_date_are_said_as_japanese(self):
         self.assertEqual(wish_phrase(normalize_wish("2026-11-03T午前")), "11月3日、火曜日の、午前中")
         self.assertEqual(wish_phrase("2026-11-03 夕方"), "11月3日、火曜日の、夕方")
-        self.assertIsNone(spoken_datetime_mismatch("11月3日、火曜日の、午前中でございますね。", "2026-11-03 午前中"))
+        self.assertIsNone(spoken_datetime_mismatch("11月3日、火曜日の、午前中でございますね？", "2026-11-03 午前中"))
         self.assertTrue(spoken_datetime_mismatch("11月4日でございますね。", "2026-11-03 午前中"))
 
     def test_the_read_back_and_the_summary_say_the_part_of_the_day(self):
         svc, cid = call()
         svc.caller_utterance(cid, "えー、午前の方がいいです。", "u1")
         res = svc.tool(cid, "save_field", {"field": "preferred_datetime", "value": "2026-11-03T09:00"})
-        self.assertEqual(res["read_back_now"]["say"], "11月3日、火曜日の、午前中でございますね。")
+        self.assertEqual(res["read_back_now"]["say"], "11月3日、火曜日の、午前中でございますね？")
         res = svc.tool(cid, "save_field", {"field": "preferred_datetime", "value": "2026-11-03T午前"})
         self.assertNotIn("2026", res.get("read_back_now", {}).get("say", ""))
 

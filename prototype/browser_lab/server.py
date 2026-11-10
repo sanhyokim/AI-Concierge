@@ -517,6 +517,10 @@ class Lab:
             vid = str(data.get("conversation_id") or data.get("id") or "")[:120]
             if vid:
                 self._set(sid, vendor_session_id=vid)
+        elif kind == "note":   # what the page saw the vendor do, kept in the call record (2026-11-10)
+            text = str(data.get("text") or "").strip()[:400]
+            if text:
+                self.service.vendor_note(row["call_id"], text)
         elif kind == "session_closed":
             usage.append({"kind": "session_closed", "data": data})
             self._set(sid, close_confirmed=1, usage=dumps(usage))

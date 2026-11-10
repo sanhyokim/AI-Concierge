@@ -297,6 +297,7 @@ function eventText(e) {
       if (d.source === "elevenlabs") return `ElevenLabs の記録：通話${d.call_seconds ?? "?"}秒・${d.credits ?? "?"}クレジット（通話${d.call_credits ?? "?"}・考えるAI${d.llm_credits ?? "?"}）${d.llm_usd != null ? `・考えるAIの料金 $${Number(d.llm_usd).toFixed(4)}` : ""}${d.tier ? `・プラン ${d.tier}` : ""}（会話ID ${d.conversation_id}）`;
       const t = d.tokens || {}; return `AIの料金（AIの会社の報告${d.reports}回の合計）：入力 音声${t.prompt_audio}・文字${t.prompt_text}、出力 音声${t.response_audio}・文字${t.response_text}トークン → $${Number(d.usd).toFixed(4)}（税抜、約${Math.round(d.usd * 150)}円）・通話${d.minutes}分`; }
     case "forward_to_staff": return d.text || "担当者の携帯へ転送";
+    case "vendor_note": return `AIの会社の動き：${d.text}`;
     default: return `${e.kind} ${d && Object.keys(d).length ? JSON.stringify(d) : ""}`;
   }
 }

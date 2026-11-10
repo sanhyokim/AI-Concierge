@@ -31,7 +31,7 @@ class AboutTheTimeTest(unittest.TestCase):
         svc, cid = call()
         svc.caller_utterance(cid, "来週の火曜日午後3時ぐらいどうですか")
         res = svc.tool(cid, "save_field", {"field": "preferred_datetime", "value": "2026-11-10T15:00頃"})
-        self.assertEqual(res["read_back_now"]["say"], "11月10日、火曜日の、午後3時でございますね。")
+        self.assertEqual(res["read_back_now"]["say"], "11月10日、火曜日の、午後3時でございますね？")
 
 
 class NumberInTwoPiecesTest(unittest.TestCase):

@@ -104,7 +104,7 @@ class RuleAgent:
     def _readback_line(field: str, res: dict) -> str:
         if field == "preferred_datetime":   # the date at once, without 「復唱いたします」 (2026-10-24, user)
             return res["say"]
-        return f"{LABEL[field]}を復唱いたします。{res['read_this_clearly']}。{res['then_ask']}"
+        return f"{LABEL[field]}を{res['say']}"   # 「折り返し先を復唱いたします。…でございますね？」
 
     def _date(self, text: str, current: str | None) -> str | None:
         md = re.search(r"(\d{1,2})月(\d{1,2})日", text)

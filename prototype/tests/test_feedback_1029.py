@@ -26,7 +26,7 @@ class AskedOnceTest(unittest.TestCase):
         svc.tool(cid, "save_fields", {"shop_name": "焼肉ほのか博多店", "caller_name": "田中", "request": "無煙ロースター20基の清掃"})
         svc.caller_utterance(cid, "来週の火曜日、午後からどうですか？")
         say = svc.tool(cid, "save_field", {"field": "preferred_datetime", "value": "2026-11-03T14:00"})["read_back_now"]["say"]
-        self.assertEqual(say, "11月3日、火曜日の、午後でございますね。")
+        self.assertEqual(say, "11月3日、火曜日の、午後でございますね？")
         svc.ai_utterance(cid, say)
         svc.caller_utterance(cid, "はい。")
         res = svc.tool(cid, "confirm_field", {"field": "preferred_datetime", "value": "2026-11-03T14:00"})

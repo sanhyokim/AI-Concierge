@@ -15,9 +15,11 @@ from ..concierge.confirmation import FieldStore, Status
 from ..concierge.readings import digits_only, normalize_wish, phone_reading, wish_phrase
 
 READBACK_FIELDS = ("callback_number", "preferred_datetime")   # read back digit by digit / with the weekday
-THEN_ASK = "こちらでお間違いないでしょうか。"
+# A read-back ends 「…でございますね？」 (2026-11-10, user: 「復唱で「ございます」ではなく「ございますね？」です」).
+# Until then the number ended 「。こちらでお間違いないでしょうか。」 and the date 「…でございますね。」.
+CHECK_END = "でございますね？"
 ASK_TIME = "お時間のご希望はございますか。"   # after a date read back without a time
-READBACK_TAIL_MS = 2000   # about the time 「こちらでお間違いないでしょうか。」 takes to say
+READBACK_TAIL_MS = 1200   # about the time 「でございますね？」 takes to say
 
 
 class ToolHandler:
@@ -147,9 +149,9 @@ class ToolHandler:
             state.asks_time = len(state.value or "") == 10   # a date without a time
             then_ask = ASK_TIME if state.asks_time else ""
             return {"field": field, "read_this_clearly": reading, "then_ask": then_ask,
-                    "say": f"{reading}でございますね。{then_ask}"}
-        return {"field": field, "read_this_clearly": reading, "then_ask": THEN_ASK,
-                "say": f"復唱いたします。{reading}。{THEN_ASK}"}
+                    "say": f"{reading}{CHECK_END}{then_ask}"}
+        return {"field": field, "read_this_clearly": reading, "then_ask": "",
+                "say": f"復唱いたします。{reading}{CHECK_END}"}
 
     def save(self, field: str, value: str, t_ms: int | None = None, source: str = "speech") -> str:
         """Store a heard value. The same value again keeps a confirmation already given (the model often

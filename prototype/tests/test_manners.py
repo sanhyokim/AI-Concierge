@@ -26,8 +26,8 @@ class ReadingTest(unittest.TestCase):
         r = h.handle("save_field", {"field": "callback_number", "value": "080-5644-2050"})
         now = r["read_back_now"]
         self.assertEqual(now["read_this_clearly"], "ゼロハチゼロの、ゴーロクヨンヨンの、ニーゼロゴーゼロ")
-        self.assertEqual(now["say"], "復唱いたします。ゼロハチゼロの、ゴーロクヨンヨンの、ニーゼロゴーゼロ。"
-                                     "こちらでお間違いないでしょうか。")
+        self.assertEqual(now["say"], "復唱いたします。ゼロハチゼロの、ゴーロクヨンヨンの、ニーゼロゴーゼロ"
+                                     "でございますね？")   # 2026-11-10
         self.assertEqual(r["status"], "awaiting_confirmation")
         self.assertNotIn("read_back_now", h.handle("save_field", {"field": "shop_name", "value": "焼肉太郎博多店"}))
 
@@ -64,7 +64,7 @@ class ServiceTest(unittest.TestCase):
         svc.ai_utterance(cid, res["read_back_now"]["say"])
         self.assertEqual(svc.caller_utterance(cid, "はい", "u1")["confirmed"], "callback_number")
         date = svc.tool(cid, "request_readback", {"field": "preferred_datetime"})
-        self.assertEqual(date["say"], "10月15日、木曜日でございますね。お時間のご希望はございますか。")   # 2026-10-24
+        self.assertEqual(date["say"], "10月15日、木曜日でございますね？お時間のご希望はございますか。")   # 2026-10-24
         svc.ai_utterance(cid, date["say"])
         self.assertEqual(svc.caller_utterance(cid, "はい、大丈夫です", "u2")["confirmed"], "preferred_datetime")
 
