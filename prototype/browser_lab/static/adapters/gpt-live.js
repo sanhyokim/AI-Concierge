@@ -63,7 +63,15 @@ export async function connect(ctx) {
       note(`お客様が${turnsSinceHandover}回話しても、AIが裏方に頼まなかった（${handovers ? `これまでに${handovers}回` : "まだ一度も"}頼んでいない）。` +
            "裏方に頼むよう、指示を足した");
     }, NUDGE_WAIT_MS);
-    return ctx.onTranscript("user", t);
+    return Promise.resolve(ctx.onTranscript("user", t)).then((r) => {
+      // a read-back confirmed by this reply: tell the voice model what is taken and what is next, not spoken
+      // (2026-11-11: after the number was confirmed it asked for the request again)
+      if (r && r.confirmed && r.progress) {
+        send({ type: "session.thinking.append", delegation_id: null, content: r.progress });
+        note(`確認済みの後、受付の状況をAIに伝えた（${r.progress.slice(0, 120)}）`);
+      }
+      return r;
+    });
   };
   let aiTimer = null;
   const flushAi = () => { clearTimeout(aiTimer); if (aiBuf) { ctx.onTranscript("ai", aiBuf); aiBuf = ""; } };

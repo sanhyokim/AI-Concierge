@@ -19,12 +19,13 @@ Calling ``confirm`` without sequence numbers is kept for the offline scenario ch
 """
 from __future__ import annotations
 
+import difflib
 import re
 import unicodedata
 from dataclasses import dataclass, field
 from enum import Enum
 
-from .readings import digits_only, spoken_datetime_mismatch, spoken_digit_runs
+from .readings import _kanji_int, digits_only, spoken_datetime_mismatch, spoken_digit_runs
 
 
 class Status(str, Enum):
@@ -45,6 +46,24 @@ class Reply(str, Enum):
 
 # Affirmations that contain a negative-looking substring (間違い) are removed before the negative check,
 # so that the rest of the reply is still examined for a negation or a correction.
+def _loose(text: str) -> str:
+    """For comparing a wish said aloud with the words saved: kanji numbers as digits, no punctuation or spaces."""
+    t = unicodedata.normalize("NFKC", text or "")
+    t = re.sub(r"[〇一二三四五六七八九十]{1,3}(?=時|日|月|分)", lambda m: str(_kanji_int(m.group(0)) or m.group(0)), t)
+    return re.sub(r"[\s、。,.!?！？「」]", "", t)
+
+
+
+def _said_wish(ai_text: str, value: str) -> bool:
+    """The AI said the saved words of a wish: every number in them, and most of the words (it may say them a little
+    differently: 「日にちの指定なし」 / 「日にちのご指定はなく」)."""
+    want, said = _loose(value), _loose(ai_text)
+    if not want or any(n not in re.findall(r"\d+", said) for n in re.findall(r"\d+", want)):
+        return False
+    same = sum(b.size for b in difflib.SequenceMatcher(None, want, said, autojunk=False).get_matching_blocks())
+    return same >= 0.7 * len(want)
+
+
 _DATE_SPOKEN = r"(\d{1,2}|[〇一二三四五六七八九十]{1,3})月(\d{1,2}|[〇一二三四五六七八九十]{1,3})日|[月火水木金土日]曜"
 _AFFIRM_WITH_NEGATIVE_CHARS = ("間違いない", "間違いありません", "まちがいない", "まちがいありません")
 _NEGATIVE = ("違", "ちが", "いいえ", "いや", "じゃなく", "ではなく", "間違", "まちが", "そうじゃない")
@@ -206,6 +225,10 @@ class FieldState:
             wrong = spoken_datetime_mismatch(ai_text, self.value)
             # the date itself (month and day, or the weekday): 「あさっての十二時ですね」 is not a read-back (2026-10-19)
             said_any = bool(re.search(_DATE_SPOKEN, unicodedata.normalize("NFKC", ai_text)))
+            # a wish saved as words with no date in it (2026-11-11, GPT-Live: 「日付はいつでもよい、2時から4時の間」 was
+            # read back and answered 「そうです」, and stayed unconfirmed): the AI said those words
+            if not said_any and not re.search(_DATE_SPOKEN, unicodedata.normalize("NFKC", self.value)):
+                said_any = _said_wish(ai_text, self.value)
         else:
             return None
         self.spoke_now = said_any and not wrong

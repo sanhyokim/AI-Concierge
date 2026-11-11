@@ -235,7 +235,7 @@ class TextPromptTest(unittest.TestCase):
         self.text = self.svc.text_instructions(self.cid, LAB_PERSONA_TEXT)
 
     def test_short_with_the_rules_that_matter(self):
-        self.assertLess(len(self.text), 2400)
+        self.assertLess(len(self.text), 2500)   # 2026-11-11: the request saved as a short noun phrase
         for words in ("一字一句そのまま", "read_back_now.say", "confirm_field", "request_summary", "end_call",
                       "lookup_faq", "offer_line_number", "【日付の早見表】", "記号・箇条書き",
                       for_speech(GOODBYE)):

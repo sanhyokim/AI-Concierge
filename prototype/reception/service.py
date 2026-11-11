@@ -504,6 +504,7 @@ class ReceptionService:
                     self._event(call_id, "confirmed_by_reply", {"field": confirmed, "seq": sess.tools.utterance_seq})
                     self._persist(call_id, sess)
                     out["confirmed"] = confirmed
+                    out["progress"] = self._progress(sess, json.loads(call["snapshot"]))
             return out
 
     def ai_interrupted(self, call_id: str, source: str, unplayed_ms: int | None = None) -> dict:
@@ -604,7 +605,8 @@ class ReceptionService:
                         if field == "caller_name" and not had_name and self._has(sess, "caller_name"):
                             res.update(self._greet_and_go_on(sess, self._still_to_ask(sess, snap), call["caller_id"]))
                         else:
-                            res.update(self._request_followup(sess, snap, call["caller_id"]))
+                            res.update(self._request_followup(sess, snap, call["caller_id"],
+                                                              after_shop=field == "shop_name"))
                     # 2026-10-29 (Grok): after a confirmation it made up 「次は、お名前です。」: the next question too
                     if name == "confirm_field" and res.get("ok") and not self._readback_open(sess):
                         res.update(self._request_followup(sess, snap, call["caller_id"]))
@@ -655,8 +657,22 @@ class ReceptionService:
         if "caller_name" in saved and not had_name and not pending:
             res.update(self._greet_and_go_on(sess, left, (call or {}).get("caller_id")))
         elif not pending:
-            res.update(self._request_followup(sess, snap, (call or {}).get("caller_id")))
+            res.update(self._request_followup(sess, snap, (call or {}).get("caller_id"),
+                                              after_shop="shop_name" in saved and "request" not in saved))
         return res, logged
+
+    def _progress(self, sess: CallSession, snap: dict) -> str:
+        """Where the intake stands, for a voice model that does not see the saved items (2026-11-11, GPT-Live: after
+        the number was confirmed it asked 「どのようなご用件でしょうか。」 again; the caller: 「先ほども言ったんですが」)."""
+        taken = [S.FIELD_LABELS[f] for f in S.FIELD_KEYS if self._has(sess, f)]
+        left = self._still_to_ask(sess, snap)
+        if self._readback_open(sess):
+            nxt = "まだ復唱していない値があるので、裏方に request_readback を頼みます。"
+        elif left:
+            nxt = f"次は{_label(left[0])}を伺います（裏方が返す文で）。"
+        else:
+            nxt = "伺うことは済みました。次は裏方に request_summary を頼み、返ってきた文で用件を確認します。"
+        return (f"【受付の状況】伺い済み：{'・'.join(taken) or 'なし'}。伺い済みのことは、もう一度伺いません。{nxt}")
 
     @staticmethod
     def _readback_open(sess: CallSession) -> bool:
@@ -726,13 +742,18 @@ class ReceptionService:
         echo, sess.echo = sess.echo, ""
         return echo
 
-    def _request_followup(self, sess: CallSession, snap: dict, line_number: str | None = None) -> dict:
+    def _request_followup(self, sess: CallSession, snap: dict, line_number: str | None = None,
+                          after_shop: bool = False) -> dict:
         """What to ask next, in the server's words: which hood and how many (FOLLOW_UPS), else the next item.
         2026-10-29 (Grok): handed nothing after the shop 「焼肉田中」, it made up 「お名前は、田中様でよろしいでしょうか」."""
         left = self._still_to_ask(sess, snap)
         if not left:   # the echo waits for the summary (Grok calls request_summary in the same answer)
             return {"then": "お返事を待たずに、request_summary を呼ぶ"} if sess.echo else {}
         echo = self._take_echo(sess)
+        # 2026-11-11 (ElevenAgents): asked 「店舗名とお名前を…」, the caller said the shop, and 「焼肉」 in it brought
+        # 「清掃の対象は、何基ございますか。」 at once; the caller went on with the name and the count was never answered
+        if after_shop and left[0] in FOLLOW_UPS and "caller_name" in left:
+            return {"say": for_speech(echo + ASK_FOR["caller_name"])}
         if left[0] not in FOLLOW_UPS:
             if left[0] == "callback_number" and line_number:
                 return {"say": for_speech(echo), "then": "offer_line_number を呼ぶ"} if echo else {"then": "offer_line_number を呼ぶ"}
@@ -793,7 +814,7 @@ class ReceptionService:
         parts = [self._take_echo(sess) + "それでは、ご用件を確認いたします。"]
         if who:
             parts.append(f"{who}。")
-        parts.append(f"ご用件は、{val('request')}。")
+        parts.append(f"ご用件は、{val('request').rstrip('。. ')}。")   # 2026-11-11: 「…を希望。。」
         if val("preferred_datetime"):
             parts.append(f"作業のご希望の日時は、{sess.tools.reading('preferred_datetime')}。")
         parts.append(CLOSING_WORDS)
