@@ -135,6 +135,24 @@ function fail(msg) { console.error("FAIL:", msg); process.exitCode = 1; }
     if (closing.kinds.includes("終話を取り消し")) fail("a short goodbye must not cancel the hang-up");
     const afterClosing = await (await page.request.get(url + "/api/sessions")).json();
     if (!String(afterClosing.sessions[0].end_reason || "").startsWith("AIが終話")) fail("server must record that the AI ended the call");
+
+    // the caller says nothing after the AI's question: the AI follows up twice, then waits (2026-11-20)
+    await page.goto(url + "/");
+    await page.waitForFunction(() => document.querySelectorAll("#candidate option").length > 1);
+    await page.selectOption("#candidate", "fake");
+    await page.evaluate(() => { document.getElementById("micThr").value = "0"; });   // no tone counts as speech
+    await page.click("#startBtn");
+    await page.waitForFunction(() => document.getElementById("status").textContent.startsWith("会話中"), null, { timeout: 15000 });
+    const follow = () => window.__lab.events.filter((e) => e.kind === "後追いの声かけ").length;
+    await page.waitForFunction(follow, null, { timeout: 15000 });
+    await page.waitForFunction(() => window.__lab.events.filter((e) => e.kind === "後追いの声かけ").length >= 2, null, { timeout: 15000 });
+    await page.waitForTimeout(9500);
+    const silence = await page.evaluate(() => ({ n: window.__lab.events.filter((e) => e.kind === "後追いの声かけ").length,
+      said: window.__lab.transcripts.filter((t) => t.role === "ai").map((t) => t.text) }));
+    if (silence.n !== 2) fail("two follow-ups, then nothing more: " + silence.n);
+    if (!silence.said.some((t) => t.startsWith("お電話が遠い"))) fail("the first follow-up must be spoken: " + silence.said.join(" / "));
+    await page.click("#stopBtn");
+    await page.waitForFunction(() => document.getElementById("status").textContent.startsWith("終了"));
     if (errors.length) fail("page errors: " + errors.join(" | "));
     console.log(JSON.stringify({ latencies: stats.lat, interruption_stops: stats.stops, interruptions: ints.map((r) => r.outcome),
       tool_calls: stats.tools, saved: files[0], business_logic: saved.comparison.business_logic_status, event_kinds: stats.kinds }, null, 1));

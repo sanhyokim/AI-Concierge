@@ -152,6 +152,12 @@ export async function connect(ctx) {
   }
   return {
     mute() { audio.muted = true; },
+    // the caller stayed silent after a question (2026-11-20): the model says the company's words in its own voice
+    followUp(text) {
+      send({ type: "session.commentary.append", delegation_id: null,
+             content: `お客様からお返事がありません。次の文を、日本語で一字一句変えずに話し、お客様のお話を待ってください。\n「${text}」` });
+      note(`お客様が黙っているので、声かけを頼んだ（session.commentary.append）：${text}`);
+    },
     async close() {
       clearTimeout(silentTimer); nudged = true;   // no reminder or note for the last words
       flushUser(); flushAi();

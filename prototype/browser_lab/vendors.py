@@ -102,7 +102,7 @@ def mint(cfg: dict, env: dict, http: Http = http_json, instructions: str = LAB_I
     adapter = cfg["adapter"]
     if adapter == "fake":
         t = current_tenant()   # the offline stand-in names the company from its settings
-        return {"greeting": f"お電話ありがとうございます。{t.company_name}でございます。", "goodbye": t.goodbye,
+        return {"greeting": t.short_greeting, "goodbye": t.goodbye,
                 "script": list(script or [])}
     if adapter == "gpt-live":
         # the offer is exchanged server-side; the page asks again for the opening if the model stays silent

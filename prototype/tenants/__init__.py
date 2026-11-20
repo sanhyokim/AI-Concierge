@@ -88,6 +88,7 @@ class Tenant:
     notification: dict
     prohibitions: tuple[str, ...]
     fallback: dict
+    silence_prompts: tuple[str, ...] = ()   # spoken when the caller stays silent after a question
     source: str = ""
     raw: dict = field(default_factory=dict, repr=False, compare=False)
 
@@ -223,6 +224,7 @@ def from_dict(data: dict, source: str = "") -> Tenant:
         business_hours=dict(t.get("business_hours") or {}), triage_rules=dict(data.get("triage_rules") or {}),
         on_call_roster=tuple(data.get("on_call_roster") or ()), notification=dict(data.get("notification") or {}),
         prohibitions=_strs(data.get("prohibitions", []), "prohibitions"), fallback=dict(data.get("fallback") or {}),
+        silence_prompts=_strs(t.get("silence_prompts", []), "tenant.silence_prompts"),
         source=source, raw=data)
 
 

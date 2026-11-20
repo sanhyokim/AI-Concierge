@@ -313,7 +313,9 @@ class Lab:
                 "applied": applied, "stage": self.stage, "counts": self.counts(candidate),
                 "limits": {"tool_calls": MAX_TOOL_CALLS, "backend_responses": MAX_BACKEND_RESPONSES,
                            "response_creates": MAX_RESPONSE_CREATES},
-                "max_session_min": MAX_SESSION_MIN, "credentials": creds}
+                "max_session_min": MAX_SESSION_MIN, "credentials": creds,
+                # the caller stays silent after a question: the AI speaks these, once each (2026-11-20)
+                "silence_prompts": [for_speech(x) for x in current_tenant().silence_prompts]}
 
     def _active(self, sid: str) -> tuple[dict, dict]:
         row = self._row(sid)

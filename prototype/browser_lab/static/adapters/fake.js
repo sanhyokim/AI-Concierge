@@ -66,6 +66,7 @@ export async function connect(ctx) {
   });
   return {
     mute() { gain.gain.value = 0; speaking = false; },
+    followUp(text) { if (!closed && !ended) say(1500, text + "（模擬）"); },   // the caller stayed silent
     async close() { closed = true; off(); clearTimeout(timer); try { osc.stop(); } catch (e) { /* stopped */ } },
   };
 }

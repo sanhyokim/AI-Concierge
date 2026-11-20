@@ -197,6 +197,7 @@ function step(side, db, thr, startHold, endHold, onStart, onEnd) {
 
 function tick() {
   checkHangup();
+  checkSilence();
   const micDb = levelDb(st.micAnalyser);
   const aiDb = st.conn && st.conn.outputLevel ? st.conn.outputLevel() : levelDb(st.aiAnalyser);
   $("micDb").textContent = `${micDb.toFixed(0)} dBFS`;
@@ -230,6 +231,7 @@ function tick() {
       st.pendingInterrupt = { t, scenario: st.scenario };
     }
     log("user_speech_start", st.ai.on ? "AIの発話中" : undefined);
+    st.silenceCount = 0;   // the caller spoke: the silence follow-ups start over
     for (const cb of st.userSpeechListeners) cb("start");
   }, (t, dur) => {
     st.lastUserEnd = t;
@@ -271,6 +273,34 @@ function cancelHangup(text) {
   st.hangup = null;
   try { if (st.conn && st.conn.holdNewSpeech) st.conn.holdNewSpeech(false); } catch (e) { /* not supported */ }
   log("終話を取り消し", "お客様が続けて話したので、会話を続ける");
+}
+
+// --- the caller says nothing after a question -------------------------------------------------------------------
+// 2026-11-20 (user): 「客が一定時間しゃべらなかったら後追いでAIがしゃべったほうがいいかも」. After the AI asks something
+// and the caller says nothing for SILENCE_FOLLOW_UP_MS, the AI speaks the company's words (silence_prompts), the
+// first and then, after another silence, the second; nothing more (no hang-up). Only when the AI's last words wait
+// for the caller (a question, or 「…ください」), so the pause while the AI is still working (「かしこまりました。」 and
+// the back-end, or a business call in progress) is never taken for the caller's silence.
+const SILENCE_FOLLOW_UP_MS = 8000;
+const WAITS_FOR_CALLER = /(？|\?|か。?|ください。?)$/;
+
+function lastAiText() {
+  for (let i = st.transcripts.length - 1; i >= 0; i--) if (st.transcripts[i].role === "ai") return st.transcripts[i].text;
+  return "";
+}
+
+function checkSilence() {
+  if (!st.session || st.closing || st.hangup || st.aiStopped || !st.conn || !st.conn.followUp) return;
+  const prompts = st.session.silence_prompts || [];
+  if (st.silenceCount >= prompts.length || st.ai.on || st.user.on || st.user.since !== null || st.toolsPending > 0) return;
+  if (st.lastAiEnd === null || (st.lastUserEnd !== null && st.lastUserEnd > st.lastAiEnd)) return;
+  if (st.silenceAt === st.lastAiEnd || now() - st.lastAiEnd < SILENCE_FOLLOW_UP_MS) return;
+  const last = lastAiText().replace(/[（(][^）)]*[）)]\s*$/, "").trim();   // 「…（模擬）」 and similar notes
+  if (/待ちください。?$/.test(last) || !WAITS_FOR_CALLER.test(last)) return;
+  const text = prompts[st.silenceCount];
+  st.silenceCount += 1; st.silenceAt = st.lastAiEnd;
+  log("後追いの声かけ", `お客様が${SILENCE_FOLLOW_UP_MS / 1000}秒お話しにならないので、AIが声をかける（${st.silenceCount}回目）：${text}`);
+  try { st.conn.followUp(text); } catch (e) { log("後追いの声かけに失敗", String(e.message || e)); }
 }
 
 // 2026-10-26 (Grok, 「最後に電話が切れない」): short noises on the caller's side (80–360 ms) kept restarting the wait,
@@ -409,9 +439,11 @@ function makeCtx(creds) {
       const delay = st.scenario === "C5" ? C5_DELAY_MS : 0;
       const call = { t_ms: now(), scenario: st.scenario, name, args, delay_ms: delay };
       log("業務処理", { name, args, delay_ms: delay || undefined });
+      st.toolsPending += 1;
       try {
         call.result = await post("api/tool", { session_id: st.session.session_id, name, args, delay_ms: delay });
       } catch (e) { call.result = { ok: false, reason: String(e.message || e) }; }
+      st.toolsPending -= 1;
       st.toolCalls.push(call);
       log("業務処理の結果", call.result);
       if (name === "end_call" && call.result && call.result.ok) scheduleHangup(call.result.hangup_wait_ms);
@@ -445,7 +477,8 @@ async function start() {
   $("startBtn").disabled = true;
   Object.assign(st, { events: [], transcripts: [], toolCalls: [], latencies: [], stops: [], flags: [], interruptions: [],
     lastUserEnd: null, lastAiEnd: null, pendingInterrupt: null, lastInterrupt: null, session: null, conn: null,
-    uttSeq: 0, aiStopped: false, closing: false, hangup: null, hungUp: false });
+    uttSeq: 0, aiStopped: false, closing: false, hangup: null, hungUp: false, silenceCount: 0, silenceAt: null,
+    toolsPending: 0 });
   $("saveBtn").disabled = true;
   st.user = { on: false, since: null, below: null, startT: null };
   st.ai = { on: false, since: null, below: null, startT: null };
