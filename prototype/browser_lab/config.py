@@ -34,8 +34,11 @@ CANDIDATES = {
         "vendor": None, "upper_usd_per_min": 0.0, "increment_s": 1, "verified": True,
         "logic_path": "client_tools", "applies": {"instructions": "n/a", "voice": "n/a"}},
     "gpt-live-1": {
-        "name": "OpenAI GPT-Live 1", "adapter": "gpt-live", "env": ["OPENAI_API_KEY"], "vendor": "openai_lab",
-        "model": "gpt-live-1", "upper_usd_per_min": 0.06, "increment_s": 1, "verified": False,
+        # 2026-11-19: GPT-Live-1.1 reached the API (changelog: "improves pronunciation, accent consistency, and
+        # transcription in multilingual voice conversations"; the same /v1/live/sessions and $0.05/min). The candidate
+        # keeps its id so the voices, the ledger and the records carry on; GPT_LIVE_MODEL=gpt-live-1 goes back.
+        "name": "OpenAI GPT-Live 1.1", "adapter": "gpt-live", "env": ["OPENAI_API_KEY"], "vendor": "openai_lab",
+        "model": "gpt-live-1.1", "model_env": "GPT_LIVE_MODEL", "upper_usd_per_min": 0.06, "increment_s": 1, "verified": False,
         "logic_path": "delegation_responses", "applies": {"instructions": "session", "voice": "session"},
         "prompt_style": "voice_and_backend",   # short prompt for the voice model, the steps for the backend (2026-10-14)
         # 2026-11-03 (user): 「Terraに変えてみましょう」 (gpt-6-luna is the smallest; the president's free-form calls)
@@ -200,6 +203,7 @@ ENV_SETUP = {   # shown on the lab page: how to set a variable on the tester's P
     "ELEVENLABS_API_KEY": "ElevenLabs の画面（デベロッパー → APIキー）で作るAPIキー。ElevenAgents の「書き込み」の権限を付ける",
     "XAI_API_KEY": "xAI の画面（console.x.ai → API Keys）で作るAPIキー",
     "PHONIC_API_KEY": "Phonic の画面（phonic.ai にサインイン → API Keys）で作るAPIキー",
+    "GPT_LIVE_MODEL": "任意。GPT-Liveの声のモデル（既定 gpt-live-1.1。gpt-live-1 で前のモデルに戻す）",
     "GPT_LIVE_DELEGATION_MODEL": "任意。GPT-Liveの裏方のモデル（既定 gpt-6.1-terra。ほかに gpt-6-luna・gpt-6.1-sol）",
 }
 

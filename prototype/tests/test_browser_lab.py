@@ -250,7 +250,7 @@ class LabTest(unittest.TestCase):
         self.assertEqual(ans["sdp"], "v=0 answer")
         body = lab.http.calls[-1]["body"]
         self.assertEqual(body["transport"], {"type": "webrtc", "sdp": "v=0 offer"})
-        self.assertEqual(body["session"]["model"], "gpt-live-1")
+        self.assertEqual(body["session"]["model"], "gpt-live-1.1")   # 2026-11-19
         self.assertNotIn("secret", json.dumps(ans))
 
     def test_elevenlabs_and_realtime_credentials(self):

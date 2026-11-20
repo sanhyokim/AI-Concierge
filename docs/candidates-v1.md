@@ -8,7 +8,7 @@
 
 | 候補 | 種類 | 日本語 | ブラウザーからの接続 | 料金（公式） | 位置づけ |
 | --- | --- | --- | --- | --- | --- |
-| OpenAI GPT-Live 1 | 会話モデル（同時に聞いて話す） | 公式の言語の一覧はない。2026-10-16に日本語の声 harema（女性）と shida（男性）がAPIに追加された（会話試験の既定は harema）。言語は指示文で指定する | WebRTC。こちらのサーバーが鍵を使って POST /v1/live/sessions でSDPを交換する（ブラウザーに鍵を渡さない） | $0.05/分 | 初回（試験の対象） |
+| OpenAI GPT-Live 1.1 | 会話モデル（同時に聞いて話す） | 公式の言語の一覧はない。2026-10-16に日本語の声 harema（女性）と shida（男性）がAPIに追加された（会話試験の既定は harema）。言語は指示文で指定する | WebRTC。こちらのサーバーが鍵を使って POST /v1/live/sessions でSDPを交換する（ブラウザーに鍵を渡さない） | $0.05/分 | 初回（試験の対象） |
 | Google Gemini 3.8 Live | 会話モデル（音声） | Live APIの対応言語の表に日本語（ja）がある | 一時トークン（POST v1beta/auth_tokens、既定30分・1回）で、BidiGenerateContentConstrained のWebSocketにつなぐ | 音声入力 $0.005/分・出力 $0.018/分（目安） | 初回（試験の対象。2026-11-03から当面使わない） |
 | ElevenLabs Eleven Realtime v1 Max | 会話モデル（音声） | モデルの資料は90以上の言語（Eleven v4の言語の表に日本語がある）。Realtimeでの日本語の明記はない | 一時の鍵（POST v1/convai/realtime/client_secrets）で、OpenAI互換のWebSocketにつなぐ（WebRTCはない） | $0.08/分 | 追加の試験（利用者の決定、2026-10-21。2026-11-03から当面使わない） |
 | ElevenLabs Eleven Realtime v1 Mini | 会話モデル（音声） | モデルの資料は90以上の言語（Eleven v4の言語の表に日本語がある）。Realtimeでの日本語の明記はない | 一時の鍵（POST v1/convai/realtime/client_secrets）で、OpenAI互換のWebSocketにつなぐ（WebRTCはない） | $0.08/分 | 追加の試験（利用者の決定、2026-10-21。2026-11-03から当面使わない） |
@@ -26,16 +26,16 @@
 
 ## 2. 候補ごとの詳細
 
-### OpenAI GPT-Live 1（初回（試験の対象））
+### OpenAI GPT-Live 1.1（初回（試験の対象））
 
-- モデル・構成：gpt-live-1
-- 公式で確認：2026-09-10に一般提供（変更履歴）／同時に聞いて話す設計。業務処理は delegation（responses／client）で別のモデル・処理へ渡す／エンドポイントは /v1/live/sessions。Realtimeとは別のプロトコル（移行ガイドあり）／$0.05/分、秒単位の課金。バックエンドのモデルとツールは別料金／2026-10-15に GPT-Live-1.1 が ChatGPT・Codex・dots に出た（日本語を含む訛りの改善、日本語の新しい声、裏方への任せ方が自然に、指示の効きの改善）。APIは「近日」で、2026-10-19の時点でも使えない（APIのモデル一覧は gpt-live-1 だけ）／2026-10-16に gpt-live-1 のAPIへ9つの声（日本語は harema・shida）と、文章から声を作る機能（Prompt-to-voice）が加わった（変更履歴）
+- モデル・構成：gpt-live-1.1
+- 公式で確認：2026-09-10に一般提供（変更履歴）／同時に聞いて話す設計。業務処理は delegation（responses／client）で別のモデル・処理へ渡す／エンドポイントは /v1/live/sessions。Realtimeとは別のプロトコル（移行ガイドあり）／$0.05/分、秒単位の課金。バックエンドのモデルとツールは別料金／2026-10-15に GPT-Live-1.1 が ChatGPT・Codex・dots に出た（日本語を含む訛りの改善、日本語の新しい声、裏方への任せ方が自然に、指示の効きの改善）。APIは「近日」で、2026-10-19の時点でも使えない（APIのモデル一覧は gpt-live-1 だけ）／2026-10-16に gpt-live-1 のAPIへ9つの声（日本語は harema・shida）と、文章から声を作る機能（Prompt-to-voice）が加わった（変更履歴）／2026-11-19に GPT-Live-1.1（gpt-live-1.1）がAPIに出た（変更履歴：多言語の会話で発音・訛りの一貫性・文字起こしを改善）。同じ /v1/live/sessions、$0.05/分（待機中 $0.02/分）、裏方のモデルは別料金。会話試験は 2026-11-20 から 1.1（GPT_LIVE_MODEL=gpt-live-1 で戻せる）
 - 日本語：公式の言語の一覧はない。2026-10-16に日本語の声 harema（女性）と shida（男性）がAPIに追加された（会話試験の既定は harema）。言語は指示文で指定する
 - 接続：ブラウザーはWebRTC。こちらのサーバーが鍵を使って POST /v1/live/sessions でSDPを交換する（ブラウザーに鍵を渡さない）。電話はSIP、またはサーバーのWebSocketで中継
-- 未確認：日本語の会話品質／発話の開始・終了と割り込みのイベント／バックエンドのモデルの費用（記号 L_live）
+- 未確認：日本語の会話品質／発話の開始・終了と割り込みのイベント／バックエンドのモデルの費用（記号 L_live）／GPT-Live-1.1 で日本語の声 harema・shida が使えるか（資料に声の一覧がない。断られたら marin でつなぎ直す）
 - 自社で作るもの：自社の中継・業務処理が要る（delegationの受け口）
 - 位置づけの理由：同時に聞いて話す会話モデルの代表。相づち・訂正への対応を最初に確かめる
-- 出典：[1](https://developers.openai.com/api/docs/models/gpt-live-1)、[2](https://developers.openai.com/api/docs/guides/voice-webrtc?api=live)、[3](https://developers.openai.com/api/docs/guides/live-delegation)、[4](https://developers.openai.com/api/docs/guides/live-migration)、[5](https://developers.openai.com/api/docs/changelog)、[6](https://community.openai.com/t/gpt-live-1-1-is-rolling-out-with-new-voices-and-better-accents/1406704)
+- 出典：[1](https://developers.openai.com/api/docs/models/gpt-live-1.1)、[2](https://developers.openai.com/api/docs/models/gpt-live-1)、[3](https://developers.openai.com/api/docs/guides/voice-webrtc?api=live)、[4](https://developers.openai.com/api/docs/guides/live-delegation)、[5](https://developers.openai.com/api/docs/guides/live-migration)、[6](https://developers.openai.com/api/docs/changelog)、[7](https://community.openai.com/t/gpt-live-1-1-is-rolling-out-with-new-voices-and-better-accents/1406704)
 
 ### Google Gemini 3.8 Live（初回（試験の対象。2026-11-03から当面使わない））
 
@@ -211,7 +211,7 @@
 
 | 構成 | 位置づけ | 比べる意味 |
 | --- | --- | --- |
-| OpenAI GPT-Live 1 | 初回（試験の対象） | 同時に聞いて話す会話モデルの代表。相づち・訂正への対応を最初に確かめる |
+| OpenAI GPT-Live 1.1 | 初回（試験の対象） | 同時に聞いて話す会話モデルの代表。相づち・訂正への対応を最初に確かめる |
 | Google Gemini 3.8 Live | 初回（試験の対象。2026-11-03から当面使わない） | 日本語の明記があり、トークン単価が安い会話モデル。安い構成の代表として比べる |
 | ElevenLabs Eleven Realtime v1 Max | 追加の試験（利用者の決定、2026-10-21。2026-11-03から当面使わない） | 速さと正確さが評価表で最上位。Geminiと同じ1つのモデルの構成で、受付の業務処理の確実さを比べる |
 | ElevenLabs Eleven Realtime v1 Mini | 追加の試験（利用者の決定、2026-10-21。2026-11-03から当面使わない） | 会話の自然さ（相づち・割り込み）の比較用。業務処理の成功率が低く、受付の本命ではない |

@@ -335,6 +335,11 @@ def mint_eleven_realtime(cfg: dict, env: dict, http: Http, instructions: str, vo
     return out
 
 
+def live_model(cfg: dict, env: dict) -> str:
+    """GPT-Live's voice model: gpt-live-1.1 from 2026-11-19; GPT_LIVE_MODEL picks another (gpt-live-1 to go back)."""
+    return (env.get(cfg.get("model_env", "")) or "").strip() or cfg["model"]
+
+
 def exchange_live_sdp(cfg: dict, env: dict, offer_sdp: str, http: Http = http_json,
                       instructions: str = LAB_INSTRUCTIONS, voice: str | None = None,
                       backend_instructions: str | None = None) -> dict:
@@ -350,7 +355,7 @@ def exchange_live_sdp(cfg: dict, env: dict, offer_sdp: str, http: Http = http_js
 
     def post(use_voice: str):
         body = {"session": {
-            "model": cfg["model"], "instructions": instructions, "audio": {"output": {"voice": use_voice}},
+            "model": live_model(cfg, env), "instructions": instructions, "audio": {"output": {"voice": use_voice}},
             "delegation": {"type": "responses", "responses": {
                 "model": model, "instructions": backend_instructions or instructions, "tools": _function_tools(),
                 "tool_choice": "auto", "parallel_tool_calls": False, "max_output_tokens": MAX_OUTPUT_TOKENS,
