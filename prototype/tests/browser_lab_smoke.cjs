@@ -8,9 +8,11 @@ const os = require("os");
 const path = require("path");
 
 function writeWav(file) {
-  // 6 s loop at 16 kHz: silence, 1.0 s "caller" tone, silence, 0.4 s tone, silence
+  // 6 s loop at 16 kHz: silence, 1.0 s "caller" tone, silence, 0.4 s tone, silence.
+  // The short tone starts well after the offline AI begins its answer (about 0.85 s after the long tone ends),
+  // so it always lands as a barge-in. At 4.3 s it raced the answer and the test failed about half the time.
   const rate = 16000, total = rate * 6, data = new Int16Array(total);
-  const bursts = [[2.5, 3.5], [4.3, 4.7]];
+  const bursts = [[2.5, 3.5], [4.8, 5.2]];
   for (let i = 0; i < total; i++) {
     const t = i / rate;
     if (bursts.some(([a, b]) => t >= a && t < b)) data[i] = Math.round(0.4 * 32767 * Math.sin(2 * Math.PI * 180 * t));
